@@ -1,1 +1,0 @@
-# Milestone 3: Core Accessor Layer (Coding Start)\n\n## Description\nBEGIN IMPLEMENTATION: base accessor scaffolding + selection & quality filters, Intake catalog refinement, draft algorithm specs (science collab)

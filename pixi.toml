@@ -1,0 +1,43 @@
+[workspace]
+authors = ["Landung 'Don' Setiawan <landungs@uw.edu>"]
+channels = ["conda-forge"]
+name = "ovro-lwa-portal"
+platforms = ["osx-arm64", "linux-64"]
+version = "0.1.0"
+
+[environments]
+onboarding = { features = ["pre-commit", "onboarding"] }
+
+[tasks]
+
+[dependencies]
+astropy = ">=7.1.0,<8"
+xarray = ">=2025.9.1,<2026"
+dask = ">=2025.9.1,<2026"
+netcdf4 = ">=1.7.2,<2"
+zarr = ">=3.1.3,<4"
+numcodecs = ">=0.16.1,<0.17"
+
+[pypi-dependencies]
+image-plane-correction = { git = "https://github.com/ovro-lwa/image-plane-correction.git"}
+
+[feature.pre-commit.dependencies]
+pre-commit = ">=4.3.0"
+
+# Project Onboarding Dependencies
+[feature.onboarding.tasks]
+# pre-commit tasks
+pre-commit-install = "pre-commit install"
+pre-commit-all = "pre-commit run --all-files"
+pre-commit = "pre-commit run"
+
+onboard = { cmd = "ssec onboard", depends-on = [
+    "pre-commit-install",
+    "ssec-setup",
+] }
+
+# ssec-cli tasks
+ssec-setup = "ssec --install-completion"
+
+[feature.onboarding.pypi-dependencies]
+ssec-cli = { git = "https://github.com/uw-ssec/ssec-cli.git" }
