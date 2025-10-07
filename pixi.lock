@@ -276,7 +276,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/d3/9a/744f2fb915479bf2b5a8bc006f8d7090e43af52f4558f7d514414b075045/bdsf-1.13.0.post2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/50/3d/9373ad9c56321fdab5b41197068e1d8c25883b3fea29dd361f9b55116869/dill-0.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1f/10/9c0687024ce9e478a667262d111fb15502828d28c93482b48446e3558efd/equinox-0.13.1-py3-none-any.whl
-      - pypi: git+https://github.com/lsetiawan/image-plane-correction.git?branch=lsetiawan%2Fdev#619be78ba8d8dd8d082f8b2a35a5fcf28a995fdb
+      - pypi: git+https://github.com/ovro-lwa/image-plane-correction.git?branch=nikita%2Fdev#ff886d84083cd2d4d183c98d96136cefb58ace4a
       - pypi: https://files.pythonhosted.org/packages/93/9d/ead7ecfc1589966cb5f509073d3cc49de9cb0f5320fa50132104a4214b02/interpax-0.3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/e6/5fd0f6fff79eb47469ff9c4fa27125b661517a2fbf8884689b02e9fdfaa8/jax-0.7.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7b/73/b44fbe943c9e02e25c99eb64e6b86e2dde8d918d064326813b5bbe620951/jaxlib-0.7.2-cp312-cp312-manylinux_2_27_x86_64.whl
@@ -546,7 +546,7 @@ environments:
       - pypi: direct+https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/50/3d/9373ad9c56321fdab5b41197068e1d8c25883b3fea29dd361f9b55116869/dill-0.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1f/10/9c0687024ce9e478a667262d111fb15502828d28c93482b48446e3558efd/equinox-0.13.1-py3-none-any.whl
-      - pypi: git+https://github.com/lsetiawan/image-plane-correction.git?branch=lsetiawan%2Fdev#619be78ba8d8dd8d082f8b2a35a5fcf28a995fdb
+      - pypi: git+https://github.com/ovro-lwa/image-plane-correction.git?branch=nikita%2Fdev#ff886d84083cd2d4d183c98d96136cefb58ace4a
       - pypi: https://files.pythonhosted.org/packages/93/9d/ead7ecfc1589966cb5f509073d3cc49de9cb0f5320fa50132104a4214b02/interpax-0.3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/e6/5fd0f6fff79eb47469ff9c4fa27125b661517a2fbf8884689b02e9fdfaa8/jax-0.7.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/df/82/324ffb86a6de8c149689b499b6dc6e4f83684fe43ae9e81c8e5eb91bc50f/jaxlib-0.7.2-cp312-cp312-macosx_11_0_arm64.whl
@@ -832,7 +832,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/d3/9a/744f2fb915479bf2b5a8bc006f8d7090e43af52f4558f7d514414b075045/bdsf-1.13.0.post2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/50/3d/9373ad9c56321fdab5b41197068e1d8c25883b3fea29dd361f9b55116869/dill-0.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1f/10/9c0687024ce9e478a667262d111fb15502828d28c93482b48446e3558efd/equinox-0.13.1-py3-none-any.whl
-      - pypi: git+https://github.com/lsetiawan/image-plane-correction.git?branch=lsetiawan%2Fdev#619be78ba8d8dd8d082f8b2a35a5fcf28a995fdb
+      - pypi: git+https://github.com/ovro-lwa/image-plane-correction.git?branch=nikita%2Fdev#ff886d84083cd2d4d183c98d96136cefb58ace4a
       - pypi: https://files.pythonhosted.org/packages/93/9d/ead7ecfc1589966cb5f509073d3cc49de9cb0f5320fa50132104a4214b02/interpax-0.3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/e6/5fd0f6fff79eb47469ff9c4fa27125b661517a2fbf8884689b02e9fdfaa8/jax-0.7.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7b/73/b44fbe943c9e02e25c99eb64e6b86e2dde8d918d064326813b5bbe620951/jaxlib-0.7.2-cp312-cp312-manylinux_2_27_x86_64.whl
@@ -1108,7 +1108,7 @@ environments:
       - pypi: direct+https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/50/3d/9373ad9c56321fdab5b41197068e1d8c25883b3fea29dd361f9b55116869/dill-0.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/1f/10/9c0687024ce9e478a667262d111fb15502828d28c93482b48446e3558efd/equinox-0.13.1-py3-none-any.whl
-      - pypi: git+https://github.com/lsetiawan/image-plane-correction.git?branch=lsetiawan%2Fdev#619be78ba8d8dd8d082f8b2a35a5fcf28a995fdb
+      - pypi: git+https://github.com/ovro-lwa/image-plane-correction.git?branch=nikita%2Fdev#ff886d84083cd2d4d183c98d96136cefb58ace4a
       - pypi: https://files.pythonhosted.org/packages/93/9d/ead7ecfc1589966cb5f509073d3cc49de9cb0f5320fa50132104a4214b02/interpax-0.3.10-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d5/e6/5fd0f6fff79eb47469ff9c4fa27125b661517a2fbf8884689b02e9fdfaa8/jax-0.7.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/df/82/324ffb86a6de8c149689b499b6dc6e4f83684fe43ae9e81c8e5eb91bc50f/jaxlib-0.7.2-cp312-cp312-macosx_11_0_arm64.whl
@@ -3002,7 +3002,7 @@ packages:
   - pkg:pypi/idna?source=hash-mapping
   size: 49765
   timestamp: 1733211921194
-- pypi: git+https://github.com/lsetiawan/image-plane-correction.git?branch=lsetiawan%2Fdev#619be78ba8d8dd8d082f8b2a35a5fcf28a995fdb
+- pypi: git+https://github.com/ovro-lwa/image-plane-correction.git?branch=nikita%2Fdev#ff886d84083cd2d4d183c98d96136cefb58ace4a
   name: image-plane-correction
   version: '0.1'
   requires_dist:

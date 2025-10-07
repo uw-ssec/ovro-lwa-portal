@@ -22,12 +22,12 @@ numcodecs = ">=0.16.1,<0.17"
 
 [pypi-dependencies]
 # https://github.com/ovro-lwa/image-plane-correction/tree/nikita/dev
-image-plane-correction = { git = "https://github.com/lsetiawan/image-plane-correction.git", branch = "lsetiawan/dev"}
+image-plane-correction = { git = "https://github.com/ovro-lwa/image-plane-correction.git", branch = "nikita/dev"}
 
 [target.osx-arm64.pypi-dependencies]
 bdsf = {url = "https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl"}
 
-
+# Pre-commit dependency
 [feature.pre-commit.dependencies]
 pre-commit = ">=4.3.0"
 
