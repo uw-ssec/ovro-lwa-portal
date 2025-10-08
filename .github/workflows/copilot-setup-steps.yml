@@ -34,5 +34,5 @@ jobs:
           pixi-version: v0.56.0
           cache: true
 
-      - name: Print pixi info
-        run: pixi info
+      - name: Print pixi version
+        run: pixi --version
