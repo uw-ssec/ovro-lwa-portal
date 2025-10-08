@@ -1,7 +1,90 @@
 # OVRO-LWA Portal
 
 A Python library for radio astronomy data processing and visualization for the
-Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA)
+Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
+
+## Prerequisites
+
+This project uses [Pixi](https://pixi.sh) for dependency management and task
+execution. Install Pixi by following the
+[installation instructions](https://pixi.sh/latest/#installation).
+
+## Getting Started
+
+### Installation
+
+Install dependencies:
+
+```bash
+# Install dependencies (Pixi will automatically create the environment)
+pixi install
+```
+
+### Onboarding
+
+For first-time setup, use the onboarding environment to configure your
+development environment:
+
+```bash
+pixi run -e onboard onboard
+```
+
+This will:
+
+- Install pre-commit hooks in your git repository
+- Set up shell completion for ssec-cli
+- Run the SSEC onboarding process
+
+## Project Structure
+
+This project is organized using Pixi features for modular dependency management:
+
+- **`pre-commit`**: Code quality and consistency checks
+- **`gh-cli`**: GitHub CLI for repository interactions
+- **`onboard`**: Tools for project onboarding and setup
+
+## Available Environments
+
+- **`default`**: Standard development environment with pre-commit hooks and
+  GitHub CLI
+- **`onboard`**: Extended environment including onboarding tools
+
+## Development
+
+### Using Different Environments
+
+Switch between environments as needed:
+
+```bash
+# Use default environment
+pixi shell
+
+# Use onboard environment
+pixi shell -e onboard
+```
+
+### Adding Dependencies
+
+Edit `pixi.toml` to add new dependencies:
+
+```toml
+[dependencies]
+your-package = ">=1.0.0"
+```
+
+Then run:
+
+```bash
+pixi install
+```
+
+or
+
+Directly add packages (this will edit the pixi toml and install):
+
+```bash
+pixi add your-package
+```
 
 ## Technology Stack
 
@@ -11,55 +94,17 @@ Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA)
 - **Storage**: Zarr format optimized for cloud access
 - **Environment Management**: pixi
 
-## Getting Started
+## Contributing
 
-This project uses [pixi](https://pixi.sh/) for environment and dependency
-management.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of
+conduct and the process for submitting pull requests.
 
-### Prerequisites
+## License
 
-- [pixi](https://pixi.sh/) installed on your system
+This project is licensed under the terms specified in the [LICENSE](LICENSE)
+file.
 
-### Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/uw-ssec/ovro-lwa-portal.git
-cd ovro-lwa-portal
-```
-
-1. Install dependencies and set up the environment:
-
-```bash
-pixi install
-```
-
-### Available Environments
-
-- **default**: Core development environment with pre-commit hooks
-- **onboarding**: Development environment with SSEC onboarding tools
-
-### Common Tasks
-
-```bash
-# Activate the environment
-pixi shell
-
-# Run pre-commit hooks
-pixi run pre-commit
-
-# Run all pre-commit hooks on all files
-pixi run pre-commit-all
-
-# Install pre-commit hooks
-pixi run pre-commit-install
-
-# Complete project onboarding (includes SSEC setup)
-pixi run onboard
-```
-
-## Relevant Links for project documentations and context
+## Project Resources
 
 - eScience Slack channel: 🔒
   [#ssec-ovro-lwa-portal](https://escience-institute.slack.com/archives/C098GJYLNBW)
