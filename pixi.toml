@@ -10,6 +10,7 @@ channels = ["conda-forge"] # Conda channels for dependencies
 name = "ovro-lwa-portal" # Project name
 platforms = ["osx-arm64", "linux-64"] # Supported platforms for development and deployment
 version = "0.1.0" # Project version
+
 # The environment configurations for different development scenarios
 [environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" } # The default development environment with pre-commit and GitHub CLI
