@@ -36,7 +36,8 @@ Install dependencies using Pixi:
 pixi install
 ```
 
-For detailed installation instructions, see [INSTALLATION.md](INSTALLATION.md).
+For detailed installation and development instructions, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Onboarding
 
