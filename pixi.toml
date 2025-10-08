@@ -5,20 +5,18 @@
 
 [workspace]
 # Project metadata and basic configuration
-authors = ["Landung 'Don' Setiawan <landungs@uw.edu>"]
-channels = ["conda-forge"]  # Primary conda channel for dependencies
-name = "ovro-lwa-portal"
-platforms = ["osx-arm64", "linux-64"]  # Supported platforms for development and deployment
-version = "0.1.0"
+authors = ["University of Washington Scientific Software Engineering Center"] # Project authors
+channels = ["conda-forge"] # Conda channels for dependencies
+name = "ovro-lwa-portal" # Project name
+platforms = ["osx-arm64", "linux-64"] # Supported platforms for development and deployment
+version = "0.1.0" # Project version
 
-# Environment definitions combining different feature sets
+# The environment configurations for different development scenarios
 [environments]
-# Default development environment with code quality tools
-default = {features = ["pre-commit"]}
-# Onboarding environment with SSEC-specific tools and setup utilities
-onboarding = { features = ["pre-commit", "onboarding"] }
+default = { features = ["pre-commit", "gh-cli"], solve-group = "default" } # The default development environment with pre-commit and GitHub CLI
+onboard = { features = ["pre-commit", "gh-cli", "onboard"], solve-group = "default" } # The onboarding environment with additional setup tasks
 
-# Global tasks available across all environments
+# The main project tasks
 [tasks]
 
 # Core dependencies for radio astronomy data processing
@@ -43,23 +41,26 @@ image-plane-correction = { git = "https://github.com/ovro-lwa/image-plane-correc
 # Pre-compiled wheel for Apple Silicon to avoid compilation issues for MacOS 14+
 bdsf = {url = "https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl"}
 
-# Code quality and development tools feature
+# GitHub CLI feature for interacting with GitHub from the command line
+[feature.gh-cli.dependencies]
+gh = ">=2.0.0"
+
+# Pre-commit feature for code quality and consistency
 [feature.pre-commit.dependencies]
 pre-commit = ">=4.3.0"
 
-# SSEC-specific onboarding and project setup tools
-[feature.onboarding.tasks]
-# Pre-commit hook management tasks
-pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks for automatic code quality checks" }
-pre-commit-all = { cmd = "pre-commit run --all-files", description = "Run all pre-commit hooks on entire codebase" }
-pre-commit = { cmd = "pre-commit run", description = "Run pre-commit hooks on staged files" }
+[feature.pre-commit.tasks]
+pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks in the git repository" }
+pre-commit-all = { cmd = "pre-commit run --all-files", description = "Run pre-commit checks on all files" }
+pre-commit = { cmd = "pre-commit run", description = "Run pre-commit checks on staged files" }
 
-# Main onboarding task with dependencies
-onboard = { cmd = "ssec onboard", description = "Complete SSEC project onboarding setup including tools and compliance", depends-on = ["pre-commit-install", "ssec-setup"] }
+# Onboarding feature for setting up the development environment
+[feature.onboard.pypi-dependencies]
+ssec-cli = { git = "https://github.com/uw-ssec/ssec-cli.git" }
 
-# SSEC CLI setup tasks
-ssec-setup = { cmd = "ssec --install-completion", description = "Install SSEC CLI bash/zsh completion" }
-
-# SSEC-specific tools for project management and compliance
-[feature.onboarding.pypi-dependencies]
-ssec-cli = { git = "https://github.com/uw-ssec/ssec-cli.git" }  # SSEC project management and onboarding tools
+[feature.onboard.tasks]
+ssec-setup = { cmd = "ssec --install-completion", description = "Set up shell completion for ssec-cli" }
+onboard = { cmd = "ssec onboard", description = "Run the onboarding process for the SSEC project", depends-on = [
+    "pre-commit-install",
+    "ssec-setup",
+] }
