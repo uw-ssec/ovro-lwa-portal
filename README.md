@@ -13,12 +13,31 @@ execution. Install Pixi by following the
 
 ### Installation
 
-Install dependencies:
+#### For Users
+
+Install the package using pip:
+
+```bash
+pip install git+https://github.com/uw-ssec/ovro-lwa-portal.git
+```
+
+Or install from a local clone:
+
+```bash
+pip install .
+```
+
+#### For Developers
+
+Install dependencies using Pixi:
 
 ```bash
 # Install dependencies (Pixi will automatically create the environment)
 pixi install
 ```
+
+For detailed installation and development instructions, see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Onboarding
 

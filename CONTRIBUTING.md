@@ -35,15 +35,28 @@ Your contributions make this project better—thank you for your support! 🚀
 
 ## Development
 
-### Prerequisites
+### Installation
 
-#### Install Pixi
+#### For Users
 
-Pixi is used in this project to manage dependencies and environments and to set
-up some convenient ways to run code and tools within those environments.
+To install the package for use:
 
-To get started, install [Pixi](https://pixi.sh/latest/) using either the
-[instructions on their website](https://pixi.sh/latest/#installation), or the
+```bash
+# Install from GitHub
+pip install git+https://github.com/uw-ssec/ovro-lwa-portal.git
+
+# Or from a local clone
+cd ovro-lwa-portal
+pip install .
+```
+
+#### For Developers
+
+##### Prerequisites
+
+This project uses [Pixi](https://pixi.sh) for dependency management. Install
+Pixi by following the
+[installation instructions](https://pixi.sh/latest/#installation), or use the
 commands below:
 
 **macOS/Linux:**
@@ -56,6 +69,69 @@ curl -fsSL https://pixi.sh/install.sh | sh
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+```
+
+##### Setup Development Environment
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/uw-ssec/ovro-lwa-portal.git
+   cd ovro-lwa-portal
+   ```
+
+2. Install dependencies using Pixi:
+
+   ```bash
+   pixi install
+   ```
+
+3. Install pre-commit hooks:
+
+   ```bash
+   pixi run pre-commit-install
+   ```
+
+##### Development with pip
+
+You can also develop using standard Python tools:
+
+```bash
+# Install in editable mode
+pip install -e .
+
+# Install with development dependencies
+pip install -e ".[dev]"
+```
+
+### Running Tests
+
+Run tests using pytest:
+
+```bash
+# With Pixi
+pixi run pytest tests/
+
+# Or with Python directly
+pytest tests/
+```
+
+### Building the Package
+
+To build the package locally:
+
+```bash
+python -m build
+```
+
+This will create wheel and source distributions in the `dist/` directory.
+
+### Verifying Installation
+
+After installation, verify the package is installed correctly:
+
+```bash
+python -c "import ovro_lwa_portal; print(ovro_lwa_portal.__version__)"
 ```
 
 ### Configure pre-commit
