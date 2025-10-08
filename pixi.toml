@@ -7,7 +7,7 @@
 # Project metadata and basic configuration
 authors = ["University of Washington Scientific Software Engineering Center"] # Project authors
 channels = ["conda-forge"] # Conda channels for dependencies
-name = "ovro-lwa-portal"
+name = "ovro-lwa-portal" # Project name
 platforms = ["osx-arm64", "linux-64"] # Supported platforms for development and deployment
 version = "0.1.0" # Project version
 # The environment configurations for different development scenarios
