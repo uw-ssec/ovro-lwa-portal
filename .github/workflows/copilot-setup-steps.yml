@@ -32,7 +32,8 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.9.1
         with:
           pixi-version: v0.56.0
-          cache: true
+          cache: false # No caching
+          run-install: false # Install pixi only
 
       - name: Print pixi version
         run: pixi --version
