@@ -3,12 +3,13 @@
 # This pixi.toml file manages dependencies and environments for the OVRO-LWA Portal,
 # a Python library for radio astronomy data processing and visualization
 
-[project]
-# Use pyproject.toml as the source of truth for Python dependencies
-name = "ovro_lwa_portal"
+[workspace]
+# Project metadata and basic configuration
+authors = ["University of Washington Scientific Software Engineering Center"] # Project authors
 channels = ["conda-forge"] # Conda channels for dependencies
+name = "ovro-lwa-portal"
 platforms = ["osx-arm64", "linux-64"] # Supported platforms for development and deployment
-
+version = "0.1.0" # Project version
 # The environment configurations for different development scenarios
 [environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" } # The default development environment with pre-commit and GitHub CLI
@@ -21,8 +22,6 @@ onboard = { features = ["pre-commit", "gh-cli", "onboard"], solve-group = "defau
 [dependencies]
 python = "3.12.*"
 # Build system dependencies (conda packages)
-hatchling = ">=1.25.0"
-hatch-vcs = ">=0.4.0"
 pip = ">=24.0"
 
 # Python packages - install the package itself with all its dependencies from pyproject.toml
