@@ -131,6 +131,7 @@ file.
   [Projects/OVROXarrraySciPlt](https://uwnetid.sharepoint.com/:f:/r/sites/og_ssec_escience/Shared%20Documents/Projects/OVROXarrraySciPlt?csf=1&web=1&e=P5QKAc)
 - Shared Sharepoint Directory: 🔒
   [UW SSEC Caltech OVRO-LWA Portal Shared Folder](https://uwnetid.sharepoint.com/:f:/r/sites/og_ssec_escience/Shared%20Documents/Projects/OVROXarrraySciPlt/UW%20SSEC%20Caltech%20OVRO-LWA%20Portal%20Shared%20Folder?csf=1&web=1&e=siXUk2)
+- [User Stories Document 🔒](https://uwnetid.sharepoint.com/:w:/r/sites/og_ssec_escience/Shared%20Documents/Projects/OVROXarrraySciPlt/UW%20SSEC%20Caltech%20OVRO-LWA%20Portal%20Shared%20Folder/SSEC%20OVRO-LWA%20Portal%20User%20Stories.docx?d=w15624ab2d3c0475e95a2865a346e359b&csf=1&web=1&e=ImDH96)
 
 ## General Discussions
 
