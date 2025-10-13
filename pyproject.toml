@@ -21,8 +21,9 @@ dependencies = [
     "astropy>=7.1.0,<8",
     "xarray>=2025.9.1,<2026",
     "dask>=2025.9.1,<2026",
-    "zarr>=3.1.3,<4",
-    "numcodecs>=0.16.1,<0.17",
+    "zarr>=2.16,<3",
+    "numcodecs>=0.15,<0.16",
+    "xradio[all]>=0.0.59,<0.1"
 ]
 
 [project.optional-dependencies]
