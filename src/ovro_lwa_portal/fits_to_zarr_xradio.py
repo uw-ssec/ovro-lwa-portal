@@ -219,7 +219,7 @@ def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) 
         existing[v].encoding = {}
 
     # 2) Sort for determinism
-    if "time" in existing.coords:    existing = existing.sortby("time")
+    if "time" in existing.coords: existing = existing.sortby("time")
     if "frequency" in existing.coords: existing = existing.sortby("frequency")
     if "time" in xds_t.coords:       xds_t = xds_t.sortby("time")
     if "frequency" in xds_t.coords:  xds_t = xds_t.sortby("frequency")
