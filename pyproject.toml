@@ -21,6 +21,8 @@ dependencies = [
     "astropy>=7.1.0,<8",
     "xarray>=2025.9.1,<2026",
     "dask>=2025.9.1,<2026",
+    # Pinned to Zarr v2 for now.
+    # See https://github.com/casangi/xradio/issues/355
     "zarr>=2.16,<3",
     "numcodecs>=0.15,<0.16",
     "xradio[all]>=0.0.59,<0.1"

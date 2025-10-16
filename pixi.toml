@@ -2,8 +2,11 @@
 #
 # This pixi.toml file manages dependencies and environments for the OVRO-LWA Portal,
 # a Python library for radio astronomy data processing and visualization
+"$schema" = "https://pixi.sh/v0.55.0/schema/manifest/schema.json"
 
 [workspace]
+# Pinned due to https://github.com/prefix-dev/pixi/issues/4723
+requires-pixi = ">=0.55.0, <0.56.0"
 # Project metadata and basic configuration
 authors = ["University of Washington Scientific Software Engineering Center"] # Project authors
 channels = ["conda-forge"] # Conda channels for dependencies
