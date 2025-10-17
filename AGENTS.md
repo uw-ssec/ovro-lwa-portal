@@ -13,12 +13,13 @@ components for scientific analysis.
 **Repository Stats:**
 
 - **Type:** Python library / Scientific software
-- **Size:** Medium (~50+ files including notebooks and data)
+- **Size:** Medium (~50+ files including notebooks and test data)
 - **Languages:** Python (primary), Jupyter Notebooks, configuration files
-- **Build System:** Pixi (v0.49.0+)
+- **Build System:** Pixi (v0.55.0), Hatchling + hatch-vcs
 - **Platform:** macOS (osx-arm64), Linux (linux-64)
 - **License:** BSD 3-Clause
 - **Domain:** Radio astronomy, data processing, visualization
+- **Python Version:** 3.12+
 
 ## Build System & Environment Management
 
@@ -35,7 +36,7 @@ dependencies. See <https://pixi.sh/latest/llms-full.txt> for more details.
 Before any other operations, verify Pixi is installed:
 
 ```bash
-pixi --version  # Should show v0.49.0 or higher
+pixi --version  # Should show v0.55.0 or higher
 ```
 
 If not installed, direct users to: <https://pixi.sh/latest/#installation>
@@ -50,7 +51,7 @@ pixi install
 # - Python 3.12 with radio astronomy packages (astropy, xarray, dask, zarr)
 # - pre-commit (>=4.3.0)
 # - gh (GitHub CLI, >=2.0.0)
-# - OVRO-LWA specific packages (image-plane-correction, bdsf)
+# - OVRO-LWA specific packages (xradio, python-casacore)
 # - Creates .pixi/envs/default directory
 ```
 
@@ -63,7 +64,7 @@ command is idempotent and safe to run multiple times.
 
    - Standard development environment
    - Radio astronomy packages: astropy, xarray, dask, zarr, netcdf4, numcodecs
-   - OVRO-LWA specific: image-plane-correction, bdsf (macOS ARM64)
+   - OVRO-LWA specific: xradio, python-casacore
    - Use for: general development, running pre-commit checks, data processing
 
 2. **`onboard`** (features: `pre-commit`, `gh-cli`, `onboard`)
@@ -156,28 +157,109 @@ pixi add --feature <feature-name> <package-name>
 pixi install
 ```
 
+## Package Build System
+
+This project uses **Hatchling** with **hatch-vcs** for building Python packages:
+
+- **Version Management:** Automatic versioning from git tags via hatch-vcs
+- **Version File:** Auto-generated at `src/ovro_lwa_portal/version.py`
+- **Build Command:** `python -m build` (handled by hatchling)
+- **Development Install:** Handled automatically by Pixi in editable mode
+
+### Core Dependencies (from pyproject.toml)
+
+**Main dependencies:**
+
+- `astropy>=7.1.0,<8` - Astronomy core library
+- `xarray>=2025.9.1,<2026` - N-dimensional labeled arrays
+- `dask>=2025.9.1,<2026` - Parallel computing
+- `zarr>=2.16,<3` - Chunked, compressed arrays (v2 pinned)
+- `numcodecs>=0.15,<0.16` - Compression codecs
+- `xradio[all]>=0.0.59,<0.1` - Radio astronomy data processing
+
+**Development dependencies (`dev` extra):**
+
+- `pre-commit` - Git hooks for code quality
+- `pytest>=6` - Testing framework
+- `pytest-cov` - Coverage reporting
+- `pytest-xdist` - Parallel test execution
+- `pytest-mock` - Mocking support
+
+**CI dependencies (`ci` extra):**
+
+- `s3fs>=2024.6.0` - S3 filesystem interface
+
+### Code Quality Tools
+
+**Pre-commit hooks configured:**
+
+- File checks: large files, case conflicts, merge conflicts, broken symlinks
+- YAML validation
+- Python debug statement detection
+- File formatting: end-of-files, line endings, trailing whitespace
+- Prettier: Markdown, YAML, JSON formatting
+- Codespell: Spell checking
+- Capitalization validation
+
+**Ruff configuration:**
+
+- Line length: 100
+- Enabled rule sets: flake8-bugbear, isort, flake8-unused-arguments,
+  flake8-comprehensions, flake8-errmsg, and many more
+- Special rules for NumPy and pandas
+- Tests excluded from print statement checks
+
+**Mypy configuration:**
+
+- Python 3.12 target
+- Strict mode enabled for `ovro_lwa_portal.*` modules
+- Relaxed for tests
+
 ## Project Structure & Key Files
 
 ```text
 .
 ├── .github/
-│   ├── dependabot.yml           # Dependabot config for GitHub Actions
-│   ├── pull_request_template.md # PR template (requires pre-commit checks)
-│   ├── release.yml              # Release notes configuration
-│   └── ISSUE_TEMPLATE/          # Issue templates (bug, feature, docs, onboard, etc.)
-├── .pre-commit-config.yaml      # Pre-commit hook configuration
-├── pyproject.toml               # **PRIMARY CONFIG**: Dependencies, tasks, features (includes [tool.pixi] section)
-├── pixi.lock                    # Lock file (auto-generated, don't manually edit)
-├── .gitignore                   # Ignores .pixi/ and .DS_Store
-├── .gitattributes               # Git attributes for file handling
-├── CODE_OF_CONDUCT.md           # Contributor Covenant v2.0
-├── CONTRIBUTING.md              # Contribution guidelines (references Conventional Commits)
-├── LICENSE                      # BSD 3-Clause License
-├── README.md                    # Project documentation
-├── onboarded.md                 # Empty file (excluded from pre-commit)
-├── notebooks/                   # Jupyter notebooks for data analysis
-│   ├── fits2zarr.ipynb         # Main FITS to Zarr conversion notebook
-└── └── test_fits_files/        # Sample FITS files for testing
+│   └── workflows/               # GitHub Actions workflows
+│       ├── ci.yml              # Continuous Integration: pre-commit + tests
+│       ├── cd.yml              # Continuous Deployment: build and publish to PyPI
+│       └── copilot-setup-steps.yml  # Copilot setup workflow
+├── .devcontainer/              # VS Code Dev Container configuration
+│   ├── devcontainer.json      # Dev container settings (4 CPUs, 16GB RAM required)
+│   ├── Dockerfile             # Container image definition
+│   └── onCreate.sh            # Setup script run on container creation
+├── .ci-helpers/                # CI/CD helper scripts
+│   ├── README.md              # Documentation for CI helper scripts
+│   └── download_test_fits.py  # Script to download test FITS files from Caltech S3
+├── .pre-commit-config.yaml     # Pre-commit hook configuration
+├── pyproject.toml              # **PRIMARY CONFIG**: Build system, dependencies, Pixi tasks
+├── pixi.lock                   # Lock file (auto-generated, don't manually edit)
+├── .gitignore                  # Ignores .pixi/, .DS_Store, and other generated files
+├── .gitattributes              # Git attributes for file handling
+├── CODE_OF_CONDUCT.md          # Contributor Covenant v2.0
+├── CONTRIBUTING.md             # Contribution guidelines (references Conventional Commits)
+├── LICENSE                     # BSD 3-Clause License
+├── README.md                   # Project documentation with getting started guide
+├── AGENTS.md                   # This file - AI assistant guidance
+├── onboarded.md                # Onboarding marker file (excluded from pre-commit)
+├── fixed_fits/                 # Directory for corrected FITS files (empty)
+├── notebooks/                  # Jupyter notebooks for data analysis
+│   ├── README.md              # Documentation for notebooks directory
+│   ├── fits2zarr.ipynb        # Main FITS to Zarr conversion notebook
+│   ├── fits2zarr_and_viz_user_cases.ipynb  # User case examples with visualization
+│   └── test_fits_files/       # Sample FITS files for testing
+│       ├── README.md          # Documentation for test FITS files
+│       └── .gitignore         # Ignores FITS files (downloaded separately)
+├── src/
+│   └── ovro_lwa_portal/       # Main package source code
+│       ├── __init__.py        # Package initialization
+│       ├── version.py         # Auto-generated version from VCS
+│       └── fits_to_zarr_xradio.py  # FITS to Zarr conversion using xradio
+└── tests/                      # Test suite
+    ├── __init__.py            # Test package initialization
+    ├── test_import.py         # Basic import tests
+    ├── test_fits_to_zarr.py   # FITS to Zarr conversion tests
+    └── test_ci_helpers.py     # Tests for CI helper scripts
 ```
 
 ## Radio Astronomy Context
@@ -186,18 +268,72 @@ This project works specifically with:
 
 - **FITS files**: Standard astronomical image format from OVRO-LWA observations
 - **Zarr format**: Cloud-optimized array storage for large datasets
+- **xradio**: Radio astronomy data processing library
+- **python-casacore**: Python bindings for CASA (Common Astronomy Software
+  Applications) core library
+
+### Test Data Management
+
+Test FITS files are managed separately from the repository:
+
+- Test files are stored in the Caltech S3 bucket
+- Download script: `.ci-helpers/download_test_fits.py`
+- Requires S3 credentials via environment variables:
+  - `CALTECH_KEY`, `CALTECH_SECRET`, `CALTECH_ENDPOINT_URL`,
+    `CALTECH_DEV_S3_BUCKET`
+- For local development, manually place test FITS in
+  `notebooks/test_fits_files/`
+
+## Development Container Support
+
+The repository includes VS Code Dev Container configuration:
+
+- **Location:** `.devcontainer/`
+- **Requirements:** 4 CPUs, 16GB RAM, 32GB storage
+- **Setup:** Automatic via `onCreate.sh` script
+- **Extensions:** Jupyter, Python, Ruff, Even Better TOML, Pixi for VS Code
+- **Volume mount:** `.pixi` directory persisted across container rebuilds
 
 ## Continuous Integration & Validation
 
-**Current State:** This repository has **no GitHub Actions workflows** or CI
-pipelines defined. Pre-commit checks run locally only.
+### GitHub Actions Workflows
+
+This repository has **active CI/CD pipelines** using GitHub Actions:
+
+**CI Workflow (`.github/workflows/ci.yml`):**
+
+- **Triggers:** Pull requests, pushes to main, manual dispatch
+- **Jobs:**
+  1. **Format Check** (pre-commit job):
+     - Runs on ubuntu-latest
+     - Uses Pixi v0.55.0 via `prefix-dev/setup-pixi@v0.9.1`
+     - Executes `pixi run pre-commit-all`
+  2. **Tests** (tests job):
+     - Depends on pre-commit job passing
+     - **Matrix strategy:** Python 3.12 on [ubuntu-latest, macos-14]
+     - Runs pytest with coverage reporting
+     - Uploads coverage to Codecov using token
+- **Concurrency:** Cancels in-progress runs for same ref
+
+**CD Workflow (`.github/workflows/cd.yml`):**
+
+- **Triggers:** Releases (published), pull requests, pushes to main, manual
+  dispatch
+- **Jobs:**
+  1. **Distribution Build:**
+     - Builds Python package using `hynek/build-and-inspect-python-package@v2`
+  2. **Publish to PyPI:**
+     - Only runs on release publication
+     - Requires `pypi` environment with `id-token: write` permission
+     - **Currently publishes to TestPyPI** (remove `repository-url` line for
+       production PyPI)
 
 **Pre-commit.ci Integration:** The `.pre-commit-config.yaml` includes a `ci:`
-section, suggesting integration with <https://pre-commit.ci> for automated PR
-checks. Verify if enabled on the repository.
+section for <https://pre-commit.ci> integration (verify if enabled on the
+repository).
 
-**Dependabot:** Configured to update GitHub Actions weekly (groups all action
-updates together).
+**Dependabot:** Configuration may exist in repository settings (no
+`.github/dependabot.yml` file present).
 
 ## Making Changes: Validated Workflow
 
@@ -254,20 +390,9 @@ this happens:
 
 **This is expected behavior, not an error.**
 
-### Issue: BDSF installation fails on macOS
+### Issue: Platform-specific package installation fails
 
-**Solution:** The project includes a pre-compiled wheel for macOS ARM64. If you
-encounter issues:
-
-```bash
-# Force reinstall
-rm -rf .pixi
-pixi install
-```
-
-### Issue: Modifying pyproject.toml breaks the environment
-
-**Solution:**
+**Solution:** If you encounter issues with packages:
 
 ```bash
 # Validate syntax, reinstall environment
@@ -300,14 +425,12 @@ Pixi configuration is now embedded in `pyproject.toml` under the `[tool.pixi]`
 section:
 
 - **`[tool.pixi.workspace]`**: Project metadata (name, version, authors,
-  platforms)
+  platforms, requires-pixi)
 - **`[tool.pixi.environments]`**: Named environments with feature sets
 - **`[tool.pixi.dependencies]`**: Conda dependencies for all environments
-  (Python, astropy, xarray, etc.)
-- **`[tool.pixi.pypi-dependencies]`**: PyPI dependencies
-  (image-plane-correction)
-- **`[tool.pixi.target.osx-arm64.pypi-dependencies]`**: Platform-specific
-  packages (bdsf)
+  (python-casacore)
+- **`[tool.pixi.pypi-dependencies]`**: PyPI dependencies (ovro_lwa_portal in
+  editable mode)
 - **`[tool.pixi.feature.<name>.dependencies]`**: Feature-specific conda packages
 - **`[tool.pixi.feature.<name>.pypi-dependencies]`**: Feature-specific PyPI
   packages
