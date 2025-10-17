@@ -139,7 +139,7 @@ def download_fits_files(
             raise FileNotFoundError(msg)
 
         logger.info(f"Downloading ZIP file from: {remote_zip_path}")
-        
+
         # Download the ZIP file
         fs.get(remote_zip_path, str(local_zip_path))
         logger.info(f"Downloaded ZIP file to: {local_zip_path}")

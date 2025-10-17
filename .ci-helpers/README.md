@@ -7,8 +7,8 @@ development workflows.
 
 ### download_test_fits.py
 
-Downloads and extracts a ZIP file containing test FITS files from the Caltech
-S3 bucket for development and testing purposes.
+Downloads and extracts a ZIP file containing test FITS files from the Caltech S3
+bucket for development and testing purposes.
 
 #### Requirements
 
