@@ -69,16 +69,29 @@ def test_download_fits_files_missing_s3fs(tmp_path):
 
 
 def test_download_fits_files_success(tmp_path):
-    """Test successful download of FITS files."""
+    """Test successful download and extraction of ZIP file."""
+    import io
+    import zipfile as zf
+
     # Setup mock S3 filesystem
     mock_fs = MagicMock()
     mock_s3fs_class = MagicMock(return_value=mock_fs)
 
-    # Mock glob to return some test files
-    mock_fs.glob.return_value = [
-        "test-bucket/ovro-temp/fits/file1.fits",
-        "test-bucket/ovro-temp/fits/file2.fits",
-    ]
+    # Mock exists to return True
+    mock_fs.exists.return_value = True
+
+    # Create a mock ZIP file in memory
+    zip_buffer = io.BytesIO()
+    with zf.ZipFile(zip_buffer, "w") as zip_file:
+        zip_file.writestr("file1.fits", "mock fits data 1")
+        zip_file.writestr("file2.fits", "mock fits data 2")
+    zip_buffer.seek(0)
+
+    # Mock get to write the ZIP file to disk
+    def mock_get(remote, local):
+        Path(local).write_bytes(zip_buffer.read())
+
+    mock_fs.get.side_effect = mock_get
 
     # Setup environment variables
     env_vars = {
@@ -99,21 +112,28 @@ def test_download_fits_files_success(tmp_path):
                 endpoint_url="https://test.endpoint.com",
             )
 
-            # Verify glob was called
-            mock_fs.glob.assert_called_once()
+            # Verify exists was called
+            mock_fs.exists.assert_called_once()
 
-            # Verify get was called once with glob pattern (not once per file)
+            # Verify get was called once to download ZIP
             mock_fs.get.assert_called_once()
 
+            # Verify files were extracted
+            assert (tmp_path / "file1.fits").exists()
+            assert (tmp_path / "file2.fits").exists()
 
-def test_download_fits_files_no_files_found(tmp_path):
-    """Test behavior when no files match the pattern."""
+            # Verify ZIP file was removed after extraction
+            assert not (tmp_path / "fits_files.zip").exists()
+
+
+def test_download_fits_files_not_found(tmp_path):
+    """Test behavior when ZIP file doesn't exist."""
     # Setup mock S3 filesystem
     mock_fs = MagicMock()
     mock_s3fs_class = MagicMock(return_value=mock_fs)
 
-    # Mock glob to return empty list
-    mock_fs.glob.return_value = []
+    # Mock exists to return False
+    mock_fs.exists.return_value = False
 
     # Setup environment variables
     env_vars = {
@@ -125,21 +145,40 @@ def test_download_fits_files_no_files_found(tmp_path):
 
     with patch.dict(os.environ, env_vars, clear=True):
         with patch("s3fs.S3FileSystem", mock_s3fs_class):
-            # Should not raise error, just log warning
-            download_test_fits.download_fits_files(tmp_path)
+            # Should raise FileNotFoundError
+            with pytest.raises(FileNotFoundError) as exc_info:
+                download_test_fits.download_fits_files(tmp_path)
+
+            error_msg = str(exc_info.value)
+            assert "ZIP file not found" in error_msg
 
             # Verify get was not called
             mock_fs.get.assert_not_called()
 
 
-def test_download_fits_files_with_subdir(tmp_path):
-    """Test download with subdirectory specified."""
+def test_download_fits_files_custom_zip(tmp_path):
+    """Test download with custom ZIP filename."""
+    import io
+    import zipfile as zf
+
     # Setup mock S3 filesystem
     mock_fs = MagicMock()
     mock_s3fs_class = MagicMock(return_value=mock_fs)
 
-    # Mock glob to return test files
-    mock_fs.glob.return_value = ["test-bucket/ovro-temp/fits/subdir/file1.fits"]
+    # Mock exists to return True
+    mock_fs.exists.return_value = True
+
+    # Create a mock ZIP file in memory
+    zip_buffer = io.BytesIO()
+    with zf.ZipFile(zip_buffer, "w") as zip_file:
+        zip_file.writestr("custom.fits", "custom fits data")
+    zip_buffer.seek(0)
+
+    # Mock get to write the ZIP file to disk
+    def mock_get(remote, local):
+        Path(local).write_bytes(zip_buffer.read())
+
+    mock_fs.get.side_effect = mock_get
 
     # Setup environment variables
     env_vars = {
@@ -151,11 +190,11 @@ def test_download_fits_files_with_subdir(tmp_path):
 
     with patch.dict(os.environ, env_vars, clear=True):
         with patch("s3fs.S3FileSystem", mock_s3fs_class):
-            download_test_fits.download_fits_files(tmp_path, remote_subdir="subdir")
+            download_test_fits.download_fits_files(tmp_path, zip_filename="custom.zip")
 
-            # Verify glob was called with subdirectory in path
-            call_args = mock_fs.glob.call_args[0][0]
-            assert "subdir" in call_args
+            # Verify exists was called with custom filename
+            call_args = mock_fs.exists.call_args[0][0]
+            assert "custom.zip" in call_args
 
 
 def test_setup_logging():

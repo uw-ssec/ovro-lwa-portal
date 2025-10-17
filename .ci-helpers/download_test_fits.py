@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Download test FITS files from Caltech S3 bucket.
 
-This script downloads test FITS files from the Caltech S3 bucket for
-development and testing purposes. It can be used in codespaces,
-GitHub Actions, or local development environments.
+This script downloads a ZIP file containing test FITS files from the
+Caltech S3 bucket and extracts them for development and testing purposes.
+It can be used in codespaces, GitHub Actions, or local development environments.
 
 Environment Variables
 --------------------
@@ -23,6 +23,7 @@ import argparse
 import logging
 import os
 import sys
+import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
@@ -85,19 +86,16 @@ def validate_environment() -> dict[str, str]:
 
 def download_fits_files(
     output_dir: Path,
-    pattern: str = "*.fits",
-    remote_subdir: Optional[str] = None,
+    zip_filename: str = "fits_files.zip",
 ) -> None:
-    """Download FITS files from S3 bucket to local directory.
+    """Download and extract FITS files ZIP from S3 bucket to local directory.
 
     Parameters
     ----------
     output_dir : Path
-        Local directory where FITS files will be downloaded
-    pattern : str, optional
-        Glob pattern for files to download, by default "*.fits"
-    remote_subdir : str, optional
-        Subdirectory within the remote test fits directory, by default None
+        Local directory where FITS files will be extracted
+    zip_filename : str, optional
+        Name of the ZIP file to download, by default "fits_files.zip"
 
     Raises
     ------
@@ -123,41 +121,49 @@ def download_fits_files(
         endpoint_url=env_vars["CALTECH_ENDPOINT_URL"],
     )
 
-    # Setup path to the S3 remote directory to the test fits data
+    # Setup path to the S3 ZIP file
     s3_bucket = env_vars["CALTECH_DEV_S3_BUCKET"]
-    remote_test_fits_dir = PurePosixPath(s3_bucket) / "ovro-temp" / "fits"
-
-    # Add subdirectory if specified
-    if remote_subdir:
-        remote_test_fits_dir = remote_test_fits_dir / remote_subdir
+    remote_zip_path = str(PurePosixPath(s3_bucket) / "ovro-temp" / zip_filename)
 
     # Create output directory if it doesn't exist
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output directory: {output_dir}")
 
-    # Construct the full remote path with pattern
-    remote_path = str(remote_test_fits_dir / pattern)
-    logger.info(f"Searching for files matching: {remote_path}")
+    # Local path for the downloaded ZIP file
+    local_zip_path = output_dir / zip_filename
 
     try:
-        # List files matching the pattern to check if any exist
-        files = fs.glob(remote_path)
-        if not files:
-            logger.warning(f"No files found matching pattern: {remote_path}")
-            return
+        # Check if ZIP file exists on S3
+        if not fs.exists(remote_zip_path):
+            msg = f"ZIP file not found: {remote_zip_path}"
+            raise FileNotFoundError(msg)
 
-        logger.info(f"Found {len(files)} file(s) to download")
+        logger.info(f"Downloading ZIP file from: {remote_zip_path}")
+        
+        # Download the ZIP file
+        fs.get(remote_zip_path, str(local_zip_path))
+        logger.info(f"Downloaded ZIP file to: {local_zip_path}")
 
-        # Download all files concurrently using glob pattern
-        # fs.get supports glob patterns and downloads files in parallel
-        logger.info(f"Downloading files to: {output_dir}")
-        fs.get(remote_path, str(output_dir) + "/")
+        # Extract the ZIP file
+        logger.info(f"Extracting ZIP file to: {output_dir}")
+        with zipfile.ZipFile(local_zip_path, "r") as zip_ref:
+            zip_ref.extractall(output_dir)
+            extracted_files = zip_ref.namelist()
+            logger.info(f"Extracted {len(extracted_files)} file(s)")
 
-        logger.info(f"Successfully downloaded {len(files)} file(s) to {output_dir}")
+        # Remove the ZIP file after extraction
+        local_zip_path.unlink()
+        logger.debug(f"Removed ZIP file: {local_zip_path}")
+
+        logger.info(f"Successfully extracted FITS files to {output_dir}")
 
     except Exception as e:
-        msg = f"Error downloading files: {e}"
+        msg = f"Error downloading or extracting files: {e}"
         logger.error(msg)
+        # Clean up ZIP file if it exists
+        if local_zip_path.exists():
+            local_zip_path.unlink()
+            logger.debug(f"Cleaned up ZIP file: {local_zip_path}")
         raise
 
 
@@ -170,7 +176,7 @@ def main() -> int:
         Exit code (0 for success, 1 for failure)
     """
     parser = argparse.ArgumentParser(
-        description="Download test FITS files from Caltech S3 bucket",
+        description="Download and extract test FITS files ZIP from Caltech S3 bucket",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Environment Variables:
@@ -180,14 +186,14 @@ Environment Variables:
   CALTECH_DEV_S3_BUCKET    S3 bucket name containing test data
 
 Examples:
-  # Download all FITS files to default directory
+  # Download and extract FITS files to default directory
   python download_test_fits.py
 
-  # Download to specific directory with pattern
-  python download_test_fits.py -o /path/to/output -p "20240101_*.fits"
+  # Download to specific directory with verbose logging
+  python download_test_fits.py -o ./data -v
 
-  # Download from subdirectory with verbose logging
-  python download_test_fits.py -o ./data -s subdir -v
+  # Download a different ZIP file
+  python download_test_fits.py -z custom_fits.zip
         """,
     )
 
@@ -196,23 +202,15 @@ Examples:
         "--output-dir",
         type=Path,
         default=Path("test_fits_files"),
-        help="Output directory for downloaded FITS files (default: test_fits_files)",
+        help="Output directory for extracted FITS files (default: test_fits_files)",
     )
 
     parser.add_argument(
-        "-p",
-        "--pattern",
+        "-z",
+        "--zip-filename",
         type=str,
-        default="*.fits",
-        help="Glob pattern for files to download (default: *.fits)",
-    )
-
-    parser.add_argument(
-        "-s",
-        "--subdir",
-        type=str,
-        default=None,
-        help="Subdirectory within the remote test fits directory",
+        default="fits_files.zip",
+        help="Name of the ZIP file to download (default: fits_files.zip)",
     )
 
     parser.add_argument(
@@ -230,12 +228,11 @@ Examples:
     try:
         download_fits_files(
             output_dir=args.output_dir,
-            pattern=args.pattern,
-            remote_subdir=args.subdir,
+            zip_filename=args.zip_filename,
         )
         return 0
     except Exception as e:
-        logger.error(f"Failed to download files: {e}")
+        logger.error(f"Failed to download and extract files: {e}")
         return 1
 
 
