@@ -36,6 +36,9 @@ dev = [
     "pytest-xdist",
     "pytest-mock",
 ]
+ci = [
+    "s3fs>=2024.6.0",
+]
 all = ["ovro_lwa_portal[dev]"]
 
 [project.license]
