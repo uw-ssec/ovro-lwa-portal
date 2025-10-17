@@ -84,7 +84,8 @@ pixi shell -e onboard
 
 ### Adding Dependencies
 
-Edit `pyproject.toml` to add new dependencies in the `[tool.pixi.dependencies]` section:
+Edit `pyproject.toml` to add new dependencies in the `[tool.pixi.dependencies]`
+section:
 
 ```toml
 [tool.pixi.dependencies]

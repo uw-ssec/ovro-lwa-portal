@@ -230,7 +230,8 @@ When working with the `image-plane-correction` package:
 For macOS ARM64 users:
 
 - A pre-compiled wheel is provided to avoid compilation issues
-- If you encounter problems, check the `pyproject.toml` configuration in the `[tool.pixi]` section
+- If you encounter problems, check the `pyproject.toml` configuration in the
+  `[tool.pixi]` section
 - Linux users should use the standard PyPI package
 
 ### Documentation

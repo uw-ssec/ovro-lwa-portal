@@ -282,7 +282,8 @@ pixi install
 
 **Current platforms:** `osx-arm64`, `linux-64`
 
-**Solution:** Edit `pyproject.toml` in the `[tool.pixi.workspace]` section and add platforms:
+**Solution:** Edit `pyproject.toml` in the `[tool.pixi.workspace]` section and
+add platforms:
 
 ```toml
 [tool.pixi.workspace]
@@ -295,16 +296,21 @@ Then run `pixi install`.
 
 ### Pixi Configuration in pyproject.toml
 
-Pixi configuration is now embedded in `pyproject.toml` under the `[tool.pixi]` section:
+Pixi configuration is now embedded in `pyproject.toml` under the `[tool.pixi]`
+section:
 
-- **`[tool.pixi.workspace]`**: Project metadata (name, version, authors, platforms)
+- **`[tool.pixi.workspace]`**: Project metadata (name, version, authors,
+  platforms)
 - **`[tool.pixi.environments]`**: Named environments with feature sets
-- **`[tool.pixi.dependencies]`**: Conda dependencies for all environments (Python,
-  astropy, xarray, etc.)
-- **`[tool.pixi.pypi-dependencies]`**: PyPI dependencies (image-plane-correction)
-- **`[tool.pixi.target.osx-arm64.pypi-dependencies]`**: Platform-specific packages (bdsf)
+- **`[tool.pixi.dependencies]`**: Conda dependencies for all environments
+  (Python, astropy, xarray, etc.)
+- **`[tool.pixi.pypi-dependencies]`**: PyPI dependencies
+  (image-plane-correction)
+- **`[tool.pixi.target.osx-arm64.pypi-dependencies]`**: Platform-specific
+  packages (bdsf)
 - **`[tool.pixi.feature.<name>.dependencies]`**: Feature-specific conda packages
-- **`[tool.pixi.feature.<name>.pypi-dependencies]`**: Feature-specific PyPI packages
+- **`[tool.pixi.feature.<name>.pypi-dependencies]`**: Feature-specific PyPI
+  packages
 - **`[tool.pixi.feature.<name>.tasks]`**: Feature-specific Pixi tasks
 
 ### Available Pixi Tasks
