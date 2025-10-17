@@ -143,7 +143,7 @@ pixi run gh <command>
 ### Adding Dependencies
 
 ```bash
-# Add a conda package and update pixi.toml
+# Add a conda package and update pyproject.toml
 pixi add <package-name>
 
 # Add a PyPI package
@@ -152,7 +152,7 @@ pixi add --pypi <package-name>
 # Add to a specific feature
 pixi add --feature <feature-name> <package-name>
 
-# Always run after manual pixi.toml edits
+# Always run after manual pyproject.toml edits
 pixi install
 ```
 
@@ -166,7 +166,7 @@ pixi install
 │   ├── release.yml              # Release notes configuration
 │   └── ISSUE_TEMPLATE/          # Issue templates (bug, feature, docs, onboard, etc.)
 ├── .pre-commit-config.yaml      # Pre-commit hook configuration
-├── pixi.toml                    # **PRIMARY CONFIG**: Dependencies, tasks, features
+├── pyproject.toml               # **PRIMARY CONFIG**: Dependencies, tasks, features (includes [tool.pixi] section)
 ├── pixi.lock                    # Lock file (auto-generated, don't manually edit)
 ├── .gitignore                   # Ignores .pixi/ and .DS_Store
 ├── .gitattributes               # Git attributes for file handling
@@ -265,7 +265,7 @@ rm -rf .pixi
 pixi install
 ```
 
-### Issue: Modifying pixi.toml breaks the environment
+### Issue: Modifying pyproject.toml breaks the environment
 
 **Solution:**
 
@@ -282,9 +282,10 @@ pixi install
 
 **Current platforms:** `osx-arm64`, `linux-64`
 
-**Solution:** Edit `pixi.toml` and add platforms:
+**Solution:** Edit `pyproject.toml` in the `[tool.pixi.workspace]` section and add platforms:
 
 ```toml
+[tool.pixi.workspace]
 platforms = ["osx-arm64", "linux-64", "win-64"]
 ```
 
@@ -292,17 +293,19 @@ Then run `pixi install`.
 
 ## Key Configuration Details
 
-### pixi.toml Structure
+### Pixi Configuration in pyproject.toml
 
-- **`[workspace]`**: Project metadata (name, version, authors, platforms)
-- **`[environments]`**: Named environments with feature sets
-- **`[dependencies]`**: Conda dependencies for all environments (Python,
+Pixi configuration is now embedded in `pyproject.toml` under the `[tool.pixi]` section:
+
+- **`[tool.pixi.workspace]`**: Project metadata (name, version, authors, platforms)
+- **`[tool.pixi.environments]`**: Named environments with feature sets
+- **`[tool.pixi.dependencies]`**: Conda dependencies for all environments (Python,
   astropy, xarray, etc.)
-- **`[pypi-dependencies]`**: PyPI dependencies (image-plane-correction)
-- **`[target.osx-arm64.pypi-dependencies]`**: Platform-specific packages (bdsf)
-- **`[feature.<name>.dependencies]`**: Feature-specific conda packages
-- **`[feature.<name>.pypi-dependencies]`**: Feature-specific PyPI packages
-- **`[feature.<name>.tasks]`**: Feature-specific Pixi tasks
+- **`[tool.pixi.pypi-dependencies]`**: PyPI dependencies (image-plane-correction)
+- **`[tool.pixi.target.osx-arm64.pypi-dependencies]`**: Platform-specific packages (bdsf)
+- **`[tool.pixi.feature.<name>.dependencies]`**: Feature-specific conda packages
+- **`[tool.pixi.feature.<name>.pypi-dependencies]`**: Feature-specific PyPI packages
+- **`[tool.pixi.feature.<name>.tasks]`**: Feature-specific Pixi tasks
 
 ### Available Pixi Tasks
 
