@@ -130,6 +130,9 @@ requires-pixi = ">=0.55.0, <0.56.0"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
+[tool.pixi.dependencies]
+python-casacore = ">=3.7.1,<4"
+
 [tool.pixi.pypi-dependencies]
 # Dependency to the local package in editable mode
 ovro_lwa_portal = { path = ".", editable = true }
