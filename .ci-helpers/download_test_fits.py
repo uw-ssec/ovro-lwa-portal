@@ -140,7 +140,7 @@ def download_fits_files(
     logger.info(f"Searching for files matching: {remote_path}")
 
     try:
-        # List files matching the pattern
+        # List files matching the pattern to check if any exist
         files = fs.glob(remote_path)
         if not files:
             logger.warning(f"No files found matching pattern: {remote_path}")
@@ -148,13 +148,10 @@ def download_fits_files(
 
         logger.info(f"Found {len(files)} file(s) to download")
 
-        # Download each file
-        for file_path in files:
-            file_name = PurePosixPath(file_path).name
-            local_path = output_dir / file_name
-            logger.info(f"Downloading: {file_name}")
-            fs.get(file_path, str(local_path))
-            logger.debug(f"Downloaded to: {local_path}")
+        # Download all files concurrently using glob pattern
+        # fs.get supports glob patterns and downloads files in parallel
+        logger.info(f"Downloading files to: {output_dir}")
+        fs.get(remote_path, str(output_dir) + "/")
 
         logger.info(f"Successfully downloaded {len(files)} file(s) to {output_dir}")
 

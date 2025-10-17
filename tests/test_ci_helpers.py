@@ -102,8 +102,8 @@ def test_download_fits_files_success(tmp_path):
             # Verify glob was called
             mock_fs.glob.assert_called_once()
 
-            # Verify get was called for each file
-            assert mock_fs.get.call_count == 2
+            # Verify get was called once with glob pattern (not once per file)
+            mock_fs.get.assert_called_once()
 
 
 def test_download_fits_files_no_files_found(tmp_path):
