@@ -130,20 +130,9 @@ requires-pixi = ">=0.55.0, <0.56.0"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
-[tool.pixi.dependencies]
-python = "3.12.*"
-pip = ">=24.0"
-
 [tool.pixi.pypi-dependencies]
+# Dependency to the local package in editable mode
 ovro_lwa_portal = { path = ".", editable = true }
-# OVRO-LWA specific image plane correction algorithms
-# Repository: https://github.com/ovro-lwa/image-plane-correction/tree/nikita/dev
-image-plane-correction = { git = "https://github.com/ovro-lwa/image-plane-correction.git", branch = "nikita/dev"}
-
-[tool.pixi.target.osx-arm64.pypi-dependencies]
-# BDSF (Blob Detection and Source Finder) - radio astronomy source finding
-# Pre-compiled wheel for Apple Silicon to avoid compilation issues for MacOS 14+
-bdsf = {url = "https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl"}
 
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }
