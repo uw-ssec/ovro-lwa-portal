@@ -118,3 +118,67 @@ isort.required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
+
+# OVRO-LWA Portal Pixi Configuration
+#
+# This section manages dependencies and environments for the OVRO-LWA Portal,
+# a Python library for radio astronomy data processing and visualization
+
+[tool.pixi.project]
+name = "ovro-lwa-portal"
+version = "0.1.0"
+authors = ["University of Washington Scientific Software Engineering Center"]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+# Core dependencies - only conda packages that are needed for the environment
+[tool.pixi.dependencies]
+python = "3.12.*"
+# Build system dependencies (conda packages)
+pip = ">=24.0"
+
+# Python packages - install the package itself with all its dependencies from pyproject.toml
+[tool.pixi.pypi-dependencies]
+# Install this package in editable mode with all dependencies from pyproject.toml
+ovro_lwa_portal = { path = ".", editable = true }
+# OVRO-LWA specific image plane correction algorithms
+# Repository: https://github.com/ovro-lwa/image-plane-correction/tree/nikita/dev
+image-plane-correction = { git = "https://github.com/ovro-lwa/image-plane-correction.git", branch = "nikita/dev"}
+
+# Platform-specific dependencies for macOS ARM64
+[tool.pixi.target.osx-arm64.pypi-dependencies]
+# BDSF (Blob Detection and Source Finder) - radio astronomy source finding
+# Pre-compiled wheel for Apple Silicon to avoid compilation issues for MacOS 14+
+bdsf = {url = "https://files.pythonhosted.org/packages/20/7f/bfd3a4788dd5400cec20d09f83c4d10e7ac486af807c90471917a28afa12/bdsf-1.13.0.post2-cp312-cp312-macosx_14_0_arm64.whl"}
+
+# GitHub CLI feature for interacting with GitHub from the command line
+[tool.pixi.feature.gh-cli.dependencies]
+gh = ">=2.0.0"
+
+# Pre-commit feature for code quality and consistency
+[tool.pixi.feature.pre-commit.dependencies]
+pre-commit = ">=4.3.0"
+# Testing dependencies (conda packages for better compatibility)
+pytest = ">=6"
+pytest-cov = ">=3.0.0"
+
+[tool.pixi.feature.pre-commit.tasks]
+pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks in the git repository" }
+pre-commit-all = { cmd = "pre-commit run --all-files", description = "Run pre-commit checks on all files" }
+pre-commit = { cmd = "pre-commit run", description = "Run pre-commit checks on staged files" }
+
+# Onboarding feature for setting up the development environment
+[tool.pixi.feature.onboard.pypi-dependencies]
+ssec-cli = { git = "https://github.com/uw-ssec/ssec-cli.git" }
+
+[tool.pixi.feature.onboard.tasks]
+ssec-setup = { cmd = "ssec --install-completion", description = "Set up shell completion for ssec-cli" }
+onboard = { cmd = "ssec onboard", description = "Run the onboarding process for the SSEC project", depends-on = [
+    "pre-commit-install",
+    "ssec-setup",
+] }
+
+# The environment configurations for different development scenarios
+[tool.pixi.environments]
+default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }
+onboard = { features = ["pre-commit", "gh-cli", "onboard"], solve-group = "default" }
