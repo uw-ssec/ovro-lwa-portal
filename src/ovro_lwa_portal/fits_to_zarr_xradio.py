@@ -50,7 +50,18 @@ MHZ_RE = re.compile(r"_(\d+)MHz_")
 
 
 def _mhz_from_name(p: Path) -> int:
-    """Extract the subband MHz from a filename; return a large sentinel if absent."""
+    """Extract the subband MHz from a filename; return a large sentinel if absent.
+
+    Parameters
+    ----------
+    p : Path
+        Path object with filename to extract MHz from.
+
+    Returns
+    -------
+    int
+        Subband frequency in MHz, or 10**9 if not found.
+    """
     m = MHZ_RE.search(p.name)
     return int(m.group(1)) if m else 10**9
 
@@ -61,6 +72,13 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
     Adds/ensures:
       RESTFREQ/RESTFRQ, SPECSYS=LSRK, TIMESYS=UTC, RADESYS=FK5, LATPOLE=90,
       identity PC matrix for LM, nominal beam (BMAJ/BMIN=6 arcmin), BUNIT=Jy/beam.
+
+    Parameters
+    ----------
+    path_in : Path
+        Input FITS file path.
+    path_out : Path
+        Output fixed FITS file path.
     """
     with fits.open(path_in, memmap=True) as hdul:
         hdu = hdul[0]
@@ -105,7 +123,21 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
 
 
 def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
-    """Load a fixed FITS image via xradio in LM-only mode and clean metadata."""
+    """Load a fixed FITS image via xradio in LM-only mode and clean metadata.
+
+    Parameters
+    ----------
+    fp : Path
+        Path to fixed FITS file.
+    chunk_lm : int, optional
+        LM chunk size for in-memory xarray datasets. Set to 0 to disable chunking.
+        Default is 1024.
+
+    Returns
+    -------
+    xr.Dataset
+        Loaded xarray Dataset with cleaned metadata and optional LM chunking.
+    """
     xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
 
     # Drop sky coords if they slipped in
@@ -126,7 +158,18 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
 
 
 def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
-    """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT."""
+    """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
+
+    Parameters
+    ----------
+    in_dir : Path
+        Directory containing input FITS files.
+
+    Returns
+    -------
+    Dict[str, List[Path]]
+        Dictionary mapping time keys to lists of FITS file paths.
+    """
     by_time: Dict[str, List[Path]] = {}
     for f in sorted(in_dir.glob("*.fits")):
         m = PAT.match(f.name)
@@ -140,7 +183,22 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
 def _combine_time_step(
     files: List[Path], fixed_dir: Path, *, chunk_lm: int
 ) -> Tuple[xr.Dataset, List[float]]:
-    """Create a single-time dataset by combining frequency slices from subbands."""
+    """Create a single-time dataset by combining frequency slices from subbands.
+
+    Parameters
+    ----------
+    files : List[Path]
+        List of FITS file paths for a single time step.
+    fixed_dir : Path
+        Directory to place generated ``*_fixed.fits`` files.
+    chunk_lm : int
+        LM chunk size for in-memory xarray datasets.
+
+    Returns
+    -------
+    Tuple[xr.Dataset, List[float]]
+        Tuple of (combined dataset, sorted list of unique frequencies in Hz).
+    """
     fixed_paths: List[Path] = []
     for f in sorted(files, key=_mhz_from_name):
         if f.name.endswith("_fixed.fits"):
@@ -191,7 +249,20 @@ def _assert_same_lm(
     reference: Tuple[NDArray[np.floating], NDArray[np.floating]],
     current: Tuple[NDArray[np.floating], NDArray[np.floating]],
 ) -> None:
-    """Ensure the LM grids match across time steps."""
+    """Ensure the LM grids match across time steps.
+
+    Parameters
+    ----------
+    reference : Tuple[NDArray[np.floating], NDArray[np.floating]]
+        Reference (l, m) grid arrays.
+    current : Tuple[NDArray[np.floating], NDArray[np.floating]]
+        Current (l, m) grid arrays to compare.
+
+    Raises
+    ------
+    RuntimeError
+        If l or m grids differ across time steps.
+    """
     same_l = np.allclose(reference[0], current[0])
     same_m = np.allclose(reference[1], current[1])
     if not (same_l and same_m):
@@ -199,12 +270,21 @@ def _assert_same_lm(
 
 
 def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) -> None:
-    """
-    Safe write/append:
-      - First write: write directly.
-      - Append: read existing lazily, build combined, write to a TEMP path,
-        then atomically swap into place so we never delete the source store
-        while still reading from it.
+    """Safe write/append to Zarr store.
+
+    First write: write directly.
+    Append: read existing lazily, build combined, write to a TEMP path,
+    then atomically swap into place so we never delete the source store
+    while still reading from it.
+
+    Parameters
+    ----------
+    xds_t : xr.Dataset
+        Dataset to write or append.
+    out_zarr : Path
+        Path to output Zarr store.
+    first_write : bool
+        If True, write a new Zarr store; if False, append to existing.
     """
     from shutil import rmtree, move
 
@@ -288,10 +368,10 @@ def convert_fits_dir_to_zarr(
 
     by_time = _discover_groups(input_dir)
     total_files = sum(len(v) for v in by_time.values())
-    logger.info("Discovered %d FITS across %d time step(s).", total_files, len(by_time))
+    logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
         mhz_sorted = sorted(_mhz_from_name(p) for p in v)
-        logger.info("  time %s: %d file(s), subbands (MHz): %s", k, len(v), mhz_sorted)
+        logger.info(f"  time {k}: {len(v)} file(s), subbands (MHz): {mhz_sorted}")
 
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
@@ -302,11 +382,10 @@ def convert_fits_dir_to_zarr(
 
     for tkey in sorted(by_time.keys()):
         files = by_time[tkey]
-        logger.info("[read/combine] time %s", tkey)
+        logger.info(f"[read/combine] time {tkey}")
         xds_t, freqs = _combine_time_step(files, fixed_dir, chunk_lm=chunk_lm)
-        logger.info("  combined dims: %s", dict(xds_t.dims))
-        logger.info("  combined freqs (Hz): %s%s",
-                    freqs[:8], " ..." if len(freqs) > 8 else "")
+        logger.info(f"  combined dims: {dict(xds_t.dims)}")
+        logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)
         if lm_reference is None:
@@ -316,9 +395,9 @@ def convert_fits_dir_to_zarr(
             _assert_same_lm(lm_reference, lm_current)
             logger.info("  l/m grid matches reference")
 
-        logger.info("[%s] %s", "write new" if first_write else "append", out_zarr)
+        logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
         _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
         first_write = False
 
-    logger.info("[done] All times appended into: %s", out_zarr)
+    logger.info(f"[done] All times appended into: {out_zarr}")
     return out_zarr
