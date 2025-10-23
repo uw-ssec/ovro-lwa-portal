@@ -38,6 +38,7 @@ dev = [
 ]
 ci = [
     "s3fs>=2024.6.0",
+    "tqdm>=4.67.1,<5"
 ]
 all = ["ovro_lwa_portal[dev]"]
 
