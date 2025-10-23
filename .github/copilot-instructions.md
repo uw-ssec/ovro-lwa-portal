@@ -72,7 +72,6 @@ pixi install
 ### Available Environments
 
 1. **`default`** (features: `pre-commit`, `gh-cli`)
-
    - Standard development environment
    - Radio astronomy packages: astropy, xarray, dask, zarr, xradio,
      python-casacore
