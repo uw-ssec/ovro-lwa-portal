@@ -61,7 +61,6 @@ command is idempotent and safe to run multiple times.
 ### Available Environments
 
 1. **`default`** (features: `pre-commit`, `gh-cli`)
-
    - Standard development environment
    - Radio astronomy packages: astropy, xarray, dask, zarr, netcdf4, numcodecs
    - OVRO-LWA specific: xradio, python-casacore
