@@ -151,7 +151,7 @@ def download_fits_files(
         file_info = fs.info(remote_zip_path)
         file_size_bytes = file_info.get("size", 0)
         file_size_mb = file_size_bytes / (1024 * 1024)
-        
+
         logger.info(f"Downloading ZIP file from: {remote_zip_path}")
         logger.info(f"File size: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes)")
 
@@ -175,7 +175,7 @@ def download_fits_files(
                     break
                 local_file.write(chunk)
                 pbar.update(len(chunk))
-        
+
         logger.info(f"Downloaded ZIP file to: {local_zip_path}")
 
         # Extract the ZIP file
