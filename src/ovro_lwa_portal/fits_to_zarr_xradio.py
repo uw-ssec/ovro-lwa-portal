@@ -35,6 +35,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import xarray as xr
 from astropy.io import fits
+from astropy.wcs import WCS
 from numpy.typing import NDArray
 from xradio.image import read_image, write_image
 
@@ -123,36 +124,93 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
 
 
 def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
-    """Load a fixed FITS image via xradio in LM-only mode and clean metadata.
+    """
+    Load a FITS image, attach *sky* coordinates from the FITS celestial WCS,
+    and persist the exact WCS header for FITS-free WCSAxes plotting later.
+
+    This function:
+      • reads pixels via :func:`xradio.image.read_image` with sky coords disabled
+      • evaluates RA/Dec at pixel centers (origin=0) using the 2D celestial WCS
+      • attaches 2D ``right_ascension``/``declination`` coordinates (deg; FK5/J2000)
+      • stores the exact celestial WCS header string redundantly so it survives merges
 
     Parameters
     ----------
     fp : Path
-        Path to fixed FITS file.
+        Path to the FITS image (original or ``*_fixed.fits``) to load.
     chunk_lm : int, optional
-        LM chunk size for in-memory xarray datasets. Set to 0 to disable chunking.
-        Default is 1024.
+        Chunk size for the ``l`` and ``m`` dimensions. Set to ``0`` to disable
+        chunking. Default is ``1024``.
 
     Returns
     -------
-    xr.Dataset
-        Loaded xarray Dataset with cleaned metadata and optional LM chunking.
+    xarray.Dataset
+        Dataset with:
+          • data vars from the input FITS (e.g., ``SKY``/``BEAM``)
+          • 2D coords: ``right_ascension`` and ``declination`` in degrees
+          • WCS header persisted in multiple locations (see Notes)
+
+    Notes
+    -----
+    * RA/Dec are computed at pixel **centers** via
+      ``WCS(header).celestial.all_pix2world(xx, yy, origin=0)`` and therefore
+      exactly match the FITS celestial WCS.
+    * The celestial WCS header is stored redundantly as:
+        - ``xds.attrs['fits_wcs_header']`` (global attrs)
+        - a 0-D variable ``wcs_header_str`` (robust across combines)
+        - per-variable ``.attrs['fits_wcs_header']``
+        - on the RA/Dec coord attrs
+      This redundancy ensures at least one copy survives downstream combine/concat
+      operations and writers that may drop attrs.
+    * Uses :class:`numpy.bytes_` (NumPy ≥ 2.0) for the scalar variable payload.
+
     """
+    # 1) Load image pixels via xradio (no sky coord math here)
     xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
 
-    # Drop sky coords if they slipped in
-    drop = [k for k in ("right_ascension", "declination", "velocity") if k in xds.coords]
-    if drop:
-        xds = xds.reset_coords(drop, drop=True)
+    # 2) Open FITS header and extract 2D celestial WCS matching the image plane
+    with fits.open(str(fp), memmap=True) as hdul:
+        H = hdul[0].header
+    w2d = WCS(H).celestial  # 2D (RA/Dec) WCS
 
-    # Hygiene
-    xds.attrs = {}
+    # 3) Compute RA/Dec at pixel centers (origin=0) with shape (m,l)
+    ny = int(xds.sizes["m"])
+    nx = int(xds.sizes["l"])
+    yy, xx = np.indices((ny, nx), dtype=float)
+    ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, pixel centers
+
+    # 4) Attach coords exactly equal to FITS WCS
+    xds = xds.assign_coords(
+        right_ascension=(("m", "l"), ra2d),
+        declination=(("m", "l"), dec2d),
+    )
+    xds["right_ascension"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
+    xds["declination"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
+
+    # 5) Persist the exact celestial WCS header so we can re-create WCSAxes later without FITS
+    cel_hdr = w2d.to_header()                 # astropy.io.fits.Header
+    hdr_str = cel_hdr.tostring(sep="\n")
+    xds.attrs["fits_wcs_header"] = hdr_str
+
+    # 6) Hygiene + optional LM chunking
+    xds.attrs.pop("history", None)  # keep attrs minimal
     for v in xds.data_vars:
         xds[v].encoding = {}
 
-    # Optional LM chunking
-    if "l" in xds.dims and "m" in xds.dims and chunk_lm:
+    if chunk_lm and {"l", "m"} <= set(xds.dims):
         xds = xds.chunk({"l": chunk_lm, "m": chunk_lm})
+
+    # ---- persist the exact celestial WCS header redundantly ----
+    # 2) 0-D variable that always survives (NumPy ≥ 2.0: use np.bytes_)
+    xds = xds.assign(wcs_header_str=((), np.bytes_(hdr_str.encode("utf-8"))))
+
+    # 3) per-variable attrs (survive merges)
+    for dv in xds.data_vars:
+        xds[dv].attrs["fits_wcs_header"] = hdr_str
+
+    # 4) also stash on coords for convenience
+    xds["right_ascension"].attrs["fits_wcs_header"] = hdr_str
+    xds["declination"].attrs["fits_wcs_header"] = hdr_str
 
     return xds
 
