@@ -27,6 +27,11 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Optional
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None  # type: ignore[assignment,misc]
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,13 +107,17 @@ def download_fits_files(
     EnvironmentError
         If required environment variables are not set
     ImportError
-        If s3fs package is not installed
+        If s3fs or tqdm package is not installed
     """
     try:
         import s3fs
     except ImportError as e:
         msg = "s3fs package is required. Install it with: pip install s3fs"
         raise ImportError(msg) from e
+
+    if tqdm is None:
+        msg = "tqdm package is required. Install it with: pip install tqdm"
+        raise ImportError(msg)
 
     # Validate environment variables
     env_vars = validate_environment()
@@ -138,10 +147,35 @@ def download_fits_files(
             msg = f"ZIP file not found: {remote_zip_path}"
             raise FileNotFoundError(msg)
 
-        logger.info(f"Downloading ZIP file from: {remote_zip_path}")
+        # Get file size information
+        file_info = fs.info(remote_zip_path)
+        file_size_bytes = file_info.get("size", 0)
+        file_size_mb = file_size_bytes / (1024 * 1024)
 
-        # Download the ZIP file
-        fs.get(remote_zip_path, str(local_zip_path))
+        logger.info(f"Downloading ZIP file from: {remote_zip_path}")
+        logger.info(f"File size: {file_size_mb:.2f} MB ({file_size_bytes:,} bytes)")
+
+        # Download the ZIP file with progress bar
+        with (
+            fs.open(remote_zip_path, "rb") as remote_file,
+            local_zip_path.open("wb") as local_file,
+            tqdm(
+                total=file_size_bytes,
+                unit="B",
+                unit_scale=True,
+                unit_divisor=1024,
+                desc="Downloading",
+            ) as pbar,
+        ):
+            # Download in chunks
+            chunk_size = 8192  # 8 KB chunks
+            while True:
+                chunk = remote_file.read(chunk_size)
+                if not chunk:
+                    break
+                local_file.write(chunk)
+                pbar.update(len(chunk))
+
         logger.info(f"Downloaded ZIP file to: {local_zip_path}")
 
         # Extract the ZIP file

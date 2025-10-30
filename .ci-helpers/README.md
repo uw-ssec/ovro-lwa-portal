@@ -14,6 +14,7 @@ bucket for development and testing purposes.
 
 - Python 3.12+
 - s3fs package (install with: `pip install s3fs`)
+- tqdm package (install with: `pip install tqdm`)
 
 #### Environment Variables
 
@@ -55,9 +56,11 @@ python .ci-helpers/download_test_fits.py -o ./data -z fits_files.zip -v
 #### How It Works
 
 1. Connects to the Caltech S3 bucket using provided credentials
-2. Downloads the ZIP file from `s3://{bucket}/ovro-temp/{zip_filename}`
-3. Extracts all FITS files to the specified output directory
-4. Removes the ZIP file after successful extraction
+2. Retrieves file size information for the ZIP file
+3. Downloads the ZIP file from `s3://{bucket}/ovro-temp/{zip_filename}` with a
+   progress bar showing download speed and estimated time remaining
+4. Extracts all FITS files to the specified output directory
+5. Removes the ZIP file after successful extraction
 
 #### Example in GitHub Actions
 
@@ -69,6 +72,6 @@ python .ci-helpers/download_test_fits.py -o ./data -z fits_files.zip -v
     CALTECH_ENDPOINT_URL: ${{ secrets.CALTECH_ENDPOINT_URL }}
     CALTECH_DEV_S3_BUCKET: ${{ secrets.CALTECH_DEV_S3_BUCKET }}
   run: |
-    pip install s3fs
+    pip install s3fs tqdm
     python .ci-helpers/download_test_fits.py -v
 ```
