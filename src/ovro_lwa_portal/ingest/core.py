@@ -58,6 +58,9 @@ class ConversionConfig:
         Chunk size for l and m spatial dimensions. Defaults to 1024.
     rebuild : bool, optional
         If True, overwrite existing Zarr store. If False, append new data. Defaults to False.
+    fix_headers_on_demand : bool, optional
+        If True, fix headers during conversion if they don't exist. If False, assume
+        headers are already fixed. Defaults to True.
     verbose : bool, optional
         Enable verbose logging. Defaults to False.
     """
@@ -70,6 +73,7 @@ class ConversionConfig:
         fixed_dir: Path | None = None,
         chunk_lm: int = 1024,
         rebuild: bool = False,
+        fix_headers_on_demand: bool = True,
         verbose: bool = False,
     ) -> None:
         self.input_dir = input_dir
@@ -78,6 +82,7 @@ class ConversionConfig:
         self.fixed_dir = fixed_dir or (output_dir / "fixed_fits")
         self.chunk_lm = chunk_lm
         self.rebuild = rebuild
+        self.fix_headers_on_demand = fix_headers_on_demand
         self.verbose = verbose
 
     @property
@@ -218,6 +223,7 @@ class FITSToZarrConverter:
                     fixed_dir=self.config.fixed_dir,
                     chunk_lm=self.config.chunk_lm,
                     rebuild=self.config.rebuild,
+                    fix_headers_on_demand=self.config.fix_headers_on_demand,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")
