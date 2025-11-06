@@ -1,13 +1,31 @@
 # Feature Specification: FITS to Zarr Ingest Package with CLI
 
 **Feature Branch**: `001-build-an-ingest` **Created**: October 17, 2025
-**Status**: Draft **Input**: User description: "Build an ingest package within
-the ovro_lwa_portal library that converts fits files to a zarr file as it exists
-in the fits_to_zarr_xradio.py module. This package should be exposed as a CLI
-with arguments such as the path to the input fits files directory and path to
-output zarr file. Specific python libraries that should be used are the current
-library dependencies as well as typer CLI library and prefect for pythonic data
+**Status**: Partially Implemented (Core Complete) **Last Updated**: November 6,
+2025
+
+**Implementation Status**: See
+[IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) for detailed
+implementation report.
+
+**Original Input**: User description: "Build an ingest package within the
+ovro_lwa_portal library that converts fits files to a zarr file as it exists in
+the fits_to_zarr_xradio.py module. This package should be exposed as a CLI with
+arguments such as the path to the input fits files directory and path to output
+zarr file. Specific python libraries that should be used are the current library
+dependencies as well as typer CLI library and prefect for pythonic data
 pipeline."
+
+## Implementation Summary
+
+**Core functionality has been successfully delivered** using a simplified,
+wrapper-based architecture:
+
+- ✅ CLI interface with `ovro-ingest` command
+- ✅ FITS to Zarr conversion with progress tracking
+- ✅ File locking for concurrent write protection
+- ✅ Optional Prefect integration
+- ⚠️ Some advanced features deferred (see IMPLEMENTATION_STATUS.md)
 
 ## Execution Flow (main)
 

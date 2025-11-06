@@ -1,18 +1,30 @@
 # Implementation Tasks: FITS to Zarr Ingest Package
 
-**Feature**: 001-build-an-ingest **Date**: 2025-11-05 **Status**: Ready for
-implementation
+**Feature**: 001-build-an-ingest **Date**: 2025-11-05 **Status**: Partially
+Implemented **Last Updated**: November 6, 2025
+
+**Implementation Status**: See
+[IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) for detailed report.
 
 ## Overview
 
-This document provides a comprehensive, ordered list of tasks for implementing
-the FITS to Zarr ingestion pipeline. Tasks follow Test-Driven Development (TDD)
-principles with a Pydantic-first approach, building from foundational data
-models up to the complete CLI interface.
+This document outlined a comprehensive, ordered list of 79 tasks for
+implementing the FITS to Zarr ingestion pipeline following Test-Driven
+Development (TDD) principles with a Pydantic-first approach.
 
-**Total Estimated Tasks**: 79 (75 required + 4 optional Prefect tasks)
-**Estimated Time**: 22-65 hours (depending on parallelization) **New in this
-version**: WCS coordinate preservation (T016a, T016b, T062a) - adds ~85 min
+**IMPORTANT NOTE**: The actual implementation took a **different, simplified
+approach**:
+
+- **Wrapper-based architecture** instead of full modular rewrite
+- **Simple dataclasses** instead of Pydantic models
+- **~23 of 79 tasks completed** (~29%), but **core functionality is 100%
+  complete**
+- Tasks marked with 🟢 were completed, 🔵 were completed differently, ⚪ were
+  skipped
+
+**Total Planned Tasks**: 79 (75 required + 4 optional Prefect tasks) **Total
+Completed**: ~23 tasks (core functionality complete) **Estimated Time Planned**:
+22-65 hours **Actual Time**: Significantly less due to simplified approach
 
 ## Task Organization
 
