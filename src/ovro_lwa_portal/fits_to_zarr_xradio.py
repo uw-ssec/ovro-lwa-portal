@@ -51,7 +51,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import xarray as xr
@@ -503,6 +503,7 @@ def convert_fits_dir_to_zarr(
     chunk_lm: int = 1024,
     rebuild: bool = False,
     fix_headers_on_demand: bool = True,
+    progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -524,6 +525,9 @@ def convert_fits_dir_to_zarr(
         If True, fix FITS headers on-demand during conversion if they don't exist.
         If False, assume headers are already fixed using :func:`fix_fits_headers`.
         Default is True.
+    progress_callback
+        Optional callback function for progress reporting. Should accept
+        (stage: str, current: int, total: int, message: str).
 
     Returns
     -------
@@ -558,8 +562,10 @@ def convert_fits_dir_to_zarr(
     first_write = not (out_zarr.exists() and not rebuild)
     lm_reference: Tuple[NDArray[np.floating], NDArray[np.floating]] | None = None
 
-    for tkey in sorted(by_time.keys()):
+    total_time_steps = len(by_time)
+    for idx, tkey in enumerate(sorted(by_time.keys())):
         files = by_time[tkey]
+
         logger.info(f"[read/combine] time {tkey}")
         xds_t, freqs = _combine_time_step(
             files, fixed_dir, chunk_lm=chunk_lm, fix_headers_on_demand=fix_headers_on_demand
@@ -578,6 +584,15 @@ def convert_fits_dir_to_zarr(
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
         _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
         first_write = False
+
+        # Report progress after completing this time step
+        if progress_callback:
+            progress_callback(
+                "converting",
+                idx + 1,
+                total_time_steps,
+                f"Completed time step {idx + 1}/{total_time_steps}"
+            )
 
     logger.info(f"[done] All times appended into: {out_zarr}")
     return out_zarr

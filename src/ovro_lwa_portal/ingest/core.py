@@ -224,6 +224,7 @@ class FITSToZarrConverter:
                     chunk_lm=self.config.chunk_lm,
                     rebuild=self.config.rebuild,
                     fix_headers_on_demand=self.config.fix_headers_on_demand,
+                    progress_callback=self.progress_callback,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")
