@@ -15,6 +15,8 @@ CALTECH_ENDPOINT_URL : str
     S3 endpoint URL for Caltech storage
 CALTECH_DEV_S3_BUCKET : str
     S3 bucket name containing test data
+
+The script can load environment variables from a .env file using the --env-file option.
 """
 
 from __future__ import annotations
@@ -31,6 +33,11 @@ try:
     from tqdm import tqdm
 except ImportError:
     tqdm = None  # type: ignore[assignment,misc]
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +56,41 @@ def setup_logging(verbose: bool = False) -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+
+def load_env_file(env_file: Optional[Path] = None) -> None:
+    """Load environment variables from a .env file.
+
+    Parameters
+    ----------
+    env_file : Path, optional
+        Path to the .env file. If None, tries to find .env in current directory
+
+    Raises
+    ------
+    ImportError
+        If python-dotenv package is not installed
+    FileNotFoundError
+        If specified env_file does not exist
+    """
+    if load_dotenv is None:
+        msg = "python-dotenv package is required. Install it with: pip install python-dotenv"
+        raise ImportError(msg)
+
+    if env_file is not None:
+        if not env_file.exists():
+            msg = f".env file not found: {env_file}"
+            raise FileNotFoundError(msg)
+        logger.info(f"Loading environment variables from: {env_file}")
+        load_dotenv(dotenv_path=env_file, override=False)
+    else:
+        # Try to find .env in current directory
+        default_env = Path(".env")
+        if default_env.exists():
+            logger.info(f"Loading environment variables from: {default_env}")
+            load_dotenv(dotenv_path=default_env, override=False)
+        else:
+            logger.debug("No .env file found in current directory")
 
 
 def validate_environment() -> dict[str, str]:
@@ -223,6 +265,9 @@ Examples:
   # Download and extract FITS files to default directory
   python download_test_fits.py
 
+  # Load environment variables from a .env file
+  python download_test_fits.py --env-file .env
+
   # Download to specific directory with verbose logging
   python download_test_fits.py -o ./data -v
 
@@ -248,6 +293,14 @@ Examples:
     )
 
     parser.add_argument(
+        "-e",
+        "--env-file",
+        type=Path,
+        default=None,
+        help="Path to .env file to load environment variables (default: looks for .env in current directory)",
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -258,6 +311,16 @@ Examples:
 
     # Setup logging
     setup_logging(verbose=args.verbose)
+
+    # Load environment variables from .env file if specified or found
+    try:
+        load_env_file(env_file=args.env_file)
+    except ImportError as e:
+        logger.warning(f"Could not load .env file: {e}")
+        logger.info("Continuing with existing environment variables...")
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return 1
 
     try:
         download_fits_files(

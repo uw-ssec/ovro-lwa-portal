@@ -7,7 +7,7 @@ name = "ovro_lwa_portal"
 dynamic = ["version"]
 description = "Python library for radio astronomy data processing and visualization for the Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -25,7 +25,10 @@ dependencies = [
     # See https://github.com/casangi/xradio/issues/355
     "zarr>=2.16,<3",
     "numcodecs>=0.15,<0.16",
-    "xradio[all]>=0.0.59,<0.1"
+    "xradio[all]>=0.0.59,<0.1",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+    "portalocker>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -38,12 +41,19 @@ dev = [
 ]
 ci = [
     "s3fs>=2024.6.0",
-    "tqdm>=4.67.1,<5"
+    "tqdm>=4.67.1,<5",
+    "python-dotenv>=1.2.1,<2",
+]
+prefect = [
+    "prefect>=3.0.0",
 ]
 all = ["ovro_lwa_portal[dev]"]
 
 [project.license]
 file = "LICENSE"
+
+[project.scripts]
+ovro-ingest = "ovro_lwa_portal.ingest.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/uw-ssec/ovro-lwa-portal"
@@ -141,6 +151,7 @@ ovro_lwa_portal = { path = ".", editable = true }
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }
 onboard = { features = ["pre-commit", "gh-cli", "onboard"], solve-group = "default" }
+ci = ["ci"]
 
 # GitHub CLI feature for interacting with GitHub from the command line
 [tool.pixi.feature.gh-cli.dependencies]

@@ -1,13 +1,31 @@
 # Feature Specification: FITS to Zarr Ingest Package with CLI
 
 **Feature Branch**: `001-build-an-ingest` **Created**: October 17, 2025
-**Status**: Draft **Input**: User description: "Build an ingest package within
-the ovro_lwa_portal library that converts fits files to a zarr file as it exists
-in the fits_to_zarr_xradio.py module. This package should be exposed as a CLI
-with arguments such as the path to the input fits files directory and path to
-output zarr file. Specific python libraries that should be used are the current
-library dependencies as well as typer CLI library and prefect for pythonic data
+**Status**: Partially Implemented (Core Complete) **Last Updated**: November 6,
+2025
+
+**Implementation Status**: See
+[IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md) for detailed
+implementation report.
+
+**Original Input**: User description: "Build an ingest package within the
+ovro_lwa_portal library that converts fits files to a zarr file as it exists in
+the fits_to_zarr_xradio.py module. This package should be exposed as a CLI with
+arguments such as the path to the input fits files directory and path to output
+zarr file. Specific python libraries that should be used are the current library
+dependencies as well as typer CLI library and prefect for pythonic data
 pipeline."
+
+## Implementation Summary
+
+**Core functionality has been successfully delivered** using a simplified,
+wrapper-based architecture:
+
+- ✅ CLI interface with `ovro-ingest` command
+- ✅ FITS to Zarr conversion with progress tracking
+- ✅ File locking for concurrent write protection
+- ✅ Optional Prefect integration
+- ⚠️ Some advanced features deferred (see IMPLEMENTATION_STATUS.md)
 
 ## Execution Flow (main)
 
@@ -199,6 +217,22 @@ progress, and resume if interrupted.
   (l, m)
 - **FR-019**: System MUST detect concurrent writes to the same output path using
   file locking and fail immediately with a clear error message
+
+#### WCS Coordinate Preservation
+
+- **FR-019a**: System MUST compute and attach celestial coordinates (RA/Dec) to
+  the Zarr store from FITS WCS headers
+- **FR-019b**: System MUST preserve the exact FITS celestial WCS header for
+  future WCS-aware plotting and analysis
+- **FR-019c**: System MUST store WCS header redundantly in multiple locations
+  (dataset attrs, 0-D variable, per-variable attrs, coordinate attrs) to ensure
+  survival through xarray operations
+- **FR-019d**: System MUST compute RA/Dec coordinates at pixel centers
+  (origin=0) using astropy WCS for exact alignment with FITS standard
+- **FR-019e**: System MUST provide 2D right_ascension and declination
+  coordinates with dimensions (m, l) in degrees, FK5/J2000 frame
+- **FR-019f**: System MUST support reconstruction of WCS from Zarr store without
+  requiring original FITS files
 
 #### Pipeline Management
 

@@ -352,6 +352,143 @@ Options:
   --help                     Show this message and exit
 ```
 
+## Acceptance Scenario 8: WCS Coordinate Preservation and Plotting
+
+**Requirement**: Verify WCS coordinates are preserved and can be used for
+plotting (FR-019a-f)
+
+```bash
+# Run conversion with default settings
+ovro-lwa-ingest test_data/fits test_data/zarr --zarr-name wcs_test.zarr
+```
+
+**Expected Behavior**:
+
+1. Zarr store contains RA/Dec coordinates
+2. WCS header preserved in multiple locations
+3. WCS can be reconstructed for plotting
+
+**Validation**:
+
+```python
+import xarray as xr
+import numpy as np
+from astropy.io.fits import Header
+from astropy.wcs import WCS
+
+# Load Zarr store
+ds = xr.open_zarr("test_data/zarr/wcs_test.zarr", consolidated=False)
+
+# Verify RA/Dec coordinates exist
+assert "right_ascension" in ds.coords
+assert "declination" in ds.coords
+
+# Verify 2D coordinate arrays with correct dimensions
+assert ds.coords["right_ascension"].dims == ("m", "l")
+assert ds.coords["declination"].dims == ("m", "l")
+
+# Verify coordinate attributes
+assert ds["right_ascension"].attrs["units"] == "deg"
+assert ds["right_ascension"].attrs["frame"] == "fk5"
+assert ds["right_ascension"].attrs["equinox"] == "J2000"
+
+# Verify WCS header in multiple locations (redundant storage)
+locations_checked = []
+
+# 1. Dataset global attrs
+if "fits_wcs_header" in ds.attrs:
+    locations_checked.append("global_attrs")
+
+# 2. 0-D variable (robust across operations)
+if "wcs_header_str" in ds.data_vars:
+    val = ds["wcs_header_str"].values
+    if isinstance(val, np.ndarray):
+        val = val.item()
+    # Handle np.bytes_ (NumPy 2.0)
+    if isinstance(val, (bytes, bytearray)) or type(val).__name__ == "bytes_":
+        hdr_str = val.decode("utf-8")
+        locations_checked.append("0d_variable")
+
+# 3. Per-variable attrs
+var = "SKY" if "SKY" in ds.data_vars else list(ds.data_vars)[0]
+if "fits_wcs_header" in ds[var].attrs:
+    locations_checked.append("per_variable_attrs")
+
+# 4. Coordinate attrs
+if "fits_wcs_header" in ds["right_ascension"].attrs:
+    locations_checked.append("coord_attrs")
+
+print(f"✓ WCS header found in {len(locations_checked)} locations: {locations_checked}")
+assert len(locations_checked) >= 1, "WCS header must be preserved in at least one location"
+
+print("✓ Acceptance Scenario 8: PASSED")
+```
+
+**WCS Reconstruction and Plotting**:
+
+```python
+import matplotlib.pyplot as plt
+from astropy.io.fits import Header
+from astropy.wcs import WCS
+
+def get_wcs_from_zarr(z: xr.Dataset, var: str = "SKY") -> WCS:
+    """Reconstruct WCS from Zarr store without original FITS files."""
+    if var not in z.data_vars:
+        var = "BEAM" if "BEAM" in z.data_vars else list(z.data_vars)[0]
+
+    # Prefer per-variable attr (most robust)
+    hdr_str = z[var].attrs.get("fits_wcs_header")
+
+    if not hdr_str:
+        # Fallback to 0-D variable
+        val = z["wcs_header_str"].values
+        if isinstance(val, np.ndarray):
+            val = val.item()
+        if isinstance(val, (bytes, bytearray)) or type(val).__name__ == "bytes_":
+            hdr_str = val.decode("utf-8")
+        else:
+            hdr_str = str(val)
+
+    return WCS(Header.fromstring(hdr_str, sep="\n"))
+
+# Reconstruct WCS
+wcs = get_wcs_from_zarr(ds, var="SKY")
+print(f"✓ Reconstructed WCS: {wcs.wcs.ctype}")
+
+# Plot with WCS projection
+fig = plt.figure(figsize=(10, 10))
+ax = plt.subplot(projection=wcs)
+
+# Select time and frequency slice
+tsel = 0
+fsel = ds.sizes.get("frequency", 1) // 2
+img = ds["SKY"].isel(time=tsel, frequency=fsel).values
+
+# Plot
+ax.imshow(img, origin="lower", cmap="inferno")
+ax.set_xlabel("RA")
+ax.set_ylabel("Dec")
+
+# Add WCS grid overlay
+overlay = ax.get_coords_overlay("fk5")
+overlay.grid(color="white", ls=":", lw=1.0, alpha=0.8)
+
+plt.tight_layout()
+plt.savefig("test_data/wcs_plot.png")
+print("✓ WCS plot saved to test_data/wcs_plot.png")
+```
+
+**Benefits**:
+
+1. **FITS-free analysis**: WCS can be reconstructed without original FITS files
+   (FR-019f)
+2. **Robust storage**: Redundant WCS header storage survives xarray operations
+   (FR-019c)
+3. **Exact coordinates**: RA/Dec computed at pixel centers for FITS standard
+   alignment (FR-019d)
+4. **WCS-aware plotting**: Direct matplotlib WCSAxes support for
+   publication-quality figures
+
 ## Edge Case: No Matching FITS Files
 
 **Requirement**: Report error if input directory has no matching files

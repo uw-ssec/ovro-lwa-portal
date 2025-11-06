@@ -7,6 +7,7 @@ a minimal set of header keywords so `xradio` can parse images reliably.
 
 Library usage
 -------------
+    # Option 1: Fix headers on-demand during conversion (default behavior)
     from ovro_lwa_portal.ingest.fit_to_zarr_xradio import convert_fits_dir_to_zarr
     out = convert_fits_dir_to_zarr(
         input_dir="/path/to/fits",
@@ -15,6 +16,26 @@ Library usage
         fixed_dir="fixed_fits",
         chunk_lm=1024,
         rebuild=False,
+    )
+
+    # Option 2: Fix headers ahead of time, then convert
+    from pathlib import Path
+    from ovro_lwa_portal.ingest.fit_to_zarr_xradio import fix_fits_headers, convert_fits_dir_to_zarr
+
+    # Step 1: Fix all headers first
+    input_files = list(Path("/path/to/fits").glob("*.fits"))
+    fixed_dir = Path("fixed_fits")
+    fix_fits_headers(input_files, fixed_dir)
+
+    # Step 2: Convert using pre-fixed headers
+    out = convert_fits_dir_to_zarr(
+        input_dir="/path/to/fits",
+        out_dir="zarr_out",
+        zarr_name="ovro_lwa_full_lm_only.zarr",
+        fixed_dir="fixed_fits",
+        chunk_lm=1024,
+        rebuild=False,
+        fix_headers_on_demand=False,  # Skip fixing since already done
     )
 
 Notes
@@ -30,7 +51,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import xarray as xr
@@ -39,7 +60,7 @@ from astropy.wcs import WCS
 from numpy.typing import NDArray
 from xradio.image import read_image, write_image
 
-__all__ = ["convert_fits_dir_to_zarr"]
+__all__ = ["convert_fits_dir_to_zarr", "fix_fits_headers"]
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +142,100 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
             H["BUNIT"] = "Jy/beam"
 
         phdu.writeto(path_out, overwrite=True)
+
+
+def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
+    """Get paths to fixed FITS files, assuming they already exist.
+
+    This function assumes that headers have already been fixed using
+    :func:`fix_fits_headers` and simply returns the paths to the
+    ``*_fixed.fits`` files.
+
+    Parameters
+    ----------
+    files : List[Path]
+        List of FITS file paths (may be original or already-fixed files).
+    fixed_dir : Path
+        Directory containing the ``*_fixed.fits`` files.
+
+    Returns
+    -------
+    List[Path]
+        List of paths to fixed FITS files, sorted by frequency.
+    """
+    fixed_paths: List[Path] = []
+    for f in sorted(files, key=_mhz_from_name):
+        if f.name.endswith("_fixed.fits"):
+            fixed_paths.append(f)
+        else:
+            fixed = fixed_dir / (f.stem + "_fixed.fits")
+            fixed_paths.append(fixed)
+    return fixed_paths
+
+
+def fix_fits_headers(
+    files: List[Path],
+    fixed_dir: Path,
+    *,
+    skip_existing: bool = True,
+) -> List[Path]:
+    """Fix FITS headers for a list of files, creating ``*_fixed.fits`` files.
+
+    This function processes FITS files to ensure they have the necessary
+    headers for xradio conversion. It can be run ahead of time before
+    calling :func:`convert_fits_dir_to_zarr` to separate the header
+    fixing step from the conversion process.
+
+    Parameters
+    ----------
+    files : List[Path]
+        List of FITS file paths to process.
+    fixed_dir : Path
+        Directory where ``*_fixed.fits`` files will be written.
+    skip_existing : bool, optional
+        If True, skip files that already have corresponding fixed versions.
+        Default is True.
+
+    Returns
+    -------
+    List[Path]
+        List of paths to the fixed FITS files.
+
+    Notes
+    -----
+    * Files already ending with ``_fixed.fits`` are considered already fixed
+      and are returned as-is.
+    * The :func:`_fix_headers` function applies BSCALE/BZERO and adds minimal
+      WCS/spectral keywords required by xradio.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers
+    >>> input_files = list(Path("input").glob("*.fits"))
+    >>> fixed_dir = Path("fixed_fits")
+    >>> fixed_dir.mkdir(exist_ok=True)
+    >>> fixed_paths = fix_fits_headers(input_files, fixed_dir)
+    >>> print(f"Fixed {len(fixed_paths)} files")
+    """
+    fixed_dir.mkdir(parents=True, exist_ok=True)
+    fixed_paths: List[Path] = []
+
+    for f in sorted(files, key=_mhz_from_name):
+        if f.name.endswith("_fixed.fits"):
+            # Already fixed, use as-is
+            fixed_paths.append(f)
+            logger.debug(f"Skipping already-fixed file: {f.name}")
+        else:
+            fixed = fixed_dir / (f.stem + "_fixed.fits")
+            if skip_existing and fixed.exists():
+                logger.debug(f"Skipping existing fixed file: {fixed.name}")
+            else:
+                logger.info(f"Fixing headers: {f.name} -> {fixed.name}")
+                _fix_headers(f, fixed)
+            fixed_paths.append(fixed)
+
+    return fixed_paths
 
 
 def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
@@ -239,7 +354,7 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
 
 
 def _combine_time_step(
-    files: List[Path], fixed_dir: Path, *, chunk_lm: int
+    files: List[Path], fixed_dir: Path, *, chunk_lm: int, fix_headers_on_demand: bool = True
 ) -> Tuple[xr.Dataset, List[float]]:
     """Create a single-time dataset by combining frequency slices from subbands.
 
@@ -251,21 +366,21 @@ def _combine_time_step(
         Directory to place generated ``*_fixed.fits`` files.
     chunk_lm : int
         LM chunk size for in-memory xarray datasets.
+    fix_headers_on_demand : bool, optional
+        If True, fix headers on-demand if they don't exist. If False,
+        assume headers are already fixed. Default is True.
 
     Returns
     -------
     Tuple[xr.Dataset, List[float]]
         Tuple of (combined dataset, sorted list of unique frequencies in Hz).
     """
-    fixed_paths: List[Path] = []
-    for f in sorted(files, key=_mhz_from_name):
-        if f.name.endswith("_fixed.fits"):
-            fixed_paths.append(f)
-        else:
-            fixed = fixed_dir / (f.stem + "_fixed.fits")
-            if not fixed.exists():
-                _fix_headers(f, fixed)
-            fixed_paths.append(fixed)
+    if fix_headers_on_demand:
+        # Fix headers if needed (skips existing fixed files)
+        fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
+    else:
+        # Just get the paths to already-fixed files
+        fixed_paths = _get_fixed_paths(files, fixed_dir)
 
     xds_list: List[xr.Dataset] = []
     freqs_seen: List[float] = []
@@ -387,6 +502,8 @@ def convert_fits_dir_to_zarr(
     fixed_dir: str | Path = "fixed_fits",
     chunk_lm: int = 1024,
     rebuild: bool = False,
+    fix_headers_on_demand: bool = True,
+    progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -404,6 +521,13 @@ def convert_fits_dir_to_zarr(
         Optional LM chunk size for the in-memory xarray datasets (0 disables).
     rebuild
         If True, overwrite any existing Zarr; otherwise append to it.
+    fix_headers_on_demand
+        If True, fix FITS headers on-demand during conversion if they don't exist.
+        If False, assume headers are already fixed using :func:`fix_fits_headers`.
+        Default is True.
+    progress_callback
+        Optional callback function for progress reporting. Should accept
+        (stage: str, current: int, total: int, message: str).
 
     Returns
     -------
@@ -438,10 +562,14 @@ def convert_fits_dir_to_zarr(
     first_write = not (out_zarr.exists() and not rebuild)
     lm_reference: Tuple[NDArray[np.floating], NDArray[np.floating]] | None = None
 
-    for tkey in sorted(by_time.keys()):
+    total_time_steps = len(by_time)
+    for idx, tkey in enumerate(sorted(by_time.keys())):
         files = by_time[tkey]
+
         logger.info(f"[read/combine] time {tkey}")
-        xds_t, freqs = _combine_time_step(files, fixed_dir, chunk_lm=chunk_lm)
+        xds_t, freqs = _combine_time_step(
+            files, fixed_dir, chunk_lm=chunk_lm, fix_headers_on_demand=fix_headers_on_demand
+        )
         logger.info(f"  combined dims: {dict(xds_t.dims)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
@@ -456,6 +584,15 @@ def convert_fits_dir_to_zarr(
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
         _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
         first_write = False
+
+        # Report progress after completing this time step
+        if progress_callback:
+            progress_callback(
+                "converting",
+                idx + 1,
+                total_time_steps,
+                f"Completed time step {idx + 1}/{total_time_steps}"
+            )
 
     logger.info(f"[done] All times appended into: {out_zarr}")
     return out_zarr

@@ -175,6 +175,9 @@ This project uses **Hatchling** with **hatch-vcs** for building Python packages:
 - `zarr>=2.16,<3` - Chunked, compressed arrays (v2 pinned)
 - `numcodecs>=0.15,<0.16` - Compression codecs
 - `xradio[all]>=0.0.59,<0.1` - Radio astronomy data processing
+- `typer>=0.9.0` - CLI framework
+- `rich>=13.7.0` - Terminal UI and progress bars
+- `portalocker>=2.8.0` - Cross-platform file locking
 
 **Development dependencies (`dev` extra):**
 
@@ -187,6 +190,12 @@ This project uses **Hatchling** with **hatch-vcs** for building Python packages:
 **CI dependencies (`ci` extra):**
 
 - `s3fs>=2024.6.0` - S3 filesystem interface
+- `tqdm>=4.67.1,<5` - Progress bars
+- `python-dotenv>=1.2.1,<2` - Environment variable loading
+
+**Optional dependencies (`prefect` extra):**
+
+- `prefect>=3.0.0` - Workflow orchestration (optional)
 
 ### Code Quality Tools
 
@@ -249,17 +258,80 @@ This project uses **Hatchling** with **hatch-vcs** for building Python packages:
 │   └── test_fits_files/       # Sample FITS files for testing
 │       ├── README.md          # Documentation for test FITS files
 │       └── .gitignore         # Ignores FITS files (downloaded separately)
+├── specs/                      # Feature specifications and design docs
+│   └── 001-build-an-ingest/  # FITS to Zarr ingest feature specification
+│       ├── spec.md            # Feature requirements and acceptance criteria
+│       ├── plan.md            # Implementation plan and architecture decisions
+│       ├── tasks.md           # Detailed task breakdown
+│       ├── data-model.md      # Data models and entity relationships
+│       ├── research.md        # Research and technology choices
+│       ├── quickstart.md      # Quick start guide and usage examples
+│       └── contracts/         # API contract specifications
+│           ├── core_api.md    # Core conversion API contracts
+│           ├── discovery_api.md  # File discovery API contracts
+│           └── cli_api.md     # CLI interface contracts
 ├── src/
 │   └── ovro_lwa_portal/       # Main package source code
 │       ├── __init__.py        # Package initialization
 │       ├── version.py         # Auto-generated version from VCS
-│       └── fits_to_zarr_xradio.py  # FITS to Zarr conversion using xradio
+│       ├── fits_to_zarr_xradio.py  # Core FITS to Zarr conversion logic
+│       └── ingest/            # Ingest subpackage
+│           ├── __init__.py    # Ingest package exports
+│           ├── README.md      # Ingest module documentation
+│           ├── core.py        # Framework-independent conversion orchestration
+│           ├── cli.py         # Typer-based CLI interface (ovro-ingest command)
+│           └── prefect_workflow.py  # Optional Prefect workflow orchestration
 └── tests/                      # Test suite
     ├── __init__.py            # Test package initialization
     ├── test_import.py         # Basic import tests
     ├── test_fits_to_zarr.py   # FITS to Zarr conversion tests
-    └── test_ci_helpers.py     # Tests for CI helper scripts
+    ├── test_ci_helpers.py     # Tests for CI helper scripts
+    └── ingest/                # Ingest module tests
+        └── test_cli.py        # CLI integration tests
 ```
+
+## Ingest Module Overview
+
+The `ovro_lwa_portal.ingest` module provides FITS to Zarr conversion
+capabilities:
+
+### CLI Entry Point
+
+- **Command**: `ovro-ingest` (installed via `project.scripts` in pyproject.toml)
+- **Location**: `src/ovro_lwa_portal/ingest/cli.py`
+- **Commands**:
+  - `ovro-ingest convert` - Convert FITS to Zarr
+  - `ovro-ingest fix-headers` - Pre-process FITS headers
+  - `ovro-ingest version` - Show version info
+
+### Core Architecture
+
+1. **Core Module** (`ingest/core.py`):
+   - `ConversionConfig`: Configuration dataclass for conversion parameters
+   - `FITSToZarrConverter`: Main orchestration class (framework-independent)
+   - `FileLock`: Cross-platform file locking using portalocker
+   - `ProgressCallback`: Protocol for progress reporting
+
+2. **CLI Module** (`ingest/cli.py`):
+   - Typer-based CLI with rich progress bars
+   - Logging configuration (debug, info, warning, error levels)
+   - Error handling with actionable messages
+   - Support for two-step workflow (fix-headers then convert)
+
+3. **Prefect Module** (`ingest/prefect_workflow.py`):
+   - Optional Prefect flow integration
+   - Graceful degradation when Prefect not installed
+   - Retry logic and workflow monitoring
+
+### Key Implementation Details
+
+- **Framework Independence**: Core conversion logic wraps
+  `fits_to_zarr_xradio.py` without dependencies on CLI or Prefect
+- **File Locking**: Uses portalocker for cross-platform concurrent write
+  protection
+- **Progress Tracking**: Callback-based progress reporting works with any UI
+- **WCS Preservation**: Maintains celestial coordinates (RA/Dec) in output Zarr
+  stores
 
 ## Radio Astronomy Context
 

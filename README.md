@@ -3,6 +3,20 @@
 A Python library for radio astronomy data processing and visualization for the
 Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
 
+## Features
+
+- **FITS to Zarr Conversion**: Convert OVRO-LWA FITS image files to
+  cloud-optimized Zarr format
+- **Command-Line Interface**: User-friendly `ovro-ingest` CLI with progress
+  tracking
+- **WCS Coordinate Preservation**: Maintain celestial coordinates (RA/Dec) for
+  FITS-free analysis
+- **Incremental Processing**: Append new observations to existing Zarr stores
+- **Concurrent Write Protection**: File locking prevents data corruption from
+  simultaneous processes
+- **Optional Workflow Orchestration**: Prefect integration for production
+  deployments
+
 ## Prerequisites
 
 This project uses [Pixi](https://pixi.sh) for dependency management and task
@@ -106,11 +120,56 @@ Directly add packages (this will edit the pyproject.toml and install):
 pixi add your-package
 ```
 
+## Quick Start
+
+### Using the FITS to Zarr Ingest CLI
+
+After installation, convert OVRO-LWA FITS files to Zarr format:
+
+```bash
+# Basic conversion
+ovro-ingest convert /path/to/fits /path/to/output
+
+# With custom options
+ovro-ingest convert /path/to/fits /path/to/output \
+    --zarr-name my_data.zarr \
+    --chunk-lm 2048 \
+    --rebuild
+
+# Show help
+ovro-ingest convert --help
+```
+
+For detailed documentation on the ingest module, see the
+[Ingest Module README](src/ovro_lwa_portal/ingest/README.md).
+
+### Using the Python API
+
+```python
+from pathlib import Path
+from ovro_lwa_portal.ingest import FITSToZarrConverter
+from ovro_lwa_portal.ingest.core import ConversionConfig
+
+# Configure conversion
+config = ConversionConfig(
+    input_dir=Path("/path/to/fits"),
+    output_dir=Path("/path/to/output"),
+    zarr_name="ovro_lwa_data.zarr",
+    chunk_lm=1024,
+)
+
+# Execute conversion
+converter = FITSToZarrConverter(config)
+result = converter.convert()
+print(f"Created: {result}")
+```
+
 ## Technology Stack
 
 - **Core**: Python 3.12, xarray, dask, zarr
-- **Astronomy**: astropy, image-plane-correction
-- **Visualization**: Panel-compatible components
+- **Astronomy**: astropy, xradio, python-casacore
+- **CLI**: typer, rich (progress bars and formatted output)
+- **Workflow**: prefect (optional orchestration)
 - **Storage**: Zarr format optimized for cloud access
 - **Environment Management**: pixi
 
