@@ -807,7 +807,7 @@ extraction
 **Test Cases**:
 
 1. Test discover_fits_files() with valid FITS files
-2. Test pattern matching (YYYYMMDD*HHMMSS*_MHz\__-I-image.fits)
+2. Test pattern matching (YYYYMMDD*HHMMSS*\_MHz\_\_-I-image.fits)
 3. Test handling of \_fixed.fits files
 4. Test error on empty directory (ValueError)
 5. Test group_by_time_step() creates correct groups
