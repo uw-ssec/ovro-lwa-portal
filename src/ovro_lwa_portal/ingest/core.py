@@ -6,10 +6,11 @@ progress tracking, file locking, and robust error handling.
 
 from __future__ import annotations
 
-import fcntl
 import logging
 from pathlib import Path
 from typing import Any, Protocol
+
+import portalocker
 
 from ovro_lwa_portal.fits_to_zarr_xradio import convert_fits_dir_to_zarr
 
@@ -125,8 +126,8 @@ class FileLock:
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         self.lock_file = open(self.lock_path, "w")
         try:
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (OSError, IOError) as e:
+            portalocker.lock(self.lock_file, portalocker.LOCK_EX | portalocker.LOCK_NB)
+        except portalocker.LockException as e:
             self.lock_file.close()
             msg = (
                 f"Cannot acquire lock on {self.lock_path}. "
@@ -138,7 +139,7 @@ class FileLock:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Release the lock."""
         if self.lock_file:
-            fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
+            portalocker.unlock(self.lock_file)
             self.lock_file.close()
             try:
                 self.lock_path.unlink()
@@ -172,9 +173,7 @@ class FITSToZarrConverter:
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
 
-    def _report_progress(
-        self, stage: str, current: int, total: int, message: str
-    ) -> None:
+    def _report_progress(self, stage: str, current: int, total: int, message: str) -> None:
         """Report progress if callback is configured."""
         if self.progress_callback:
             self.progress_callback(stage, current, total, message)

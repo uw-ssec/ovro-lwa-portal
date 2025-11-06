@@ -28,6 +28,7 @@ dependencies = [
     "xradio[all]>=0.0.59,<0.1",
     "typer>=0.9.0",
     "rich>=13.7.0",
+    "portalocker>=2.8.0",
 ]
 
 [project.optional-dependencies]
