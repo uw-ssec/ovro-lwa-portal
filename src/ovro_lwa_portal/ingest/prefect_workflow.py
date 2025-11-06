@@ -39,25 +39,25 @@ except ImportError:
         raise ImportError(msg)
 
     # Create dummy decorators for type checking
-    def flow(*args, **kwargs):  # type: ignore[no-untyped-def]
-        def decorator(func):  # type: ignore[no-untyped-def]
+    def flow(func=None, *dargs, **dkwargs):  # type: ignore[no-untyped-def]
+        # Support both @flow and @flow(...)
+        def decorator(f):  # type: ignore[no-untyped-def]
             def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
                 _raise_import_error()
-
             return wrapper
-
+        if func is not None and callable(func):
+            return decorator(func)
         return decorator
 
-    def task(*args, **kwargs):  # type: ignore[no-untyped-def]
-        def decorator(func):  # type: ignore[no-untyped-def]
+    def task(func=None, *dargs, **dkwargs):  # type: ignore[no-untyped-def]
+        # Support both @task and @task(...)
+        def decorator(f):  # type: ignore[no-untyped-def]
             def wrapper(*args, **kwargs):  # type: ignore[no-untyped-def]
                 _raise_import_error()
-
             return wrapper
-
+        if func is not None and callable(func):
+            return decorator(func)
         return decorator
-
-
 if PREFECT_AVAILABLE:
 
     @task(name="Validate Configuration")
