@@ -189,6 +189,92 @@ class SpatialGrid:
 - Referenced by `ConversionMetadata.spatial_grid_reference`
 - Validated against every `TimeStepGroup`
 
+### 4a. WCSHeader
+
+**Purpose**: Represents the FITS celestial WCS header for coordinate
+transformations and plotting.
+
+**Attributes**:
+
+```python
+from astropy.io.fits import Header
+from astropy.wcs import WCS
+
+@dataclass(frozen=True)
+class WCSHeader:
+    """FITS celestial WCS header for RA/Dec coordinate transformations."""
+
+    header_string: str                  # WCS header as formatted string
+    ra_coords: NDArray[np.floating]     # 2D right ascension array (m, l) in degrees
+    dec_coords: NDArray[np.floating]    # 2D declination array (m, l) in degrees
+    frame: str = "fk5"                  # Coordinate frame (default FK5)
+    equinox: str = "J2000"              # Equinox (default J2000)
+
+    @property
+    def wcs(self) -> WCS:
+        """Reconstruct astropy WCS object from header string."""
+        return WCS(Header.fromstring(self.header_string, sep="\n"))
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Shape of coordinate arrays (m_size, l_size)."""
+        return self.ra_coords.shape
+
+    def to_dict(self) -> dict:
+        """Serialize WCS header for storage in Zarr attrs."""
+        return {
+            "header_string": self.header_string,
+            "frame": self.frame,
+            "equinox": self.equinox,
+        }
+
+    @classmethod
+    def from_fits(cls, fits_path: Path, spatial_grid: SpatialGrid) -> 'WCSHeader':
+        """Extract WCS header from FITS file and compute RA/Dec coordinates."""
+        from astropy.io import fits
+        with fits.open(fits_path) as hdul:
+            header = hdul[0].header
+        w2d = WCS(header).celestial
+
+        # Compute RA/Dec at pixel centers (origin=0)
+        ny, nx = spatial_grid.shape
+        yy, xx = np.indices((ny, nx), dtype=float)
+        ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)
+
+        header_str = w2d.to_header().tostring(sep="\n")
+
+        return cls(
+            header_string=header_str,
+            ra_coords=ra2d,
+            dec_coords=dec2d,
+        )
+```
+
+**Validation Rules** (from FR-019a-f):
+
+- Header string MUST be valid FITS WCS header format
+- RA/Dec coordinates MUST match spatial grid shape
+- RA/Dec MUST be computed at pixel centers (origin=0) for FITS standard
+  alignment
+- Coordinates MUST be in degrees, FK5/J2000 frame
+
+**Storage in Zarr** (FR-019c redundant storage):
+
+The WCS header is stored in 4 redundant locations to survive xarray operations:
+
+1. Dataset global attrs: `xds.attrs['fits_wcs_header']`
+2. 0-D variable: `wcs_header_str` (uses `np.bytes_` for NumPy 2.0 compatibility)
+3. Per-variable attrs: `xds[var].attrs['fits_wcs_header']` for each data
+   variable
+4. Coordinate attrs: `xds['right_ascension'].attrs['fits_wcs_header']` and
+   `xds['declination'].attrs['fits_wcs_header']`
+
+**Relationships**:
+
+- Extracted from first FITS file in each dataset
+- Provides RA/Dec coordinates for Zarr store
+- Used by plotting and analysis tools (WCSAxes)
+
 ### 5. ZarrStore
 
 **Purpose**: Represents the output Zarr data store with metadata.

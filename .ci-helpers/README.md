@@ -15,6 +15,8 @@ bucket for development and testing purposes.
 - Python 3.12+
 - s3fs package (install with: `pip install s3fs`)
 - tqdm package (install with: `pip install tqdm`)
+- python-dotenv package (optional, for .env file support:
+  `pip install python-dotenv`)
 
 #### Environment Variables
 
@@ -25,11 +27,35 @@ The script requires the following environment variables to be set:
 - `CALTECH_ENDPOINT_URL`: S3 endpoint URL for Caltech storage
 - `CALTECH_DEV_S3_BUCKET`: S3 bucket name containing test data
 
+You can provide these environment variables in several ways:
+
+1. **Using a .env file** (recommended for local development):
+   - Copy `.env.example` to `.env` and fill in your credentials
+   - The script will automatically load variables from `.env` in the current
+     directory
+   - Or specify a custom path with `--env-file /path/to/.env`
+
+2. **Export them in your shell**:
+
+   ```bash
+   export CALTECH_KEY="your_key"
+   export CALTECH_SECRET="your_secret"
+   # ... etc
+   ```
+
+3. **Set them inline** when running the script:
+   ```bash
+   CALTECH_KEY="..." CALTECH_SECRET="..." python .ci-helpers/download_test_fits.py
+   ```
+
 #### Usage
 
 ```bash
 # Download and extract FITS files to default directory (test_fits_files)
 python .ci-helpers/download_test_fits.py
+
+# Load credentials from a .env file
+python .ci-helpers/download_test_fits.py --env-file .env
 
 # Download to specific directory
 python .ci-helpers/download_test_fits.py -o /path/to/output
@@ -41,7 +67,7 @@ python .ci-helpers/download_test_fits.py -z custom_fits.zip
 python .ci-helpers/download_test_fits.py -v
 
 # Combine options
-python .ci-helpers/download_test_fits.py -o ./data -z fits_files.zip -v
+python .ci-helpers/download_test_fits.py --env-file .env -o ./data -z fits_files.zip -v
 ```
 
 #### Options
@@ -50,6 +76,8 @@ python .ci-helpers/download_test_fits.py -o ./data -z fits_files.zip -v
   test_fits_files)
 - `-z, --zip-filename NAME`: Name of the ZIP file to download (default:
   fits_files.zip)
+- `-e, --env-file PATH`: Path to .env file to load environment variables
+  (default: looks for .env in current directory)
 - `-v, --verbose`: Enable verbose logging (DEBUG level)
 - `-h, --help`: Show help message and exit
 

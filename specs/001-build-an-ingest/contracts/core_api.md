@@ -149,9 +149,9 @@ def fix_fits_headers(
 def load_fits_for_zarr(
     fixed_file: FixedFITSFile,
     chunk_lm: int = 1024,
-) -> xr.Dataset:
+) -> tuple[xr.Dataset, WCSHeader]:
     """
-    Load fixed FITS file into xarray Dataset for Zarr conversion.
+    Load fixed FITS file into xarray Dataset with WCS coordinates for Zarr conversion.
 
     Parameters
     ----------
@@ -163,7 +163,9 @@ def load_fits_for_zarr(
     Returns
     -------
     dataset : xr.Dataset
-        xarray Dataset with LM-only coordinates, ready for Zarr
+        xarray Dataset with L/M coordinates, RA/Dec coordinates, and WCS header
+    wcs_header : WCSHeader
+        Extracted WCS header with RA/Dec coordinate arrays
 
     Raises
     ------
@@ -174,16 +176,32 @@ def load_fits_for_zarr(
 
     Notes
     -----
-    Uses xradio.read_image() with do_sky_coords=False, compute_mask=False.
-    Drops sky coordinates (RA/Dec/velocity) if present.
+    Uses xradio.read_image() with do_sky_coords=False, compute_mask=False to read
+    pixels, then manually computes exact RA/Dec coordinates at pixel centers (origin=0)
+    using astropy WCS.
+
+    Attaches 2D coordinates:
+      - right_ascension (m, l): degrees, FK5/J2000
+      - declination (m, l): degrees, FK5/J2000
+
+    Preserves FITS celestial WCS header redundantly in 4 locations (FR-019c):
+      1. Dataset attrs: xds.attrs['fits_wcs_header']
+      2. 0-D variable: wcs_header_str (uses np.bytes_ for NumPy 2.0)
+      3. Per-variable attrs: xds[var].attrs['fits_wcs_header']
+      4. Coordinate attrs: on right_ascension and declination
+
     Applies optional LM chunking for memory efficiency.
 
     Examples
     --------
-    >>> dataset = load_fits_for_zarr(fixed_file, chunk_lm=1024)
+    >>> dataset, wcs = load_fits_for_zarr(fixed_file, chunk_lm=1024)
     >>> assert "l" in dataset.dims
     >>> assert "m" in dataset.dims
-    >>> assert "right_ascension" not in dataset.coords
+    >>> assert "right_ascension" in dataset.coords
+    >>> assert "declination" in dataset.coords
+    >>> assert dataset.coords["right_ascension"].dims == ("m", "l")
+    >>> assert "fits_wcs_header" in dataset.attrs
+    >>> assert "wcs_header_str" in dataset.data_vars
     """
     ...
 ```
@@ -191,9 +209,12 @@ def load_fits_for_zarr(
 **Contract**:
 
 - MUST use xradio for FITS reading (FR-014 compatibility)
-- MUST drop sky coordinates if present
+- MUST compute and attach RA/Dec coordinates at pixel centers (FR-019a, FR-019d)
+- MUST preserve WCS header in 4 redundant locations (FR-019c)
+- MUST use np.bytes\_ for 0-D WCS variable (NumPy 2.0 compatibility)
 - MUST apply LM chunking if chunk_lm > 0 (FR-018)
-- MUST return Dataset with clean metadata (no attrs, no encoding)
+- MUST return Dataset with WCS coordinates and WCSHeader object (FR-019e,
+  FR-019f)
 
 ---
 
@@ -206,7 +227,7 @@ def combine_frequency_subbands(
     time_step: TimeStepGroup,
     fixed_dir: Path,
     chunk_lm: int,
-) -> tuple[xr.Dataset, SpatialGrid]:
+) -> tuple[xr.Dataset, SpatialGrid, WCSHeader]:
     """
     Combine multiple frequency subbands for a single time step.
 
@@ -222,9 +243,11 @@ def combine_frequency_subbands(
     Returns
     -------
     combined_dataset : xr.Dataset
-        Combined dataset with all frequency subbands
+        Combined dataset with all frequency subbands and WCS coordinates
     spatial_grid : SpatialGrid
         Extracted spatial grid for validation
+    wcs_header : WCSHeader
+        WCS header from first file (used for all subbands)
 
     Raises
     ------
@@ -238,12 +261,16 @@ def combine_frequency_subbands(
     Sorts files by frequency for deterministic ordering (FR-006).
     Uses xr.combine_by_coords() or xr.concat() depending on structure.
     Logs warnings for frequency gaps (edge case).
+    Preserves WCS coordinates and header through combine/concat operations (FR-019b).
+    WCS header is extracted from first file and applied to all subbands.
 
     Examples
     --------
-    >>> dataset, grid = combine_frequency_subbands(time_step, fixed_dir, 1024)
+    >>> dataset, grid, wcs = combine_frequency_subbands(time_step, fixed_dir, 1024)
     >>> assert "frequency" in dataset.dims
     >>> assert dataset.frequency.size == len(time_step.files)
+    >>> assert "right_ascension" in dataset.coords
+    >>> assert "fits_wcs_header" in dataset.attrs
     """
     ...
 ```
@@ -253,6 +280,8 @@ def combine_frequency_subbands(
 - MUST sort by frequency (FR-006, deterministic ordering)
 - MUST return combined dataset with sorted frequency dimension
 - MUST extract and return SpatialGrid for validation
+- MUST extract and return WCSHeader from first file (FR-019a, FR-019b)
+- MUST preserve WCS coordinates through combine/concat (FR-019c)
 - MUST log warnings for frequency gaps (edge case behavior)
 
 ---

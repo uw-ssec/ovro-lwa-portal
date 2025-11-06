@@ -200,6 +200,22 @@ progress, and resume if interrupted.
 - **FR-019**: System MUST detect concurrent writes to the same output path using
   file locking and fail immediately with a clear error message
 
+#### WCS Coordinate Preservation
+
+- **FR-019a**: System MUST compute and attach celestial coordinates (RA/Dec) to
+  the Zarr store from FITS WCS headers
+- **FR-019b**: System MUST preserve the exact FITS celestial WCS header for
+  future WCS-aware plotting and analysis
+- **FR-019c**: System MUST store WCS header redundantly in multiple locations
+  (dataset attrs, 0-D variable, per-variable attrs, coordinate attrs) to ensure
+  survival through xarray operations
+- **FR-019d**: System MUST compute RA/Dec coordinates at pixel centers
+  (origin=0) using astropy WCS for exact alignment with FITS standard
+- **FR-019e**: System MUST provide 2D right_ascension and declination
+  coordinates with dimensions (m, l) in degrees, FK5/J2000 frame
+- **FR-019f**: System MUST support reconstruction of WCS from Zarr store without
+  requiring original FITS files
+
 #### Pipeline Management
 
 - **FR-020**: System MUST organize conversion as a data pipeline with discrete
