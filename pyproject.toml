@@ -56,7 +56,7 @@ remote = [
     "fsspec>=2024.6.0",
     "caltechdata_api>=1.0.0",
 ]
-all = ["ovro_lwa_portal[dev,remote]"]
+all = ["ovro_lwa_portal[dev]"]
 
 [project.license]
 file = "LICENSE"
