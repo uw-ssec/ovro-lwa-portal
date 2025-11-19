@@ -94,22 +94,22 @@ def open_dataset(
 
 ## Supported Sources
 
-| Type | Example | Requires |
-|------|---------|----------|
-| Local path | `/path/to/data.zarr` | Base install |
-| HTTP/HTTPS | `https://example.com/data.zarr` | Base install |
-| S3 | `s3://bucket/data.zarr` | `[remote]` extras |
-| GCS | `gs://bucket/data.zarr` | `[remote]` extras |
-| DOI | `doi:10.5281/zenodo.1234567` | `[remote]` extras |
+| Type       | Example                         | Requires          |
+| ---------- | ------------------------------- | ----------------- |
+| Local path | `/path/to/data.zarr`            | Base install      |
+| HTTP/HTTPS | `https://example.com/data.zarr` | Base install      |
+| S3         | `s3://bucket/data.zarr`         | `[remote]` extras |
+| GCS        | `gs://bucket/data.zarr`         | `[remote]` extras |
+| DOI        | `doi:10.5281/zenodo.1234567`    | `[remote]` extras |
 
 ## Common Issues
 
-| Error | Solution |
-|-------|----------|
-| `FileNotFoundError` | Check path exists |
-| `ImportError: s3fs required` | `pip install 'ovro_lwa_portal[remote]'` |
-| `DataSourceError: Failed to resolve DOI` | Check DOI is valid |
-| Memory error | Use smaller chunks |
+| Error                                    | Solution                                |
+| ---------------------------------------- | --------------------------------------- |
+| `FileNotFoundError`                      | Check path exists                       |
+| `ImportError: s3fs required`             | `pip install 'ovro_lwa_portal[remote]'` |
+| `DataSourceError: Failed to resolve DOI` | Check DOI is valid                      |
+| Memory error                             | Use smaller chunks                      |
 
 ## See Also
 

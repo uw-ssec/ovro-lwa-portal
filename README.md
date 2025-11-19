@@ -148,6 +148,7 @@ ds = ovro_lwa_portal.open_dataset(
 ```
 
 For remote data access, install with remote extras:
+
 ```bash
 pip install 'ovro_lwa_portal[remote]'
 ```

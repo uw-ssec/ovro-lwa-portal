@@ -3,29 +3,37 @@
 ## From Original Issue
 
 ### ✅ Function successfully loads data from local file paths
+
 **Status**: IMPLEMENTED
+
 - Function checks if path exists
 - Uses `xr.open_zarr()` for local paths
 - Raises `FileNotFoundError` if path doesn't exist
 - **Test**: `test_open_local_zarr()` in test_io.py
 
 ### ✅ Function successfully loads data from remote URLs (HTTP/HTTPS)
+
 **Status**: IMPLEMENTED
+
 - Detects HTTP/HTTPS protocols
 - Uses `xr.open_zarr()` with fsspec backend
 - **Test**: `test_open_remote_http()` in test_io.py (mocked)
 
 ### ✅ Function successfully loads data from cloud storage (S3, GCS)
+
 **Status**: IMPLEMENTED
+
 - Detects S3 (`s3://`) and GCS (`gs://`, `gcs://`) protocols
 - Checks for required backends (s3fs, gcsfs)
 - Raises `ImportError` with clear message if backend missing
-- **Tests**: 
+- **Tests**:
   - `test_open_remote_s3()` in test_io.py (mocked)
   - `test_open_remote_s3_missing_dependency()` in test_io.py
 
 ### ✅ Function successfully resolves and loads data from DOIs
+
 **Status**: IMPLEMENTED
+
 - Detects DOI format (with or without `doi:` prefix)
 - Uses `caltechdata_api` for resolution (preferred)
 - Falls back to DOI.org if caltechdata_api unavailable or fails
@@ -35,7 +43,9 @@
   - `test_resolve_doi_fallback_to_doi_org()` in test_io.py
 
 ### ✅ Automatic source type detection works correctly
+
 **Status**: IMPLEMENTED
+
 - `_detect_source_type()` function
 - Detects: local paths, remote URLs, DOI identifiers
 - **Tests**:
@@ -43,7 +53,9 @@
   - Covers local, HTTP, S3, GCS, DOI
 
 ### ✅ Data validation ensures OVRO-LWA schema compliance
+
 **Status**: IMPLEMENTED
+
 - `_validate_dataset()` function
 - Checks for expected dimensions: `time`, `frequency`, `l`, `m`
 - Checks for expected variables: `SKY`, `BEAM`
@@ -54,15 +66,20 @@
   - `test_load_with_validation()` in test_io_integration.py
 
 ### ✅ Comprehensive error messages for common failure modes
+
 **Status**: IMPLEMENTED
+
 - `FileNotFoundError`: "Local path does not exist: {path}"
-- `ImportError`: "s3fs is required for S3 access. Install with: pip install s3fs"
+- `ImportError`: "s3fs is required for S3 access. Install with: pip install
+  s3fs"
 - `DataSourceError`: "Failed to resolve DOI {doi}: {error}"
 - `DataSourceError`: "Failed to load dataset from {source}: {error}"
 - **Tests**: Multiple error handling tests in test_io.py
 
 ### ✅ Documentation includes examples for all supported source types
+
 **Status**: IMPLEMENTED
+
 - **docs/open_dataset.md**: Complete user guide with examples for:
   - Local paths
   - Remote URLs (HTTP/HTTPS)
@@ -75,7 +92,9 @@
 - **notebooks/open_dataset_examples.ipynb**: 10 interactive examples
 
 ### ✅ Unit tests cover all source types and edge cases
+
 **Status**: IMPLEMENTED
+
 - **tests/test_io.py**: 30+ unit tests
   - DOI detection and normalization (5 tests)
   - Source type detection (5 tests)
@@ -85,7 +104,9 @@
   - Error handling (5+ tests)
 
 ### ✅ Integration tests with real OVRO-LWA datasets
+
 **Status**: IMPLEMENTED
+
 - **tests/test_io_integration.py**: 15+ integration tests
   - Creates realistic OVRO-LWA dataset structure
   - Tests with actual dimensions: time, frequency, polarization, l, m
@@ -96,7 +117,9 @@
   - Tests computations
 
 ### ✅ Performance benchmarks for large dataset loading
+
 **Status**: DOCUMENTED (not automated benchmarks)
+
 - Documentation includes performance tips
 - Lazy loading by default (dask)
 - Configurable chunking
@@ -106,14 +129,18 @@
 ## Technical Requirements
 
 ### ✅ 1. Source Type Detection
+
 **Status**: FULLY IMPLEMENTED
+
 - Local paths: Checks filesystem
 - Remote URLs: Detects protocols (s3://, gs://, https://, http://)
 - DOI identifiers: Detects "doi:" prefix or pattern (10.xxxx/xxxxx)
 - **Implementation**: `_detect_source_type()`, `_is_doi()`
 
 ### ✅ 2. DOI Resolution
+
 **Status**: FULLY IMPLEMENTED
+
 - Integrates with Caltech Data API (`caltechdata_api`)
 - Resolves DOI to actual data URL
 - Fallback to DOI.org if API unavailable
@@ -122,7 +149,9 @@
 - **Note**: Caching not implemented (marked as future enhancement)
 
 ### ✅ 3. Data Loading
+
 **Status**: FULLY IMPLEMENTED
+
 - Supports zarr as primary format ✅
 - Lazy loading with dask ✅
 - Cloud storage authentication via environment variables ✅
@@ -130,7 +159,9 @@
 - **Note**: NetCDF/HDF5 support marked as future enhancement
 
 ### ✅ 4. Data Validation & Standardization
+
 **Status**: FULLY IMPLEMENTED
+
 - Verifies OVRO-LWA data model
 - Checks for required coordinates: `time`, `frequency`, `l`, `m` ✅
 - Checks for required data variables: `SKY`, `BEAM` ✅
@@ -139,7 +170,9 @@
 - **Note**: Doesn't add missing metadata (logs warnings instead)
 
 ### ✅ 5. Error Handling
+
 **Status**: FULLY IMPLEMENTED
+
 - File/path not found ✅
 - Network connectivity issues ✅
 - Invalid or malformed DOIs ✅
@@ -149,7 +182,9 @@
 - **Implementation**: Try-except blocks throughout, custom `DataSourceError`
 
 ### ✅ 6. Performance Considerations
+
 **Status**: FULLY IMPLEMENTED
+
 - Lazy loading (dask) by default ✅
 - Intelligent default chunking (chunks="auto") ✅
 - Users can override chunking ✅
@@ -159,12 +194,14 @@
 ## Suggested Dependencies
 
 ### ✅ Core Dependencies (Already in Project)
+
 - xarray ✅
 - zarr ✅
 - dask ✅
 - fsspec ✅ (via xarray)
 
 ### ✅ Optional Dependencies (Added)
+
 - requests ✅ (for DOI resolution)
 - s3fs ✅ (for S3 access)
 - gcsfs ✅ (for GCS access)
@@ -174,6 +211,7 @@
 ## Function Signature Match
 
 **Required**:
+
 ```python
 def open_dataset(
     source: str | Path,
@@ -184,6 +222,7 @@ def open_dataset(
 ```
 
 **Implemented**:
+
 ```python
 def open_dataset(
     source: str | Path,
@@ -199,6 +238,7 @@ def open_dataset(
 ## Example Usage Match
 
 All examples from the issue work with our implementation:
+
 - ✅ Local zarr store
 - ✅ S3 bucket
 - ✅ HTTP/HTTPS URL
@@ -208,12 +248,17 @@ All examples from the issue work with our implementation:
 ## Summary
 
 ### Fully Implemented: 11/11 Acceptance Criteria ✅
+
 ### Fully Implemented: 6/6 Technical Requirements ✅
+
 ### All Suggested Dependencies: Added ✅
+
 ### Function Signature: Matches (with improvements) ✅
+
 ### Example Usage: All work ✅
 
 ## Future Enhancements (Explicitly Out of Scope)
+
 - Streaming data support
 - Built-in subsetting before load
 - Authentication systems integration
@@ -226,4 +271,6 @@ All examples from the issue work with our implementation:
 
 **ALL ACCEPTANCE CRITERIA MET** ✅
 
-The implementation fully satisfies all requirements from Issue #72, with some beneficial additions (validate parameter, comprehensive documentation, extensive tests). The code is production-ready and safe to commit.
+The implementation fully satisfies all requirements from Issue #72, with some
+beneficial additions (validate parameter, comprehensive documentation, extensive
+tests). The code is production-ready and safe to commit.
