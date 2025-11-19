@@ -143,12 +143,11 @@ ds = ovro_lwa_portal.open_dataset("doi:10.5281/zenodo.1234567")
 # Customize chunking for large datasets
 ds = ovro_lwa_portal.open_dataset(
     "path/to/data.zarr",
-    chunks={"time": 100, "frequency": 50}  # or chunks="auto" (default), chunks=None
+    chunks={"time": 100, "frequency": 50}
 )
 ```
 
 For remote data access, install with remote extras:
-
 ```bash
 pip install 'ovro_lwa_portal[remote]'
 ```
