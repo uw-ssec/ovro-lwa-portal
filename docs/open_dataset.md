@@ -1,12 +1,15 @@
 # Loading OVRO-LWA Data with `open_dataset()`
 
-The `open_dataset()` function provides a unified interface for loading OVRO-LWA data from multiple sources, including local file paths, remote URLs, and DOI identifiers.
+The `open_dataset()` function provides a unified interface for loading OVRO-LWA
+data from multiple sources, including local file paths, remote URLs, and DOI
+identifiers.
 
 ## Installation
 
 ### Basic Installation
 
-The core `open_dataset()` function works with local files using the base installation:
+The core `open_dataset()` function works with local files using the base
+installation:
 
 ```bash
 pip install ovro_lwa_portal
@@ -14,13 +17,15 @@ pip install ovro_lwa_portal
 
 ### Remote Data Access
 
-For remote data access (S3, Google Cloud Storage, DOI resolution), install with the `remote` extras:
+For remote data access (S3, Google Cloud Storage, DOI resolution), install with
+the `remote` extras:
 
 ```bash
 pip install 'ovro_lwa_portal[remote]'
 ```
 
 This installs additional dependencies:
+
 - `requests` - For DOI resolution
 - `s3fs` - For AWS S3 access
 - `gcsfs` - For Google Cloud Storage access
@@ -85,16 +90,21 @@ def open_dataset(
   - Remote URL (e.g., `"s3://bucket/data.zarr"`, `"https://..."`)
   - DOI string (e.g., `"doi:10.xxxx/xxxxx"` or `"10.xxxx/xxxxx"`)
 
-- **chunks** (dict, str, or None, default `"auto"`): Chunking strategy for lazy loading:
-  - `dict`: Explicit chunk sizes per dimension, e.g., `{"time": 100, "frequency": 50}`
+- **chunks** (dict, str, or None, default `"auto"`): Chunking strategy for lazy
+  loading:
+  - `dict`: Explicit chunk sizes per dimension, e.g.,
+    `{"time": 100, "frequency": 50}`
   - `"auto"`: Let xarray/dask determine optimal chunks (recommended)
   - `None`: Load entire dataset into memory (not recommended for large data)
 
-- **engine** (str, default `"zarr"`): Backend engine for loading data. Currently supports `"zarr"`.
+- **engine** (str, default `"zarr"`): Backend engine for loading data. Currently
+  supports `"zarr"`.
 
-- **validate** (bool, default `True`): If True, validate that loaded data conforms to OVRO-LWA data model.
+- **validate** (bool, default `True`): If True, validate that loaded data
+  conforms to OVRO-LWA data model.
 
-- **kwargs**: Additional arguments passed to the underlying loader (e.g., `xr.open_zarr`)
+- **kwargs**: Additional arguments passed to the underlying loader (e.g.,
+  `xr.open_zarr`)
 
 ### Returns
 
@@ -128,7 +138,8 @@ ds = ovro_lwa_portal.open_dataset(
 
 ### Disable Validation
 
-Skip validation for faster loading when you're confident about the data structure:
+Skip validation for faster loading when you're confident about the data
+structure:
 
 ```python
 ds = ovro_lwa_portal.open_dataset(
@@ -171,7 +182,8 @@ ds = ovro_lwa_portal.open_dataset("gs://ovro-lwa-data/observation.zarr")
 
 ### DOI Resolution
 
-The function automatically resolves DOIs to data URLs using the Caltech Data API:
+The function automatically resolves DOIs to data URLs using the Caltech Data
+API:
 
 ```python
 # DOI resolution happens automatically
@@ -185,12 +197,14 @@ ds = ovro_lwa_portal.open_dataset("doi:10.22002/abc123")
 
 ## Data Validation
 
-By default, `open_dataset()` validates that the loaded data conforms to the OVRO-LWA data model:
+By default, `open_dataset()` validates that the loaded data conforms to the
+OVRO-LWA data model:
 
 - **Expected dimensions**: `time`, `frequency`, `l`, `m`
 - **Expected variables**: `SKY`, `BEAM`
 
-If validation fails, warnings are logged but the dataset is still returned. This allows working with non-standard or experimental data formats.
+If validation fails, warnings are logged but the dataset is still returned. This
+allows working with non-standard or experimental data formats.
 
 To disable validation:
 
@@ -218,11 +232,13 @@ except ImportError as e:
 ### Common Errors
 
 1. **FileNotFoundError**: Local path doesn't exist
+
    ```
    FileNotFoundError: Local path does not exist: /path/to/data.zarr
    ```
 
 2. **ImportError**: Missing dependency for remote access
+
    ```
    ImportError: s3fs is required for S3 access. Install with: pip install s3fs
    ```
@@ -237,6 +253,7 @@ except ImportError as e:
 ### Lazy Loading
 
 By default, `open_dataset()` uses lazy loading with dask, which means:
+
 - Data is not loaded into memory immediately
 - Only the chunks you access are loaded
 - You can work with datasets larger than available RAM
@@ -350,6 +367,7 @@ client.close()
 ## API Reference
 
 For complete API documentation, see:
+
 - [ovro_lwa_portal.io module](../src/ovro_lwa_portal/io.py)
 - [xarray documentation](https://docs.xarray.dev/)
 - [dask documentation](https://docs.dask.org/)
@@ -359,6 +377,7 @@ For complete API documentation, see:
 ### Issue: "s3fs is required for S3 access"
 
 **Solution**: Install the remote extras:
+
 ```bash
 pip install 'ovro_lwa_portal[remote]'
 ```
@@ -366,17 +385,21 @@ pip install 'ovro_lwa_portal[remote]'
 ### Issue: "Failed to resolve DOI"
 
 **Possible causes**:
+
 1. DOI doesn't exist or is malformed
 2. Network connectivity issues
 3. Caltech Data API is unavailable
 
-**Solution**: Check the DOI is correct and try accessing it directly in a browser.
+**Solution**: Check the DOI is correct and try accessing it directly in a
+browser.
 
 ### Issue: "Dataset may not be OVRO-LWA format"
 
 **Cause**: The loaded dataset doesn't have expected dimensions or variables.
 
-**Solution**: This is just a warning. If you're working with non-standard data, disable validation:
+**Solution**: This is just a warning. If you're working with non-standard data,
+disable validation:
+
 ```python
 ds = ovro_lwa_portal.open_dataset("data.zarr", validate=False)
 ```
@@ -384,6 +407,7 @@ ds = ovro_lwa_portal.open_dataset("data.zarr", validate=False)
 ### Issue: Memory errors with large datasets
 
 **Solution**: Use smaller chunks or ensure lazy loading is enabled:
+
 ```python
 ds = ovro_lwa_portal.open_dataset(
     "data.zarr",
