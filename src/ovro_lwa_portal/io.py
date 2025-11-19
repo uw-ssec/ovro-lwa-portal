@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -202,7 +203,7 @@ def _validate_dataset(ds: xr.Dataset) -> None:
             f"Expected variables like {common_vars}, found {found_vars}"
         )
 
-    logger.info(f"Dataset loaded with dimensions: {dict(ds.dims)}")
+    logger.info(f"Dataset loaded with dimensions: {dict(ds.sizes)}")
     logger.info(f"Dataset variables: {list(ds.data_vars.keys())}")
 
 
@@ -314,7 +315,10 @@ def open_dataset(
                     raise FileNotFoundError(msg)
 
                 logger.info(f"Loading local zarr store: {path}")
-                ds = xr.open_zarr(path, chunks=chunks, **kwargs)
+                # Allow warnings to pass through (e.g., chunk alignment warnings)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("default")
+                    ds = xr.open_zarr(path, chunks=chunks, **kwargs)
 
             elif source_type == "remote":
                 # For remote sources, we need fsspec and appropriate backend
@@ -341,7 +345,10 @@ def open_dataset(
                         )
                         raise ImportError(msg) from e
 
-                ds = xr.open_zarr(normalized_source, chunks=chunks, **kwargs)
+                # Allow warnings to pass through (e.g., chunk alignment warnings)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("default")
+                    ds = xr.open_zarr(normalized_source, chunks=chunks, **kwargs)
 
             else:
                 msg = f"Unsupported source type: {source_type}"
