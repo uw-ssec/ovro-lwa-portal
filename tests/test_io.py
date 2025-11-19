@@ -99,7 +99,7 @@ class TestSourceTypeDetection:
 class TestDatasetValidation:
     """Tests for dataset validation."""
 
-    def test_validate_valid_ovro_dataset(self, caplog) -> None:
+    def test_validate_valid_ovro_dataset(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test validation of a valid OVRO-LWA dataset."""
         ds = xr.Dataset(
             {
@@ -119,7 +119,7 @@ class TestDatasetValidation:
         # Should log info about dimensions and variables
         assert "dimensions" in caplog.text.lower()
 
-    def test_validate_missing_dimensions(self, caplog) -> None:
+    def test_validate_missing_dimensions(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test validation warns about missing expected dimensions."""
         ds = xr.Dataset(
             {
@@ -135,7 +135,7 @@ class TestDatasetValidation:
         _validate_dataset(ds)
         assert "may not be OVRO-LWA format" in caplog.text
 
-    def test_validate_missing_variables(self, caplog) -> None:
+    def test_validate_missing_variables(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test validation warns about missing expected variables."""
         ds = xr.Dataset(
             {
@@ -352,7 +352,7 @@ class TestOpenDataset:
 class TestDOIResolution:
     """Tests for DOI resolution functionality."""
 
-    @patch("ovro_lwa_portal.io.get_metadata")
+    @patch("caltechdata_api.get_metadata")
     def test_resolve_doi_with_caltechdata_api(self, mock_get_metadata: Mock) -> None:
         """Test DOI resolution using caltechdata_api."""
         from ovro_lwa_portal.io import _resolve_doi
@@ -373,7 +373,7 @@ class TestDOIResolution:
         assert url == "https://data.caltech.edu/records/12345/files/data.zarr"
         mock_get_metadata.assert_called_once_with("10.5281/zenodo.1234567")
 
-    @patch("ovro_lwa_portal.io.get_metadata")
+    @patch("caltechdata_api.get_metadata")
     def test_resolve_doi_no_files_in_metadata(self, mock_get_metadata: Mock) -> None:
         """Test DOI resolution when metadata has no files."""
         from ovro_lwa_portal.io import _resolve_doi
