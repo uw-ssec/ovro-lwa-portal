@@ -184,7 +184,7 @@ def _validate_dataset(ds: xr.Dataset) -> None:
     """
     # Check for required dimensions (at least some of these should exist)
     expected_dims = {"time", "frequency", "l", "m"}
-    found_dims = set(ds.dims.keys())
+    found_dims = set(ds.sizes.keys())
 
     if not found_dims.intersection(expected_dims):
         logger.warning(

@@ -144,7 +144,7 @@ isort.required-imports = ["from __future__ import annotations"]
 # For more information, see: https://pixi.sh/latest/build/python/
 [tool.pixi.workspace]
 # Pinned due to https://github.com/prefix-dev/pixi/issues/4723
-requires-pixi = ">=0.55.0, <0.56.0"
+requires-pixi = ">=0.55.0"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 

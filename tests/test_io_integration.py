@@ -79,7 +79,7 @@ class TestOpenDatasetIntegration:
         assert isinstance(ds, xr.Dataset)
         assert "SKY" in ds.data_vars
         assert "BEAM" in ds.data_vars
-        assert set(ds.dims.keys()) == {"time", "frequency", "polarization", "l", "m"}
+        assert set(ds.sizes.keys()) == {"time", "frequency", "polarization", "l", "m"}
 
     def test_load_with_validation(self, sample_zarr_store: Path) -> None:
         """Test loading with validation enabled."""
