@@ -55,7 +55,6 @@ jobs:
         with:
           pixi-version: v0.55.0
           cache: true
-          locked: false
 
       - name: Install dependencies
         run: pixi install
