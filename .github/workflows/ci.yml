@@ -30,6 +30,7 @@ jobs:
         with:
           pixi-version: v0.55.0
           cache: true
+          locked: false
 
       - name: Run pre-commit checks
         run: pixi run pre-commit-all
