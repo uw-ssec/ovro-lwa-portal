@@ -65,7 +65,10 @@ def _normalize_doi(source: str) -> str:
 
 
 def _resolve_doi(doi: str) -> str:
-    """Resolve DOI to data URL using Caltech Data API.
+    """Resolve DOI to zarr store URL using DataCite Media API.
+
+    Uses the approach from caltechdata_api to query the DataCite Media API
+    and retrieve the zarr store URL associated with the DOI.
 
     Parameters
     ----------
@@ -75,12 +78,12 @@ def _resolve_doi(doi: str) -> str:
     Returns
     -------
     str
-        URL to the data resource.
+        URL to the zarr store.
 
     Raises
     ------
     DataSourceError
-        If DOI cannot be resolved or data URL not found.
+        If DOI cannot be resolved or zarr URL not found.
     """
     try:
         import requests
@@ -91,53 +94,52 @@ def _resolve_doi(doi: str) -> str:
         )
         raise ImportError(msg) from e
 
-    # Try caltechdata_api first if available
+    # Use DataCite Media API to get the zarr store URL
+    # Based on: https://github.com/caltechlibrary/caltechdata_api/blob/main/caltechdata_api/download_file.py
+    api_url = f"https://api.datacite.org/dois/{doi}/media"
+    logger.info(f"Querying DataCite Media API: {api_url}")
+
     try:
-        from caltechdata_api import get_metadata
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
 
-        logger.info(f"Resolving DOI using caltechdata_api: {doi}")
-        try:
-            metadata = get_metadata(doi)
-
-            # Extract data URL from metadata
-            # The structure depends on the Caltech Data API response
-            if "files" in metadata and metadata["files"]:
-                # Get the first file URL or look for zarr store
-                for file_info in metadata["files"]:
-                    if "links" in file_info and "self" in file_info["links"]:
-                        url = file_info["links"]["self"]
-                        logger.info(f"Resolved DOI to URL: {url}")
-                        return url
-
-            msg = f"No data URL found in DOI metadata for {doi}"
+        if "data" not in data or not data["data"]:
+            msg = f"No media files found for DOI: {doi}"
             raise DataSourceError(msg)
-        except Exception as e:
-            # If caltechdata_api fails, fall back to DOI.org
-            logger.warning(f"caltechdata_api failed: {e}, falling back to DOI.org")
-            raise ImportError("Fallback to DOI.org") from e
 
-    except ImportError:
-        # Fallback to DOI.org resolution
-        logger.info(f"caltechdata_api not available, using DOI.org resolution for: {doi}")
-        doi_url = f"https://doi.org/{doi}"
+        # Look for zarr store in media types
+        # Prefer application/zarr or application/zip+zarr media types
+        zarr_url = None
+        for media in data["data"]:
+            attrs = media.get("attributes", {})
+            media_type = attrs.get("mediaType", "")
+            url = attrs.get("url", "")
 
-        try:
-            response = requests.get(
-                doi_url,
-                headers={"Accept": "application/json"},
-                allow_redirects=True,
-                timeout=10,
-            )
-            response.raise_for_status()
+            # Check if this is a zarr store
+            if "zarr" in media_type.lower() or url.endswith(".zarr") or ".zarr/" in url:
+                zarr_url = url
+                logger.info(f"Found zarr store with media type '{media_type}': {url}")
+                break
 
-            # The final URL after redirects might be the data location
-            final_url = response.url
-            logger.info(f"Resolved DOI to URL: {final_url}")
-            return final_url
+        # If no explicit zarr media type, use the first URL
+        if zarr_url is None and data["data"]:
+            zarr_url = data["data"][0]["attributes"]["url"]
+            logger.warning(f"No zarr media type found, using first URL: {zarr_url}")
 
-        except requests.RequestException as e:
-            msg = f"Failed to resolve DOI {doi}: {e}"
-            raise DataSourceError(msg) from e
+        if zarr_url is None:
+            msg = f"No zarr store URL found for DOI: {doi}"
+            raise DataSourceError(msg)
+
+        logger.info(f"Resolved DOI to zarr URL: {zarr_url}")
+        return zarr_url
+
+    except requests.RequestException as e:
+        msg = f"Failed to query DataCite Media API for DOI {doi}: {e}"
+        raise DataSourceError(msg) from e
+    except (KeyError, IndexError) as e:
+        msg = f"Unexpected response format from DataCite Media API for DOI {doi}: {e}"
+        raise DataSourceError(msg) from e
 
 
 def _detect_source_type(source: str | Path) -> tuple[str, str]:
@@ -304,27 +306,33 @@ def open_dataset(
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
             raise DataSourceError(msg) from e
 
-    # Load data based on source type and engine
+    # Load data based on engine
     try:
         if engine == "zarr":
-            if source_type == "local":
-                # Check if local path exists
-                path = Path(normalized_source)
-                if not path.exists():
-                    msg = f"Local path does not exist: {path}"
-                    raise FileNotFoundError(msg)
+            # Use fsspec's universal pathlib for unified handling of local and remote paths
+            try:
+                from upath import UPath
+            except ImportError as e:
+                msg = (
+                    "universal-pathlib is required for path handling. "
+                    "Install with: pip install universal-pathlib"
+                )
+                raise ImportError(msg) from e
 
-                logger.info(f"Loading local zarr store: {path}")
-                # Allow warnings to pass through (e.g., chunk alignment warnings)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("default")
-                    ds = xr.open_zarr(path, chunks=chunks, **kwargs)
+            # Create UPath object - works for both local and remote paths
+            store_path = UPath(normalized_source)
+            logger.info(f"Loading zarr store from: {store_path}")
 
-            elif source_type == "remote":
-                # For remote sources, we need fsspec and appropriate backend
-                logger.info(f"Loading remote zarr store: {normalized_source}")
+            # Explicit local existence check
+            if store_path.protocol in ("", "file") and not store_path.exists():
+                raise FileNotFoundError(f"Local path does not exist: {store_path}")
 
-                # Check if we need cloud storage backends
+            # Build a Zarr store (fsspec mapper) from the UPath
+            fs = store_path.fs          # fsspec filesystem
+            store = fs.get_mapper(store_path.path)
+
+            # Check if we need cloud storage backends for remote paths
+            if source_type == "remote":
                 parsed = urlparse(normalized_source)
                 if parsed.scheme == "s3":
                     try:
@@ -345,14 +353,11 @@ def open_dataset(
                         )
                         raise ImportError(msg) from e
 
-                # Allow warnings to pass through (e.g., chunk alignment warnings)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("default")
-                    ds = xr.open_zarr(normalized_source, chunks=chunks, **kwargs)
-
-            else:
-                msg = f"Unsupported source type: {source_type}"
-                raise DataSourceError(msg)
+            # Open the zarr store using the UPath
+            # xr.open_zarr can handle fsspec mappers directly”
+            with warnings.catch_warnings():
+                warnings.simplefilter("default")
+                ds = xr.open_zarr(store, chunks=chunks, **kwargs)
 
         else:
             msg = f"Unsupported engine: {engine}. Currently only 'zarr' is supported."
