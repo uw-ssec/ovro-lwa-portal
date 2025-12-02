@@ -155,10 +155,10 @@ class TestOpenDatasetIntegration:
         """Test selecting subsets of data."""
         ds = open_dataset(sample_zarr_store)
 
-        # Select subset
-        subset = ds.sel(time=slice(0, 5), frequency=slice(40e6, 60e6))
+        # Select subset: first 5 time steps by index, frequency between 40–60 MHz by value
+        subset = ds.isel(time=slice(0, 5)).sel(frequency=slice(40e6, 60e6))
 
-        assert len(subset.time) <= 5
+        assert len(subset.time) == 5
         assert subset.frequency.min() >= 40e6
         assert subset.frequency.max() <= 60e6
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
+from fsspec.mapping import FSMap
 
 import numpy as np
 import pytest
@@ -273,7 +274,9 @@ class TestOpenDataset:
         loaded_ds = open_dataset(url, validate=False)
 
         mock_open_zarr.assert_called_once()
-        assert mock_open_zarr.call_args[0][0] == url
+        store_arg = mock_open_zarr.call_args[0][0]
+        # We now expect a Zarr store (FSMap), not a bare URL
+        assert isinstance(store_arg, FSMap)
         assert isinstance(loaded_ds, xr.Dataset)
 
     def test_open_remote_s3_requires_s3fs(self) -> None:

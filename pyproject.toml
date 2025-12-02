@@ -29,6 +29,7 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.7.0",
     "portalocker>=2.8.0",
+    "universal-pathlib>=0.2",
 ]
 
 [project.optional-dependencies]
