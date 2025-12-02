@@ -29,6 +29,7 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.7.0",
     "portalocker>=2.8.0",
+    "universal-pathlib>=0.2",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,13 @@ ci = [
 ]
 prefect = [
     "prefect>=3.0.0",
+]
+remote = [
+    "requests>=2.31.0",
+    "s3fs>=2024.6.0",
+    "gcsfs>=2024.6.0",
+    "fsspec>=2024.6.0",
+    "caltechdata_api>=1.0.0",
 ]
 all = ["ovro_lwa_portal[dev]"]
 
@@ -137,7 +145,7 @@ isort.required-imports = ["from __future__ import annotations"]
 # For more information, see: https://pixi.sh/latest/build/python/
 [tool.pixi.workspace]
 # Pinned due to https://github.com/prefix-dev/pixi/issues/4723
-requires-pixi = ">=0.55.0, <0.56.0"
+requires-pixi = ">=0.55.0"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 

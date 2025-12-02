@@ -27,7 +27,7 @@ Request:
   - Create a pull request, adding the task owner as the reviewer.
 
 - Please follow the
-  [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/conventional-commits.md)
+  [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md)
   naming for pull request titles.
 
 Your contributions make this project better—thank you for your support! 🚀
