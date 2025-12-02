@@ -210,7 +210,7 @@ class TestOpenDataset:
     def test_open_with_custom_chunks(self, tmp_path: Path) -> None:
         """Test opening with custom chunk specification."""
         import warnings
-        
+
         zarr_path = tmp_path / "test.zarr"
         ds = xr.Dataset(
             {
@@ -343,6 +343,6 @@ class TestDOIResolution:
         # This test just verifies DOI detection works
         assert _is_doi("doi:10.5281/zenodo.1234567")
         assert _is_doi("10.5281/zenodo.1234567")
-        
+
         # Verify normalization
         assert _normalize_doi("doi:10.5281/zenodo.1234567") == "10.5281/zenodo.1234567"
