@@ -16,7 +16,6 @@ from ovro_lwa_portal.io import (
     _detect_source_type,
     _is_doi,
     _normalize_doi,
-    _validate_dataset,
     open_dataset,
 )
 
@@ -97,62 +96,6 @@ class TestSourceTypeDetection:
         assert normalized == "10.5281/zenodo.1234567"
 
 
-class TestDatasetValidation:
-    """Tests for dataset validation."""
-
-    def test_validate_valid_ovro_dataset(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test validation of a valid OVRO-LWA dataset."""
-        ds = xr.Dataset(
-            {
-                "SKY": (["time", "frequency", "l", "m"], np.random.rand(2, 3, 10, 10)),
-            },
-            coords={
-                "time": np.arange(2),
-                "frequency": np.arange(3),
-                "l": np.arange(10),
-                "m": np.arange(10),
-            },
-        )
-
-        # Should not raise
-        _validate_dataset(ds)
-
-        # Should log info about dimensions and variables
-        assert "dimensions" in caplog.text.lower()
-
-    def test_validate_missing_dimensions(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test validation warns about missing expected dimensions."""
-        ds = xr.Dataset(
-            {
-                "data": (["x", "y"], np.random.rand(10, 10)),
-            },
-            coords={
-                "x": np.arange(10),
-                "y": np.arange(10),
-            },
-        )
-
-        # Should not raise but should warn
-        _validate_dataset(ds)
-        assert "may not be OVRO-LWA format" in caplog.text
-
-    def test_validate_missing_variables(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test validation warns about missing expected variables."""
-        ds = xr.Dataset(
-            {
-                "other_var": (["time", "frequency"], np.random.rand(2, 3)),
-            },
-            coords={
-                "time": np.arange(2),
-                "frequency": np.arange(3),
-            },
-        )
-
-        # Should not raise but should warn
-        _validate_dataset(ds)
-        assert "may not be OVRO-LWA format" in caplog.text
-
-
 class TestOpenDataset:
     """Tests for open_dataset function."""
 
@@ -174,32 +117,11 @@ class TestOpenDataset:
         ds.to_zarr(zarr_path)
 
         # Load it back
-        loaded_ds = open_dataset(zarr_path, validate=False)
+        loaded_ds = open_dataset(zarr_path)
 
         assert isinstance(loaded_ds, xr.Dataset)
         assert "SKY" in loaded_ds.data_vars
         assert set(loaded_ds.sizes.keys()) == {"time", "frequency", "l", "m"}
-
-    def test_open_local_zarr_with_validation(self, tmp_path: Path) -> None:
-        """Test opening a local zarr store with validation."""
-        zarr_path = tmp_path / "test.zarr"
-        ds = xr.Dataset(
-            {
-                "SKY": (["time", "frequency", "l", "m"], np.random.rand(2, 3, 10, 10)),
-            },
-            coords={
-                "time": np.arange(2),
-                "frequency": np.arange(3),
-                "l": np.arange(10),
-                "m": np.arange(10),
-            },
-        )
-        ds.to_zarr(zarr_path)
-
-        # Load with validation (default)
-        loaded_ds = open_dataset(zarr_path)
-
-        assert isinstance(loaded_ds, xr.Dataset)
 
     def test_open_nonexistent_local_path(self, tmp_path: Path) -> None:
         """Test opening a nonexistent local path raises FileNotFoundError."""
@@ -232,7 +154,6 @@ class TestOpenDataset:
             loaded_ds = open_dataset(
                 zarr_path,
                 chunks={"time": 5, "frequency": 10},
-                validate=False,
             )
 
         assert isinstance(loaded_ds, xr.Dataset)
@@ -254,7 +175,7 @@ class TestOpenDataset:
         ds.to_zarr(zarr_path)
 
         # Load without chunks
-        loaded_ds = open_dataset(zarr_path, chunks=None, validate=False)
+        loaded_ds = open_dataset(zarr_path, chunks=None)
 
         assert isinstance(loaded_ds, xr.Dataset)
         # Data should be numpy array, not dask
@@ -271,7 +192,7 @@ class TestOpenDataset:
         mock_open_zarr.return_value = mock_ds
 
         url = "https://example.com/data.zarr"
-        loaded_ds = open_dataset(url, validate=False)
+        loaded_ds = open_dataset(url)
 
         mock_open_zarr.assert_called_once()
         store_arg = mock_open_zarr.call_args[0][0]
@@ -300,7 +221,7 @@ class TestOpenDataset:
         mock_open_zarr.return_value = mock_ds
 
         doi = "doi:10.5281/zenodo.1234567"
-        loaded_ds = open_dataset(doi, validate=False)
+        loaded_ds = open_dataset(doi)
 
         mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567")
         mock_open_zarr.assert_called_once()
@@ -314,16 +235,7 @@ class TestOpenDataset:
         doi = "doi:10.5281/zenodo.1234567"
 
         with pytest.raises(DataSourceError, match="Failed to resolve DOI"):
-            open_dataset(doi, validate=False)
-
-    def test_open_unsupported_engine(self, tmp_path: Path) -> None:
-        """Test opening with unsupported engine raises error."""
-        zarr_path = tmp_path / "test.zarr"
-        ds = xr.Dataset({"data": (["x"], np.arange(10))})
-        ds.to_zarr(zarr_path)
-
-        with pytest.raises(DataSourceError, match="Unsupported engine"):
-            open_dataset(zarr_path, engine="netcdf", validate=False)
+            open_dataset(doi)
 
     @patch("ovro_lwa_portal.io.xr.open_zarr")
     def test_open_dataset_load_failure(self, mock_open_zarr: Mock, tmp_path: Path) -> None:
@@ -334,7 +246,7 @@ class TestOpenDataset:
         zarr_path.mkdir()
 
         with pytest.raises(DataSourceError, match="Failed to load dataset"):
-            open_dataset(zarr_path, validate=False)
+            open_dataset(zarr_path)
 
 
 class TestDOIResolution:
