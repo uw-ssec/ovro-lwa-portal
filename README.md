@@ -5,6 +5,8 @@ Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
 
 ## Features
 
+- **Unified Data Loading**: Load OVRO-LWA data from local paths, remote URLs
+  (S3, HTTPS), or DOI identifiers with a single `open_dataset()` function
 - **FITS to Zarr Conversion**: Convert OVRO-LWA FITS image files to
   cloud-optimized Zarr format
 - **Command-Line Interface**: User-friendly `ovro-ingest` CLI with progress
@@ -121,6 +123,37 @@ pixi add your-package
 ```
 
 ## Quick Start
+
+### Loading OVRO-LWA Data
+
+Load data from various sources with a unified interface:
+
+```python
+import ovro_lwa_portal
+
+# Load from local zarr store
+ds = ovro_lwa_portal.open_dataset("/path/to/observation.zarr")
+
+# Load from remote URL
+ds = ovro_lwa_portal.open_dataset("s3://ovro-lwa-data/obs_12345.zarr")
+
+# Load via DOI
+ds = ovro_lwa_portal.open_dataset("doi:10.5281/zenodo.1234567")
+
+# Customize chunking for large datasets
+ds = ovro_lwa_portal.open_dataset(
+    "path/to/data.zarr",
+    chunks={"time": 100, "frequency": 50}  # or chunks="auto" (default), chunks=None
+)
+```
+
+For remote data access, install with remote extras:
+
+```bash
+pip install 'ovro_lwa_portal[remote]'
+```
+
+See the [open_dataset documentation](docs/open_dataset.md) for more details.
 
 ### Using the FITS to Zarr Ingest CLI
 
