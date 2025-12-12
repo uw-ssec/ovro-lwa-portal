@@ -83,14 +83,14 @@ class TestOpenDatasetIntegration:
 
     def test_load_with_validation(self, sample_zarr_store: Path) -> None:
         """Test loading with validation enabled."""
-        ds = open_dataset(sample_zarr_store, validate=True)
+        ds = open_dataset(sample_zarr_store)
 
         assert isinstance(ds, xr.Dataset)
         # Should pass validation without warnings for this dataset
 
     def test_load_without_validation(self, sample_zarr_store: Path) -> None:
         """Test loading without validation."""
-        ds = open_dataset(sample_zarr_store, validate=False)
+        ds = open_dataset(sample_zarr_store)
 
         assert isinstance(ds, xr.Dataset)
 
@@ -122,7 +122,7 @@ class TestOpenDatasetIntegration:
 
     def test_dataset_attributes_preserved(self, sample_zarr_store: Path) -> None:
         """Test that dataset attributes are preserved."""
-        ds = open_dataset(sample_zarr_store, validate=False)
+        ds = open_dataset(sample_zarr_store)
 
         assert "instrument" in ds.attrs
         assert ds.attrs["instrument"] == "OVRO-LWA"
@@ -130,7 +130,7 @@ class TestOpenDatasetIntegration:
 
     def test_coordinates_preserved(self, sample_zarr_store: Path) -> None:
         """Test that coordinates are preserved."""
-        ds = open_dataset(sample_zarr_store, validate=False)
+        ds = open_dataset(sample_zarr_store)
 
         assert "right_ascension" in ds.coords
         assert "declination" in ds.coords
@@ -143,7 +143,7 @@ class TestOpenDatasetIntegration:
         ds_original = xr.open_zarr(sample_zarr_store)
 
         # Load via open_dataset
-        ds_loaded = open_dataset(sample_zarr_store, validate=False, chunks=None)
+        ds_loaded = open_dataset(sample_zarr_store, chunks=None)
 
         # Compare values
         np.testing.assert_array_equal(
@@ -174,8 +174,8 @@ class TestOpenDatasetIntegration:
 
     def test_multiple_loads_same_store(self, sample_zarr_store: Path) -> None:
         """Test loading the same store multiple times."""
-        ds1 = open_dataset(sample_zarr_store, validate=False)
-        ds2 = open_dataset(sample_zarr_store, validate=False)
+        ds1 = open_dataset(sample_zarr_store)
+        ds2 = open_dataset(sample_zarr_store)
 
         # Both should load successfully
         assert isinstance(ds1, xr.Dataset)
