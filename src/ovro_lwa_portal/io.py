@@ -62,26 +62,34 @@ def _normalize_doi(source: str) -> str:
 
 
 def _resolve_doi(doi: str) -> str:
-    """Resolve DOI to zarr URL using DataCite Media API."""
+    """Resolve DOI to zarr URL using DataCite Media API via caltechdata_api."""
     try:
-        import requests
+        from caltechdata_api import download_url
     except ImportError as e:
-        msg = "requests is required for DOI resolution. Install with: pip install requests"
+        msg = (
+            "caltechdata_api is required for DOI resolution. "
+            "Install with: pip install caltechdata_api"
+        )
         raise ImportError(msg) from e
 
-    api_url = f"https://api.datacite.org/dois/{doi}/media"
-
     try:
-        r = requests.get(api_url, timeout=10)
-        r.raise_for_status()
-        data = r.json()["data"]
+        # Try to get zarr media type first
+        # Note: download_url has a bug where it returns attributes dict instead of URL
+        # when media_type is specified, so we need to handle both cases
+        result = download_url(doi, media_type="application/zarr")
+        if result:
+            # Handle bug in caltechdata_api where it returns dict instead of string
+            url = result.get("url") if isinstance(result, dict) else result
+            if url:
+                return url
 
-        # Prefer zarr media type, fallback to first URL
-        for media in data:
-            if media["attributes"]["mediaType"] == "application/zarr":
-                return media["attributes"]["url"]
+        # Fallback to first available URL if no zarr media type
+        url = download_url(doi)
+        if url:
+            return url
 
-        return data[0]["attributes"]["url"]
+        msg = f"No download URL found for DOI: {doi}"
+        raise DataSourceError(msg)
     except Exception as e:
         msg = f"Failed to resolve DOI {doi}: {e}"
         raise DataSourceError(msg) from e
