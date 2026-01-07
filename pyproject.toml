@@ -53,6 +53,7 @@ remote = [
     "s3fs>=2024.6.0",
     "gcsfs>=2024.6.0",
     "fsspec>=2024.6.0",
+    "caltechdata_api>=1.0.0",
 ]
 all = ["ovro_lwa_portal[dev]"]
 
