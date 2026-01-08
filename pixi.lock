@@ -6094,8 +6094,8 @@ packages:
   timestamp: 1759324763146
 - pypi: ./
   name: ovro-lwa-portal
-  version: 0.1.dev47
-  sha256: 43652be66bc9845b097b88f61d742c560cb65572f7ec1cfb8c264a702b807912
+  version: 0.1.dev36
+  sha256: c333d52391a78adcd25e63183609cd264521dacb03fcd30226903118f7325b3d
   requires_dist:
   - astropy>=7.1.0,<8
   - dask>=2025.9.1,<2026
@@ -6121,6 +6121,7 @@ packages:
   - pytest-xdist ; extra == 'dev'
   - pytest>=6 ; extra == 'dev'
   - prefect>=3.0.0 ; extra == 'prefect'
+  - caltechdata-api>=1.0.0 ; extra == 'remote'
   - fsspec>=2024.6.0 ; extra == 'remote'
   - gcsfs>=2024.6.0 ; extra == 'remote'
   - requests>=2.31.0 ; extra == 'remote'

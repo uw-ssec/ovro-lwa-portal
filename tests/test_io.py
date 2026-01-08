@@ -252,12 +252,16 @@ class TestOpenDataset:
 class TestDOIResolution:
     """Tests for DOI resolution functionality."""
 
-    def test_doi_resolution_requires_dependencies(self) -> None:
-        """Test that DOI resolution requires requests library."""
-        # DOI resolution requires optional dependencies
-        # This test just verifies DOI detection works
-        assert _is_doi("doi:10.5281/zenodo.1234567")
-        assert _is_doi("10.5281/zenodo.1234567")
+    def test_doi_resolution_requires_caltechdata_api(self, monkeypatch):
+        """Test that DOI resolution fails cleanly when caltechdata_api is unavailable."""
+        import ovro_lwa_portal.io as io
 
-        # Verify normalization
-        assert _normalize_doi("doi:10.5281/zenodo.1234567") == "10.5281/zenodo.1234567"
+        # Simulating caltechdata_api not being installed
+        monkeypatch.setitem(
+            __import__("sys").modules,
+            "caltechdata_api.download_file",
+            None,
+        )
+
+        with pytest.raises(ImportError, match="caltechdata_api is required"):
+            io._resolve_doi("10.5281/zenodo.1234567")
