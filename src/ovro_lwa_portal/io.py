@@ -62,30 +62,26 @@ def _normalize_doi(source: str) -> str:
 
 
 def _resolve_doi(doi: str) -> str:
-    """Resolve DOI to zarr URL using DataCite Media API."""
+    """Resolve DOI to data URL using caltechdata_api."""
     try:
-        import requests
+        import caltechdata_api.download_file as cda_download
     except ImportError as e:
-        msg = "requests is required for DOI resolution. Install with: pip install requests"
+        msg = (
+            "caltechdata_api is required for DOI resolution. "
+            "Install with: pip install ovro-lwa-portal[remote]"
+        )
         raise ImportError(msg) from e
 
-    api_url = f"https://api.datacite.org/dois/{doi}/media"
-
     try:
-        r = requests.get(api_url, timeout=10)
-        r.raise_for_status()
-        data = r.json()["data"]
-
-        # Prefer zarr media type, fallback to first URL
-        for media in data:
-            if media["attributes"]["mediaType"] == "application/zarr":
-                return media["attributes"]["url"]
-
-        return data[0]["attributes"]["url"]
+        url = cda_download.get_download_url(doi)
     except Exception as e:
         msg = f"Failed to resolve DOI {doi}: {e}"
         raise DataSourceError(msg) from e
 
+    if not url:
+        raise DataSourceError(f"Failed to resolve DOI {doi}: no URL returned")
+
+    return url
 
 def _detect_source_type(source: str | Path) -> tuple[str, str]:
     """Detect the type of data source.
