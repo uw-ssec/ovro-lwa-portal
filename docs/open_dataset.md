@@ -695,6 +695,74 @@ fig = ds.radport.plot_time_grid(
 | `mask_radius` | int | `None` | Circular mask radius |
 | `share_colorbar` | bool | `True` | Use shared colorbar for all panels |
 
+## 1D Analysis Methods
+
+Extract and analyze time series and frequency spectra at specific locations.
+
+### Light Curves (Time Series)
+
+Extract intensity as a function of time at a specific (l, m) location:
+
+```python
+# Extract light curve at center of image at 50 MHz
+lc = ds.radport.light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+
+# Plot directly
+lc.plot()
+
+# Or use the convenience plotting method
+fig = ds.radport.plot_light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+```
+
+### Frequency Spectra
+
+Extract intensity as a function of frequency at a specific location and time:
+
+```python
+# Extract spectrum at center of image at first time step
+spec = ds.radport.spectrum(l=0.0, m=0.0, time_idx=0)
+
+# Plot with frequency in MHz
+fig = ds.radport.plot_spectrum(l=0.0, m=0.0, time_idx=0, freq_unit="MHz")
+```
+
+### Time-Averaged Images
+
+Compute the mean image across all (or selected) time steps:
+
+```python
+# Average all time steps
+avg = ds.radport.time_average()
+
+# Average only specific times
+avg = ds.radport.time_average(time_indices=[0, 1, 2])
+
+# Plot the time-averaged image at 50 MHz
+fig = ds.radport.plot_time_average(freq_mhz=50.0)
+```
+
+### Frequency-Averaged Images
+
+Compute the mean image across all (or a band of) frequencies:
+
+```python
+# Average all frequencies
+avg = ds.radport.frequency_average()
+
+# Average only 45-55 MHz band
+avg = ds.radport.frequency_average(freq_min_mhz=45.0, freq_max_mhz=55.0)
+
+# Plot the frequency-averaged image at first time
+fig = ds.radport.plot_frequency_average(time_idx=0)
+
+# Plot with frequency band selection
+fig = ds.radport.plot_frequency_average(
+    time_idx=0,
+    freq_min_mhz=45.0,
+    freq_max_mhz=55.0,
+)
+```
+
 ## API Reference
 
 For complete API documentation, see:
