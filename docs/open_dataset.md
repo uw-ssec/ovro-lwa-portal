@@ -415,21 +415,21 @@ fig = ds.radport.plot(add_colorbar=False)
 
 ### Plot Method Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `var` | str | `"SKY"` | Variable to plot (`"SKY"` or `"BEAM"`) |
-| `time_idx` | int | `0` | Time index for the snapshot |
-| `freq_idx` | int | `0` | Frequency index for the snapshot |
-| `pol` | int | `0` | Polarization index |
-| `freq_mhz` | float | `None` | Select frequency by MHz (overrides `freq_idx`) |
-| `time_mjd` | float | `None` | Select time by MJD (overrides `time_idx`) |
-| `cmap` | str | `"inferno"` | Matplotlib colormap name |
-| `vmin` | float | `None` | Minimum value for color scale |
-| `vmax` | float | `None` | Maximum value for color scale |
-| `robust` | bool | `False` | Use 2nd/98th percentile for scaling |
-| `mask_radius` | int | `None` | Circular mask radius in pixels |
-| `figsize` | tuple | `(8, 6)` | Figure size in inches |
-| `add_colorbar` | bool | `True` | Whether to add a colorbar |
+| Parameter      | Type  | Default     | Description                                    |
+| -------------- | ----- | ----------- | ---------------------------------------------- |
+| `var`          | str   | `"SKY"`     | Variable to plot (`"SKY"` or `"BEAM"`)         |
+| `time_idx`     | int   | `0`         | Time index for the snapshot                    |
+| `freq_idx`     | int   | `0`         | Frequency index for the snapshot               |
+| `pol`          | int   | `0`         | Polarization index                             |
+| `freq_mhz`     | float | `None`      | Select frequency by MHz (overrides `freq_idx`) |
+| `time_mjd`     | float | `None`      | Select time by MJD (overrides `time_idx`)      |
+| `cmap`         | str   | `"inferno"` | Matplotlib colormap name                       |
+| `vmin`         | float | `None`      | Minimum value for color scale                  |
+| `vmax`         | float | `None`      | Maximum value for color scale                  |
+| `robust`       | bool  | `False`     | Use 2nd/98th percentile for scaling            |
+| `mask_radius`  | int   | `None`      | Circular mask radius in pixels                 |
+| `figsize`      | tuple | `(8, 6)`    | Figure size in inches                          |
+| `add_colorbar` | bool  | `True`      | Whether to add a colorbar                      |
 
 ### Selecting by Value (MHz, MJD)
 
@@ -499,6 +499,7 @@ except ValueError as e:
 ```
 
 Required dataset structure:
+
 - **Dimensions**: `time`, `frequency`, `polarization`, `l`, `m`
 - **Variables**: `SKY` (required), `BEAM` (optional)
 
@@ -597,7 +598,8 @@ diff_data = ds.radport.diff(mode="time", time_idx=5)
 
 ## Data Quality Methods
 
-The accessor provides methods for assessing data quality and finding valid frames.
+The accessor provides methods for assessing data quality and finding valid
+frames.
 
 ### Finding Valid Frames
 
@@ -681,19 +683,19 @@ fig = ds.radport.plot_time_grid(
 
 ### Grid Plot Options
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `time_indices` | list | `None` | Time indices to plot (all if None) |
-| `freq_indices` | list | `None` | Frequency indices to plot (all if None) |
-| `freq_mhz_list` | list | `None` | Frequencies in MHz (overrides `freq_indices`) |
-| `var` | str | `"SKY"` | Variable to plot |
-| `pol` | int | `0` | Polarization index |
-| `ncols` | int | `4` | Number of columns in grid |
-| `panel_size` | tuple | `(3.0, 2.6)` | Size of each panel in inches |
-| `cmap` | str | `"inferno"` | Colormap |
-| `robust` | bool | `True` | Use percentile-based global scaling |
-| `mask_radius` | int | `None` | Circular mask radius |
-| `share_colorbar` | bool | `True` | Use shared colorbar for all panels |
+| Parameter        | Type  | Default      | Description                                   |
+| ---------------- | ----- | ------------ | --------------------------------------------- |
+| `time_indices`   | list  | `None`       | Time indices to plot (all if None)            |
+| `freq_indices`   | list  | `None`       | Frequency indices to plot (all if None)       |
+| `freq_mhz_list`  | list  | `None`       | Frequencies in MHz (overrides `freq_indices`) |
+| `var`            | str   | `"SKY"`      | Variable to plot                              |
+| `pol`            | int   | `0`          | Polarization index                            |
+| `ncols`          | int   | `4`          | Number of columns in grid                     |
+| `panel_size`     | tuple | `(3.0, 2.6)` | Size of each panel in inches                  |
+| `cmap`           | str   | `"inferno"`  | Colormap                                      |
+| `robust`         | bool  | `True`       | Use percentile-based global scaling           |
+| `mask_radius`    | int   | `None`       | Circular mask radius                          |
+| `share_colorbar` | bool  | `True`       | Use shared colorbar for all panels            |
 
 ## 1D Analysis Methods
 
@@ -818,25 +820,25 @@ fig = ds.radport.plot_wcs(
 
 ### WCS Method Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `var` | str | `"SKY"` | Variable to plot |
-| `time_idx` | int | `0` | Time index |
-| `freq_idx` | int | `0` | Frequency index |
-| `freq_mhz` | float | `None` | Frequency in MHz (overrides `freq_idx`) |
-| `pol` | int | `0` | Polarization index |
-| `cmap` | str | `"inferno"` | Colormap |
-| `vmin` | float | `None` | Minimum value for color scale |
-| `vmax` | float | `None` | Maximum value for color scale |
-| `robust` | bool | `True` | Use percentile-based scaling |
-| `mask_radius` | int | `None` | Circular mask radius in pixels |
-| `figsize` | tuple | `(10, 10)` | Figure size in inches |
-| `add_colorbar` | bool | `True` | Whether to add a colorbar |
-| `grid_color` | str | `"white"` | Coordinate grid color |
-| `grid_alpha` | float | `0.6` | Grid transparency |
-| `grid_linestyle` | str | `":"` | Grid line style |
-| `label_color` | str | `"white"` | Axis label color |
-| `facecolor` | str | `"black"` | Background color |
+| Parameter        | Type  | Default     | Description                             |
+| ---------------- | ----- | ----------- | --------------------------------------- |
+| `var`            | str   | `"SKY"`     | Variable to plot                        |
+| `time_idx`       | int   | `0`         | Time index                              |
+| `freq_idx`       | int   | `0`         | Frequency index                         |
+| `freq_mhz`       | float | `None`      | Frequency in MHz (overrides `freq_idx`) |
+| `pol`            | int   | `0`         | Polarization index                      |
+| `cmap`           | str   | `"inferno"` | Colormap                                |
+| `vmin`           | float | `None`      | Minimum value for color scale           |
+| `vmax`           | float | `None`      | Maximum value for color scale           |
+| `robust`         | bool  | `True`      | Use percentile-based scaling            |
+| `mask_radius`    | int   | `None`      | Circular mask radius in pixels          |
+| `figsize`        | tuple | `(10, 10)`  | Figure size in inches                   |
+| `add_colorbar`   | bool  | `True`      | Whether to add a colorbar               |
+| `grid_color`     | str   | `"white"`   | Coordinate grid color                   |
+| `grid_alpha`     | float | `0.6`       | Grid transparency                       |
+| `grid_linestyle` | str   | `":"`       | Grid line style                         |
+| `label_color`    | str   | `"white"`   | Axis label color                        |
+| `facecolor`      | str   | `"black"`   | Background color                        |
 
 ### WCS Data Sources
 
@@ -931,31 +933,31 @@ files = ds.radport.export_frames(
 
 ### Animation Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `freq_idx` / `time_idx` | int | `0` | Index for fixed dimension |
-| `freq_mhz` / `time_mjd` | float | `None` | Select by value (overrides index) |
-| `var` | str | `"SKY"` | Variable to animate |
-| `pol` | int | `0` | Polarization index |
-| `output_file` | str | `None` | Path to save animation (.mp4 or .gif) |
-| `fps` | int | `5` | Frames per second |
-| `cmap` | str | `"inferno"` | Colormap |
-| `vmin` / `vmax` | float | `None` | Color scale limits |
-| `robust` | bool | `True` | Use percentile-based scaling |
-| `mask_radius` | int | `None` | Circular mask radius in pixels |
-| `figsize` | tuple | `(8, 6)` | Figure size in inches |
-| `dpi` | int | `100` | Resolution for saved animation |
+| Parameter               | Type  | Default     | Description                           |
+| ----------------------- | ----- | ----------- | ------------------------------------- |
+| `freq_idx` / `time_idx` | int   | `0`         | Index for fixed dimension             |
+| `freq_mhz` / `time_mjd` | float | `None`      | Select by value (overrides index)     |
+| `var`                   | str   | `"SKY"`     | Variable to animate                   |
+| `pol`                   | int   | `0`         | Polarization index                    |
+| `output_file`           | str   | `None`      | Path to save animation (.mp4 or .gif) |
+| `fps`                   | int   | `5`         | Frames per second                     |
+| `cmap`                  | str   | `"inferno"` | Colormap                              |
+| `vmin` / `vmax`         | float | `None`      | Color scale limits                    |
+| `robust`                | bool  | `True`      | Use percentile-based scaling          |
+| `mask_radius`           | int   | `None`      | Circular mask radius in pixels        |
+| `figsize`               | tuple | `(8, 6)`    | Figure size in inches                 |
+| `dpi`                   | int   | `100`       | Resolution for saved animation        |
 
 ### Export Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `output_dir` | str | (required) | Directory to save images |
-| `time_indices` | list | `None` | Time indices to export (all if None) |
-| `freq_indices` | list | `None` | Frequency indices to export (all if None) |
-| `format` | str | `"png"` | Image format (png, jpg, pdf) |
-| `filename_template` | str | `"{var}_t{...}_f{...}.{format}"` | Filename pattern |
-| `dpi` | int | `150` | Resolution for saved images |
+| Parameter           | Type | Default                          | Description                               |
+| ------------------- | ---- | -------------------------------- | ----------------------------------------- |
+| `output_dir`        | str  | (required)                       | Directory to save images                  |
+| `time_indices`      | list | `None`                           | Time indices to export (all if None)      |
+| `freq_indices`      | list | `None`                           | Frequency indices to export (all if None) |
+| `format`            | str  | `"png"`                          | Image format (png, jpg, pdf)              |
+| `filename_template` | str  | `"{var}_t{...}_f{...}.{format}"` | Filename pattern                          |
+| `dpi`               | int  | `150`                            | Resolution for saved images               |
 
 ### Dependencies
 
@@ -1027,20 +1029,21 @@ peak_map.plot()
 
 ### Source Detection Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `time_idx` | int | `0` | Time index |
-| `freq_idx` | int | `None` | Frequency index |
-| `freq_mhz` | float | `None` | Frequency in MHz |
-| `var` | str | `"SKY"` | Variable to analyze |
-| `pol` | int | `0` | Polarization index |
-| `box_size` | int | `50` | Box size for local RMS |
-| `threshold_sigma` | float | `5.0` | SNR threshold for peaks |
-| `min_separation` | int | `5` | Minimum peak separation |
+| Parameter         | Type  | Default | Description             |
+| ----------------- | ----- | ------- | ----------------------- |
+| `time_idx`        | int   | `0`     | Time index              |
+| `freq_idx`        | int   | `None`  | Frequency index         |
+| `freq_mhz`        | float | `None`  | Frequency in MHz        |
+| `var`             | str   | `"SKY"` | Variable to analyze     |
+| `pol`             | int   | `0`     | Polarization index      |
+| `box_size`        | int   | `50`    | Box size for local RMS  |
+| `threshold_sigma` | float | `5.0`   | SNR threshold for peaks |
+| `min_separation`  | int   | `5`     | Minimum peak separation |
 
 ### Dependencies
 
-- Uses `scipy.ndimage` for efficient local statistics (uniform_filter, maximum_filter)
+- Uses `scipy.ndimage` for efficient local statistics (uniform_filter,
+  maximum_filter)
 
 ## Spectral Analysis Methods
 
@@ -1062,10 +1065,11 @@ alpha = ds.radport.spectral_index(l=0.1, m=-0.2, freq1_mhz=46.0, freq2_mhz=54.0)
 alpha = ds.radport.spectral_index(l=0.0, m=0.0, freq1_idx=0, freq2_idx=-1)
 ```
 
-The spectral index α is defined by S ∝ ν^α, computed as:
-α = log(S₂/S₁) / log(ν₂/ν₁)
+The spectral index α is defined by S ∝ ν^α, computed as: α = log(S₂/S₁) /
+log(ν₂/ν₁)
 
 Typical values:
+
 - α ≈ -0.7: Synchrotron emission (most radio sources)
 - α ≈ +2.0: Thermal emission (optically thick)
 - α ≈ -0.1: Free-free emission (optically thin)
@@ -1114,17 +1118,17 @@ Uses trapezoidal integration (numpy.trapezoid) for accurate results.
 
 ### Spectral Analysis Parameters
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `l` | float | required | l direction cosine |
-| `m` | float | required | m direction cosine |
-| `time_idx` | int | `0` | Time index |
-| `freq1_idx` | int | `None` | First frequency index |
-| `freq2_idx` | int | `None` | Second frequency index |
-| `freq1_mhz` | float | `None` | First frequency in MHz |
-| `freq2_mhz` | float | `None` | Second frequency in MHz |
-| `var` | str | `"SKY"` | Variable to analyze |
-| `pol` | int | `0` | Polarization index |
+| Parameter   | Type  | Default  | Description             |
+| ----------- | ----- | -------- | ----------------------- |
+| `l`         | float | required | l direction cosine      |
+| `m`         | float | required | m direction cosine      |
+| `time_idx`  | int   | `0`      | Time index              |
+| `freq1_idx` | int   | `None`   | First frequency index   |
+| `freq2_idx` | int   | `None`   | Second frequency index  |
+| `freq1_mhz` | float | `None`   | First frequency in MHz  |
+| `freq2_mhz` | float | `None`   | Second frequency in MHz |
+| `var`       | str   | `"SKY"`  | Variable to analyze     |
+| `pol`       | int   | `0`      | Polarization index      |
 
 ### Notes
 
