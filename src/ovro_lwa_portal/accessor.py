@@ -1572,3 +1572,709 @@ class RadportAccessor:
             mask_radius=mask_radius,
             **kwargs,
         )
+
+    # =========================================================================
+    # 1D Analysis Methods
+    # =========================================================================
+
+    def light_curve(
+        self,
+        l: float,
+        m: float,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+    ) -> xr.DataArray:
+        """Extract a light curve (time series) at a specific spatial location.
+
+        Returns intensity as a function of time at the pixel nearest to
+        the specified (l, m) coordinates and frequency.
+
+        Parameters
+        ----------
+        l : float
+            Direction cosine l coordinate.
+        m : float
+            Direction cosine m coordinate.
+        freq_idx : int, optional
+            Frequency index. Default is 0. Ignored if `freq_mhz` is provided.
+        freq_mhz : float, optional
+            Frequency in MHz (overrides freq_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to extract.
+        pol : int, default 0
+            Polarization index.
+
+        Returns
+        -------
+        xr.DataArray
+            1D array with dimension 'time' containing the light curve.
+
+        Examples
+        --------
+        >>> lc = ds.radport.light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+        >>> lc.plot()  # Plot intensity vs time
+        """
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Find nearest pixel
+        l_idx, m_idx = self.nearest_lm_idx(l, m)
+
+        # Extract light curve
+        lc = self._obj[var].isel(
+            frequency=fi,
+            polarization=pol,
+            l=l_idx,
+            m=m_idx,
+        )
+
+        # Add metadata
+        freq_hz = float(self._obj.coords["frequency"].values[fi])
+        l_val = float(self._obj.coords["l"].values[l_idx])
+        m_val = float(self._obj.coords["m"].values[m_idx])
+
+        lc.attrs["variable"] = var
+        lc.attrs["freq_idx"] = fi
+        lc.attrs["freq_mhz"] = freq_hz / 1e6
+        lc.attrs["pol"] = pol
+        lc.attrs["l"] = l_val
+        lc.attrs["m"] = m_val
+        lc.attrs["l_idx"] = l_idx
+        lc.attrs["m_idx"] = m_idx
+
+        return lc
+
+    def plot_light_curve(
+        self,
+        l: float,
+        m: float,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        figsize: tuple[float, float] = (10, 4),
+        marker: str = "o",
+        linestyle: str = "-",
+        **kwargs: Any,
+    ) -> Figure:
+        """Plot a light curve (time series) at a specific spatial location.
+
+        Parameters
+        ----------
+        l : float
+            Direction cosine l coordinate.
+        m : float
+            Direction cosine m coordinate.
+        freq_idx : int, optional
+            Frequency index. Default is 0. Ignored if `freq_mhz` is provided.
+        freq_mhz : float, optional
+            Frequency in MHz (overrides freq_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        pol : int, default 0
+            Polarization index.
+        figsize : tuple, default (10, 4)
+            Figure size in inches.
+        marker : str, default 'o'
+            Marker style for data points.
+        linestyle : str, default '-'
+            Line style connecting points.
+        **kwargs : dict
+            Additional arguments passed to plt.plot.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        Examples
+        --------
+        >>> fig = ds.radport.plot_light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+        """
+        lc = self.light_curve(
+            l=l, m=m, freq_idx=freq_idx, freq_mhz=freq_mhz, var=var, pol=pol
+        )
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        time_vals = lc.coords["time"].values
+        ax.plot(time_vals, lc.values, marker=marker, linestyle=linestyle, **kwargs)
+
+        ax.set_xlabel("Time (MJD)")
+        ax.set_ylabel(f"{var} Intensity (Jy/beam)")
+
+        freq_mhz_val = lc.attrs["freq_mhz"]
+        l_val = lc.attrs["l"]
+        m_val = lc.attrs["m"]
+        ax.set_title(
+            f"{var} Light Curve at (l={l_val:.3f}, m={m_val:.3f}), "
+            f"f={freq_mhz_val:.2f} MHz, pol={pol}"
+        )
+
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+
+        return fig
+
+    def spectrum(
+        self,
+        l: float,
+        m: float,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+    ) -> xr.DataArray:
+        """Extract a frequency spectrum at a specific spatial location and time.
+
+        Returns intensity as a function of frequency at the pixel nearest to
+        the specified (l, m) coordinates and time.
+
+        Parameters
+        ----------
+        l : float
+            Direction cosine l coordinate.
+        m : float
+            Direction cosine m coordinate.
+        time_idx : int, optional
+            Time index. Default is 0. Ignored if `time_mjd` is provided.
+        time_mjd : float, optional
+            Time in MJD (overrides time_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to extract.
+        pol : int, default 0
+            Polarization index.
+
+        Returns
+        -------
+        xr.DataArray
+            1D array with dimension 'frequency' containing the spectrum.
+
+        Examples
+        --------
+        >>> spec = ds.radport.spectrum(l=0.0, m=0.0, time_idx=0)
+        >>> spec.plot()  # Plot intensity vs frequency
+        """
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        # Resolve time index
+        if time_mjd is not None:
+            ti = self.nearest_time_idx(time_mjd)
+        elif time_idx is not None:
+            ti = time_idx
+        else:
+            ti = 0
+
+        # Find nearest pixel
+        l_idx, m_idx = self.nearest_lm_idx(l, m)
+
+        # Extract spectrum
+        spec = self._obj[var].isel(
+            time=ti,
+            polarization=pol,
+            l=l_idx,
+            m=m_idx,
+        )
+
+        # Add metadata
+        time_val = float(self._obj.coords["time"].values[ti])
+        l_val = float(self._obj.coords["l"].values[l_idx])
+        m_val = float(self._obj.coords["m"].values[m_idx])
+
+        spec.attrs["variable"] = var
+        spec.attrs["time_idx"] = ti
+        spec.attrs["time_mjd"] = time_val
+        spec.attrs["pol"] = pol
+        spec.attrs["l"] = l_val
+        spec.attrs["m"] = m_val
+        spec.attrs["l_idx"] = l_idx
+        spec.attrs["m_idx"] = m_idx
+
+        return spec
+
+    def plot_spectrum(
+        self,
+        l: float,
+        m: float,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        figsize: tuple[float, float] = (10, 4),
+        marker: str = "o",
+        linestyle: str = "-",
+        freq_unit: Literal["Hz", "MHz"] = "MHz",
+        **kwargs: Any,
+    ) -> Figure:
+        """Plot a frequency spectrum at a specific spatial location and time.
+
+        Parameters
+        ----------
+        l : float
+            Direction cosine l coordinate.
+        m : float
+            Direction cosine m coordinate.
+        time_idx : int, optional
+            Time index. Default is 0. Ignored if `time_mjd` is provided.
+        time_mjd : float, optional
+            Time in MJD (overrides time_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        pol : int, default 0
+            Polarization index.
+        figsize : tuple, default (10, 4)
+            Figure size in inches.
+        marker : str, default 'o'
+            Marker style for data points.
+        linestyle : str, default '-'
+            Line style connecting points.
+        freq_unit : {'Hz', 'MHz'}, default 'MHz'
+            Unit for frequency axis.
+        **kwargs : dict
+            Additional arguments passed to plt.plot.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        Examples
+        --------
+        >>> fig = ds.radport.plot_spectrum(l=0.0, m=0.0, time_idx=0)
+        """
+        spec = self.spectrum(
+            l=l, m=m, time_idx=time_idx, time_mjd=time_mjd, var=var, pol=pol
+        )
+
+        fig, ax = plt.subplots(figsize=figsize)
+
+        freq_vals = spec.coords["frequency"].values
+        if freq_unit == "MHz":
+            freq_vals = freq_vals / 1e6
+            xlabel = "Frequency (MHz)"
+        else:
+            xlabel = "Frequency (Hz)"
+
+        ax.plot(freq_vals, spec.values, marker=marker, linestyle=linestyle, **kwargs)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(f"{var} Intensity (Jy/beam)")
+
+        time_mjd_val = spec.attrs["time_mjd"]
+        l_val = spec.attrs["l"]
+        m_val = spec.attrs["m"]
+        ax.set_title(
+            f"{var} Spectrum at (l={l_val:.3f}, m={m_val:.3f}), "
+            f"t={time_mjd_val:.6f} MJD, pol={pol}"
+        )
+
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+
+        return fig
+
+    def time_average(
+        self,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        time_indices: list[int] | None = None,
+    ) -> xr.DataArray:
+        """Compute the time-averaged image.
+
+        Averages the data across the time dimension, returning a 3D array
+        with dimensions (frequency, l, m).
+
+        Parameters
+        ----------
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to average.
+        pol : int, default 0
+            Polarization index.
+        time_indices : list of int, optional
+            Specific time indices to include in the average.
+            If None, averages over all times.
+
+        Returns
+        -------
+        xr.DataArray
+            3D array with dimensions (frequency, l, m).
+
+        Examples
+        --------
+        >>> avg = ds.radport.time_average()
+        >>> avg.isel(frequency=0).plot()  # Plot mean image at first frequency
+        """
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        da = self._obj[var].isel(polarization=pol)
+
+        if time_indices is not None:
+            da = da.isel(time=time_indices)
+
+        avg = da.mean(dim="time")
+
+        avg.attrs["variable"] = var
+        avg.attrs["pol"] = pol
+        avg.attrs["operation"] = "time_average"
+        if time_indices is not None:
+            avg.attrs["time_indices"] = time_indices
+        else:
+            avg.attrs["n_times"] = self._obj.sizes["time"]
+
+        return avg
+
+    def frequency_average(
+        self,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        freq_indices: list[int] | None = None,
+        freq_min_mhz: float | None = None,
+        freq_max_mhz: float | None = None,
+    ) -> xr.DataArray:
+        """Compute the frequency-averaged image.
+
+        Averages the data across the frequency dimension, returning a 3D array
+        with dimensions (time, l, m).
+
+        Parameters
+        ----------
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to average.
+        pol : int, default 0
+            Polarization index.
+        freq_indices : list of int, optional
+            Specific frequency indices to include in the average.
+            If None (and freq_min/max not set), averages over all frequencies.
+        freq_min_mhz : float, optional
+            Minimum frequency in MHz for averaging band.
+        freq_max_mhz : float, optional
+            Maximum frequency in MHz for averaging band.
+
+        Returns
+        -------
+        xr.DataArray
+            3D array with dimensions (time, l, m).
+
+        Examples
+        --------
+        >>> avg = ds.radport.frequency_average()
+        >>> avg.isel(time=0).plot()  # Plot mean image at first time
+
+        >>> # Average only 45-55 MHz band
+        >>> band_avg = ds.radport.frequency_average(freq_min_mhz=45.0, freq_max_mhz=55.0)
+        """
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        da = self._obj[var].isel(polarization=pol)
+
+        # Handle frequency selection
+        if freq_min_mhz is not None or freq_max_mhz is not None:
+            freq_hz = self._obj.coords["frequency"].values
+            freq_mhz = freq_hz / 1e6
+
+            if freq_min_mhz is None:
+                freq_min_mhz = freq_mhz.min()
+            if freq_max_mhz is None:
+                freq_max_mhz = freq_mhz.max()
+
+            mask = (freq_mhz >= freq_min_mhz) & (freq_mhz <= freq_max_mhz)
+            freq_indices = list(np.where(mask)[0])
+
+            if len(freq_indices) == 0:
+                raise ValueError(
+                    f"No frequencies in range [{freq_min_mhz}, {freq_max_mhz}] MHz. "
+                    f"Available range: [{freq_mhz.min():.2f}, {freq_mhz.max():.2f}] MHz"
+                )
+
+        if freq_indices is not None:
+            da = da.isel(frequency=freq_indices)
+
+        avg = da.mean(dim="frequency")
+
+        avg.attrs["variable"] = var
+        avg.attrs["pol"] = pol
+        avg.attrs["operation"] = "frequency_average"
+        if freq_indices is not None:
+            avg.attrs["freq_indices"] = freq_indices
+        else:
+            avg.attrs["n_frequencies"] = self._obj.sizes["frequency"]
+        if freq_min_mhz is not None:
+            avg.attrs["freq_min_mhz"] = freq_min_mhz
+        if freq_max_mhz is not None:
+            avg.attrs["freq_max_mhz"] = freq_max_mhz
+
+        return avg
+
+    def plot_time_average(
+        self,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        time_indices: list[int] | None = None,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        add_colorbar: bool = True,
+        **kwargs: Any,
+    ) -> Figure:
+        """Plot the time-averaged image at a specific frequency.
+
+        Parameters
+        ----------
+        freq_idx : int, optional
+            Frequency index. Default is 0. Ignored if `freq_mhz` is provided.
+        freq_mhz : float, optional
+            Frequency in MHz (overrides freq_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        pol : int, default 0
+            Polarization index.
+        time_indices : list of int, optional
+            Specific time indices to include in the average.
+        cmap : str, default 'inferno'
+            Colormap.
+        vmin, vmax : float, optional
+            Color scale limits.
+        robust : bool, default True
+            Use 2nd/98th percentile for scaling.
+        mask_radius : int, optional
+            Circular mask radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add colorbar.
+        **kwargs : dict
+            Additional arguments passed to imshow.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        Examples
+        --------
+        >>> fig = ds.radport.plot_time_average(freq_mhz=50.0)
+        """
+        avg = self.time_average(var=var, pol=pol, time_indices=time_indices)
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Select frequency slice
+        data = avg.isel(frequency=fi).values.copy()
+
+        # Apply mask if requested
+        if mask_radius is not None:
+            ny, nx = data.shape
+            cy, cx = ny // 2, nx // 2
+            yy, xx = np.ogrid[:ny, :nx]
+            dist = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+            data[dist > mask_radius] = np.nan
+
+        # Compute vmin/vmax if robust
+        if robust and vmin is None and vmax is None:
+            finite = data[np.isfinite(data)]
+            if finite.size > 0:
+                vmin = float(np.percentile(finite, 2))
+                vmax = float(np.percentile(finite, 98))
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        l_vals = avg.coords["l"].values
+        m_vals = avg.coords["m"].values
+        extent = [
+            float(l_vals.min()), float(l_vals.max()),
+            float(m_vals.min()), float(m_vals.max()),
+        ]
+
+        im = ax.imshow(
+            data,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            aspect="equal",
+            **kwargs,
+        )
+
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label("Jy/beam")
+
+        freq_hz = float(self._obj.coords["frequency"].values[fi])
+        n_times = len(time_indices) if time_indices else self._obj.sizes["time"]
+        ax.set_xlabel("l (direction cosine)")
+        ax.set_ylabel("m (direction cosine)")
+        ax.set_title(
+            f"{var} Time Average ({n_times} frames) at f={freq_hz/1e6:.2f} MHz, pol={pol}"
+        )
+
+        fig.tight_layout()
+        return fig
+
+    def plot_frequency_average(
+        self,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        freq_indices: list[int] | None = None,
+        freq_min_mhz: float | None = None,
+        freq_max_mhz: float | None = None,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        add_colorbar: bool = True,
+        **kwargs: Any,
+    ) -> Figure:
+        """Plot the frequency-averaged image at a specific time.
+
+        Parameters
+        ----------
+        time_idx : int, optional
+            Time index. Default is 0. Ignored if `time_mjd` is provided.
+        time_mjd : float, optional
+            Time in MJD (overrides time_idx).
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        pol : int, default 0
+            Polarization index.
+        freq_indices : list of int, optional
+            Specific frequency indices to include in the average.
+        freq_min_mhz : float, optional
+            Minimum frequency in MHz for averaging band.
+        freq_max_mhz : float, optional
+            Maximum frequency in MHz for averaging band.
+        cmap : str, default 'inferno'
+            Colormap.
+        vmin, vmax : float, optional
+            Color scale limits.
+        robust : bool, default True
+            Use 2nd/98th percentile for scaling.
+        mask_radius : int, optional
+            Circular mask radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add colorbar.
+        **kwargs : dict
+            Additional arguments passed to imshow.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        Examples
+        --------
+        >>> fig = ds.radport.plot_frequency_average(time_idx=0)
+
+        >>> # Average 45-55 MHz band
+        >>> fig = ds.radport.plot_frequency_average(
+        ...     time_idx=0, freq_min_mhz=45.0, freq_max_mhz=55.0
+        ... )
+        """
+        avg = self.frequency_average(
+            var=var,
+            pol=pol,
+            freq_indices=freq_indices,
+            freq_min_mhz=freq_min_mhz,
+            freq_max_mhz=freq_max_mhz,
+        )
+
+        # Resolve time index
+        if time_mjd is not None:
+            ti = self.nearest_time_idx(time_mjd)
+        elif time_idx is not None:
+            ti = time_idx
+        else:
+            ti = 0
+
+        # Select time slice
+        data = avg.isel(time=ti).values.copy()
+
+        # Apply mask if requested
+        if mask_radius is not None:
+            ny, nx = data.shape
+            cy, cx = ny // 2, nx // 2
+            yy, xx = np.ogrid[:ny, :nx]
+            dist = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+            data[dist > mask_radius] = np.nan
+
+        # Compute vmin/vmax if robust
+        if robust and vmin is None and vmax is None:
+            finite = data[np.isfinite(data)]
+            if finite.size > 0:
+                vmin = float(np.percentile(finite, 2))
+                vmax = float(np.percentile(finite, 98))
+
+        # Create plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        l_vals = avg.coords["l"].values
+        m_vals = avg.coords["m"].values
+        extent = [
+            float(l_vals.min()), float(l_vals.max()),
+            float(m_vals.min()), float(m_vals.max()),
+        ]
+
+        im = ax.imshow(
+            data,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            aspect="equal",
+            **kwargs,
+        )
+
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label("Jy/beam")
+
+        time_val = float(self._obj.coords["time"].values[ti])
+
+        # Build title with frequency info
+        if freq_min_mhz is not None and freq_max_mhz is not None:
+            freq_info = f"{freq_min_mhz:.1f}-{freq_max_mhz:.1f} MHz"
+        elif freq_indices is not None:
+            freq_info = f"{len(freq_indices)} channels"
+        else:
+            freq_info = f"{self._obj.sizes['frequency']} channels"
+
+        ax.set_xlabel("l (direction cosine)")
+        ax.set_ylabel("m (direction cosine)")
+        ax.set_title(
+            f"{var} Frequency Average ({freq_info}) at t={time_val:.6f} MJD, pol={pol}"
+        )
+
+        fig.tight_layout()
+        return fig
