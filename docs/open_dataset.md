@@ -962,6 +962,86 @@ files = ds.radport.export_frames(
 - **MP4 animations**: Require `ffmpeg` to be installed on the system
 - **GIF animations**: Use `pillow` (included with matplotlib)
 
+## Source Detection Methods
+
+Analyze images for noise characteristics and detect significant sources.
+
+### Local RMS Noise Map
+
+Compute local RMS noise estimate using a sliding box:
+
+```python
+# Compute RMS noise map with 50-pixel box
+rms = ds.radport.rms_map(freq_mhz=50.0, box_size=50)
+rms.plot()
+
+# Use larger box for smoother estimate
+rms = ds.radport.rms_map(box_size=100)
+```
+
+### Signal-to-Noise Ratio Map
+
+Compute SNR map (signal divided by local RMS):
+
+```python
+# Get SNR map
+snr = ds.radport.snr_map(freq_mhz=50.0, box_size=50)
+
+# Find significant pixels (SNR > 5σ)
+significant = snr.where(snr > 5)
+
+# Plot SNR map with diverging colormap
+fig = ds.radport.plot_snr_map(freq_mhz=50.0, mask_radius=1800)
+```
+
+### Peak Detection
+
+Find local maxima above an SNR threshold:
+
+```python
+# Find peaks with SNR > 5
+peaks = ds.radport.find_peaks(freq_mhz=50.0, threshold_sigma=5.0)
+print(f"Found {len(peaks)} peaks")
+
+# Peaks are sorted by SNR (brightest first)
+for p in peaks[:5]:
+    print(f"  l={p['l']:.3f}, m={p['m']:.3f}, "
+          f"flux={p['flux']:.2f} Jy, SNR={p['snr']:.1f}")
+
+# Adjust minimum separation between peaks
+peaks = ds.radport.find_peaks(
+    threshold_sigma=3.0,
+    min_separation=10,  # pixels
+)
+```
+
+### Peak Flux Map
+
+Find the maximum flux at each pixel across all time steps:
+
+```python
+# Get peak flux map (maximum across time)
+peak_map = ds.radport.peak_flux_map(freq_mhz=50.0)
+peak_map.plot()
+```
+
+### Source Detection Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `time_idx` | int | `0` | Time index |
+| `freq_idx` | int | `None` | Frequency index |
+| `freq_mhz` | float | `None` | Frequency in MHz |
+| `var` | str | `"SKY"` | Variable to analyze |
+| `pol` | int | `0` | Polarization index |
+| `box_size` | int | `50` | Box size for local RMS |
+| `threshold_sigma` | float | `5.0` | SNR threshold for peaks |
+| `min_separation` | int | `5` | Minimum peak separation |
+
+### Dependencies
+
+- Uses `scipy.ndimage` for efficient local statistics (uniform_filter, maximum_filter)
+
 ## API Reference
 
 For complete API documentation, see:
