@@ -529,6 +529,172 @@ fig = ds.radport.plot(
 fig.savefig("observation_snapshot.png", dpi=150, bbox_inches="tight")
 ```
 
+## Advanced Visualization Methods
+
+The `radport` accessor provides additional methods for common analysis tasks.
+
+### Spatial Cutouts
+
+Extract and visualize a rectangular region of interest:
+
+```python
+# Extract a cutout (returns DataArray)
+cutout = ds.radport.cutout(
+    l_center=0.0,   # Center l coordinate
+    m_center=0.0,   # Center m coordinate
+    dl=0.1,         # Half-width in l direction
+    dm=0.1,         # Half-width in m direction
+    freq_mhz=50.0,  # Frequency selection
+)
+
+# Or extract and plot in one step
+fig = ds.radport.plot_cutout(
+    l_center=0.0, m_center=0.0,
+    dl=0.1, dm=0.1,
+    freq_mhz=50.0,
+    robust=True,
+)
+```
+
+### Dynamic Spectrum
+
+View intensity variations across time and frequency at a single pixel:
+
+```python
+# Extract dynamic spectrum (returns DataArray)
+dynspec = ds.radport.dynamic_spectrum(l=0.0, m=0.0)
+
+# Or extract and plot in one step
+fig = ds.radport.plot_dynamic_spectrum(
+    l=0.0, m=0.0,    # Pixel location
+    cmap="inferno",
+    robust=True,
+)
+```
+
+### Difference Maps
+
+Identify transient sources or spectral features by differencing adjacent frames:
+
+```python
+# Time difference (current frame minus previous)
+fig = ds.radport.plot_diff(
+    mode="time",
+    time_idx=5,      # Computes frame[5] - frame[4]
+    freq_mhz=50.0,
+)
+
+# Frequency difference (current channel minus previous)
+fig = ds.radport.plot_diff(
+    mode="frequency",
+    freq_idx=10,     # Computes freq[10] - freq[9]
+    time_idx=0,
+)
+
+# Or get the data directly
+diff_data = ds.radport.diff(mode="time", time_idx=5)
+```
+
+## Data Quality Methods
+
+The accessor provides methods for assessing data quality and finding valid frames.
+
+### Finding Valid Frames
+
+Automatically find the first frame with sufficient valid data:
+
+```python
+# Find first frame with at least 10% valid pixels
+time_idx, freq_idx = ds.radport.find_valid_frame()
+
+# Use higher threshold (50% valid pixels)
+time_idx, freq_idx = ds.radport.find_valid_frame(min_finite_fraction=0.5)
+
+# Then plot the valid frame
+fig = ds.radport.plot(time_idx=time_idx, freq_idx=freq_idx)
+```
+
+### Data Availability Map
+
+Compute the fraction of finite pixels for each time/frequency combination:
+
+```python
+# Get 2D array of data availability
+frac = ds.radport.finite_fraction()
+
+# Visualize where data is available
+frac.plot(x="time", y="frequency")
+```
+
+## Grid Plots
+
+Create multi-panel visualizations for comparing across time and frequency.
+
+### Basic Grid Plot
+
+```python
+# Plot all time/frequency combinations (can be many panels!)
+fig = ds.radport.plot_grid()
+
+# Limit to specific times and frequencies
+fig = ds.radport.plot_grid(
+    time_indices=[0, 1, 2],
+    freq_indices=[0, 1, 2],
+)
+
+# Select frequencies by MHz
+fig = ds.radport.plot_grid(
+    time_indices=[0, 1],
+    freq_mhz_list=[46.0, 50.0, 54.0],
+)
+```
+
+### Frequency Grid
+
+Compare all frequencies at a single time:
+
+```python
+# All frequencies at time index 0
+fig = ds.radport.plot_frequency_grid(time_idx=0)
+
+# Specific frequencies only
+fig = ds.radport.plot_frequency_grid(
+    time_idx=0,
+    freq_mhz_list=[46.0, 50.0, 54.0],
+)
+```
+
+### Time Grid
+
+Compare all times at a single frequency:
+
+```python
+# All times at the nearest frequency to 50 MHz
+fig = ds.radport.plot_time_grid(freq_mhz=50.0)
+
+# Specific times only
+fig = ds.radport.plot_time_grid(
+    freq_mhz=50.0,
+    time_indices=[0, 1, 2, 3],
+)
+```
+
+### Grid Plot Options
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `time_indices` | list | `None` | Time indices to plot (all if None) |
+| `freq_indices` | list | `None` | Frequency indices to plot (all if None) |
+| `freq_mhz_list` | list | `None` | Frequencies in MHz (overrides `freq_indices`) |
+| `var` | str | `"SKY"` | Variable to plot |
+| `pol` | int | `0` | Polarization index |
+| `ncols` | int | `4` | Number of columns in grid |
+| `panel_size` | tuple | `(3.0, 2.6)` | Size of each panel in inches |
+| `cmap` | str | `"inferno"` | Colormap |
+| `robust` | bool | `True` | Use percentile-based global scaling |
+| `mask_radius` | int | `None` | Circular mask radius |
+| `share_colorbar` | bool | `True` | Use shared colorbar for all panels |
+
 ## API Reference
 
 For complete API documentation, see:
