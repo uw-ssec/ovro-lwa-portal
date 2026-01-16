@@ -859,6 +859,109 @@ CDELT1  =                -0.0125
 CDELT2  =                 0.0125
 ```
 
+## Animation & Export Methods
+
+Create animations and export frames as individual image files.
+
+### Time Evolution Animation
+
+Animate changes over time at a fixed frequency:
+
+```python
+# Create animation and save to file
+anim = ds.radport.animate_time(freq_mhz=50.0, output_file="time_evolution.mp4")
+
+# Create animation for notebook display
+anim = ds.radport.animate_time(freq_mhz=50.0)
+
+# Display in Jupyter notebook
+from IPython.display import HTML
+HTML(anim.to_jshtml())
+
+# Save as GIF
+anim = ds.radport.animate_time(
+    freq_mhz=50.0,
+    output_file="animation.gif",
+    fps=10,
+    mask_radius=1800,
+)
+```
+
+### Frequency Sweep Animation
+
+Animate changes across frequencies at a fixed time:
+
+```python
+# Create frequency sweep animation
+anim = ds.radport.animate_frequency(time_idx=0, output_file="freq_sweep.mp4")
+
+# With customizations
+anim = ds.radport.animate_frequency(
+    time_idx=0,
+    cmap="viridis",
+    fps=3,
+    robust=True,
+)
+```
+
+### Export Frames
+
+Export all (or selected) time/frequency combinations as individual image files:
+
+```python
+# Export all frames
+files = ds.radport.export_frames("./frames")
+print(f"Exported {len(files)} frames")
+
+# Export specific time/frequency combinations
+files = ds.radport.export_frames(
+    "./frames",
+    time_indices=[0, 1, 2],
+    freq_indices=[0, 5, 10],
+)
+
+# Custom format and template
+files = ds.radport.export_frames(
+    "./frames",
+    format="jpg",
+    filename_template="{var}_t{time_idx:04d}_f{freq_mhz:.1f}MHz.{format}",
+    dpi=200,
+)
+```
+
+### Animation Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `freq_idx` / `time_idx` | int | `0` | Index for fixed dimension |
+| `freq_mhz` / `time_mjd` | float | `None` | Select by value (overrides index) |
+| `var` | str | `"SKY"` | Variable to animate |
+| `pol` | int | `0` | Polarization index |
+| `output_file` | str | `None` | Path to save animation (.mp4 or .gif) |
+| `fps` | int | `5` | Frames per second |
+| `cmap` | str | `"inferno"` | Colormap |
+| `vmin` / `vmax` | float | `None` | Color scale limits |
+| `robust` | bool | `True` | Use percentile-based scaling |
+| `mask_radius` | int | `None` | Circular mask radius in pixels |
+| `figsize` | tuple | `(8, 6)` | Figure size in inches |
+| `dpi` | int | `100` | Resolution for saved animation |
+
+### Export Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `output_dir` | str | (required) | Directory to save images |
+| `time_indices` | list | `None` | Time indices to export (all if None) |
+| `freq_indices` | list | `None` | Frequency indices to export (all if None) |
+| `format` | str | `"png"` | Image format (png, jpg, pdf) |
+| `filename_template` | str | `"{var}_t{...}_f{...}.{format}"` | Filename pattern |
+| `dpi` | int | `150` | Resolution for saved images |
+
+### Dependencies
+
+- **MP4 animations**: Require `ffmpeg` to be installed on the system
+- **GIF animations**: Use `pillow` (included with matplotlib)
+
 ## API Reference
 
 For complete API documentation, see:
