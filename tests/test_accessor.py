@@ -997,3 +997,399 @@ class TestRadportPlotTimeGrid:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Phase D: 1D Analysis Methods Tests
+# =============================================================================
+
+
+class TestRadportLightCurve:
+    """Tests for light_curve() method."""
+
+    def test_light_curve_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() returns xr.DataArray."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0)
+        assert isinstance(lc, xr.DataArray)
+
+    def test_light_curve_has_time_dimension(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() result has 'time' as only dimension."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0)
+        assert lc.dims == ("time",)
+
+    def test_light_curve_correct_length(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() has correct number of time points."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0)
+        assert len(lc) == valid_ovro_dataset.sizes["time"]
+
+    def test_light_curve_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() accepts freq_mhz parameter."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+        assert lc.attrs["freq_mhz"] == 50.0
+
+    def test_light_curve_with_freq_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() accepts freq_idx parameter."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0, freq_idx=1)
+        assert lc.attrs["freq_idx"] == 1
+
+    def test_light_curve_metadata(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() includes metadata attributes."""
+        lc = valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0)
+        assert "variable" in lc.attrs
+        assert "l" in lc.attrs
+        assert "m" in lc.attrs
+        assert "freq_mhz" in lc.attrs
+
+    def test_light_curve_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """light_curve() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.light_curve(l=0.0, m=0.0, var="INVALID")
+
+
+class TestRadportPlotLightCurve:
+    """Tests for plot_light_curve() method."""
+
+    def test_plot_light_curve_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_light_curve() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_light_curve(l=0.0, m=0.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_light_curve_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_light_curve() accepts freq_mhz parameter."""
+        fig = valid_ovro_dataset.radport.plot_light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_light_curve_axis_labels(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_light_curve() has correct axis labels."""
+        fig = valid_ovro_dataset.radport.plot_light_curve(l=0.0, m=0.0)
+        try:
+            ax = fig.axes[0]
+            assert "Time" in ax.get_xlabel()
+            assert "Intensity" in ax.get_ylabel()
+        finally:
+            plt.close(fig)
+
+
+class TestRadportSpectrum:
+    """Tests for spectrum() method."""
+
+    def test_spectrum_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() returns xr.DataArray."""
+        spec = valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0)
+        assert isinstance(spec, xr.DataArray)
+
+    def test_spectrum_has_frequency_dimension(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() result has 'frequency' as only dimension."""
+        spec = valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0)
+        assert spec.dims == ("frequency",)
+
+    def test_spectrum_correct_length(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() has correct number of frequency points."""
+        spec = valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0)
+        assert len(spec) == valid_ovro_dataset.sizes["frequency"]
+
+    def test_spectrum_with_time_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() accepts time_idx parameter."""
+        spec = valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0, time_idx=1)
+        assert spec.attrs["time_idx"] == 1
+
+    def test_spectrum_metadata(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() includes metadata attributes."""
+        spec = valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0)
+        assert "variable" in spec.attrs
+        assert "l" in spec.attrs
+        assert "m" in spec.attrs
+        assert "time_mjd" in spec.attrs
+
+    def test_spectrum_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectrum() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.spectrum(l=0.0, m=0.0, var="INVALID")
+
+
+class TestRadportPlotSpectrum:
+    """Tests for plot_spectrum() method."""
+
+    def test_plot_spectrum_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectrum() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_spectrum(l=0.0, m=0.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectrum_with_time_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectrum() accepts time_idx parameter."""
+        fig = valid_ovro_dataset.radport.plot_spectrum(l=0.0, m=0.0, time_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectrum_axis_labels(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectrum() has correct axis labels."""
+        fig = valid_ovro_dataset.radport.plot_spectrum(l=0.0, m=0.0)
+        try:
+            ax = fig.axes[0]
+            assert "Frequency" in ax.get_xlabel()
+            assert "Intensity" in ax.get_ylabel()
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectrum_freq_unit_hz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectrum() accepts freq_unit='Hz'."""
+        fig = valid_ovro_dataset.radport.plot_spectrum(l=0.0, m=0.0, freq_unit="Hz")
+        try:
+            ax = fig.axes[0]
+            assert "Hz" in ax.get_xlabel()
+        finally:
+            plt.close(fig)
+
+
+class TestRadportTimeAverage:
+    """Tests for time_average() method."""
+
+    def test_time_average_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() returns xr.DataArray."""
+        avg = valid_ovro_dataset.radport.time_average()
+        assert isinstance(avg, xr.DataArray)
+
+    def test_time_average_has_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() result has (frequency, l, m) dimensions."""
+        avg = valid_ovro_dataset.radport.time_average()
+        assert set(avg.dims) == {"frequency", "l", "m"}
+
+    def test_time_average_removes_time_dim(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() removes time dimension."""
+        avg = valid_ovro_dataset.radport.time_average()
+        assert "time" not in avg.dims
+
+    def test_time_average_with_time_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() accepts time_indices parameter."""
+        avg = valid_ovro_dataset.radport.time_average(time_indices=[0, 1])
+        assert "time_indices" in avg.attrs
+
+    def test_time_average_metadata(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() includes metadata attributes."""
+        avg = valid_ovro_dataset.radport.time_average()
+        assert avg.attrs["operation"] == "time_average"
+        assert "variable" in avg.attrs
+
+    def test_time_average_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """time_average() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.time_average(var="INVALID")
+
+
+class TestRadportFrequencyAverage:
+    """Tests for frequency_average() method."""
+
+    def test_frequency_average_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() returns xr.DataArray."""
+        avg = valid_ovro_dataset.radport.frequency_average()
+        assert isinstance(avg, xr.DataArray)
+
+    def test_frequency_average_has_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() result has (time, l, m) dimensions."""
+        avg = valid_ovro_dataset.radport.frequency_average()
+        assert set(avg.dims) == {"time", "l", "m"}
+
+    def test_frequency_average_removes_freq_dim(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() removes frequency dimension."""
+        avg = valid_ovro_dataset.radport.frequency_average()
+        assert "frequency" not in avg.dims
+
+    def test_frequency_average_with_freq_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() accepts freq_indices parameter."""
+        avg = valid_ovro_dataset.radport.frequency_average(freq_indices=[0, 1])
+        assert "freq_indices" in avg.attrs
+
+    def test_frequency_average_with_freq_range(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() accepts freq_min/max_mhz parameters."""
+        avg = valid_ovro_dataset.radport.frequency_average(
+            freq_min_mhz=46.0, freq_max_mhz=54.0
+        )
+        assert avg.attrs.get("freq_min_mhz") == 46.0
+        assert avg.attrs.get("freq_max_mhz") == 54.0
+
+    def test_frequency_average_metadata(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() includes metadata attributes."""
+        avg = valid_ovro_dataset.radport.frequency_average()
+        assert avg.attrs["operation"] == "frequency_average"
+        assert "variable" in avg.attrs
+
+    def test_frequency_average_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.frequency_average(var="INVALID")
+
+    def test_frequency_average_invalid_range_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """frequency_average() raises ValueError for invalid frequency range."""
+        with pytest.raises(ValueError, match="No frequencies in range"):
+            valid_ovro_dataset.radport.frequency_average(
+                freq_min_mhz=1000.0, freq_max_mhz=2000.0
+            )
+
+
+class TestRadportPlotTimeAverage:
+    """Tests for plot_time_average() method."""
+
+    def test_plot_time_average_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_average() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_time_average()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_average_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_average() accepts freq_mhz parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_average(freq_mhz=50.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_average_with_time_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_average() accepts time_indices parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_average(time_indices=[0, 1])
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_average_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_average() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_average(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+
+class TestRadportPlotFrequencyAverage:
+    """Tests for plot_frequency_average() method."""
+
+    def test_plot_frequency_average_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_average() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_frequency_average()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_frequency_average_with_time_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_average() accepts time_idx parameter."""
+        fig = valid_ovro_dataset.radport.plot_frequency_average(time_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_frequency_average_with_freq_range(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_average() accepts freq_min/max_mhz parameters."""
+        fig = valid_ovro_dataset.radport.plot_frequency_average(
+            freq_min_mhz=46.0, freq_max_mhz=54.0
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_frequency_average_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_average() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset.radport.plot_frequency_average(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
