@@ -30,6 +30,7 @@ dependencies = [
     "rich>=13.7.0",
     "portalocker>=2.8.0",
     "universal-pathlib>=0.2",
+    "matplotlib>=3.8,<4",
 ]
 
 [project.optional-dependencies]
