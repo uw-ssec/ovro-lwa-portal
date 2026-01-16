@@ -2059,3 +2059,192 @@ class TestRadportPlotSnrMap:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Phase H: Spectral Analysis Tests
+# =============================================================================
+
+
+class TestRadportSpectralIndex:
+    """Tests for RadportAccessor.spectral_index() method."""
+
+    def test_spectral_index_returns_float(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index() returns a float."""
+        alpha = valid_ovro_dataset.radport.spectral_index(l=0.0, m=0.0)
+        assert isinstance(alpha, float)
+
+    def test_spectral_index_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index() accepts freq_mhz parameters."""
+        alpha = valid_ovro_dataset.radport.spectral_index(
+            l=0.0, m=0.0,
+            freq1_mhz=46.0,
+            freq2_mhz=54.0,
+        )
+        assert isinstance(alpha, float)
+
+    def test_spectral_index_with_freq_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index() accepts freq_idx parameters."""
+        alpha = valid_ovro_dataset.radport.spectral_index(
+            l=0.0, m=0.0,
+            freq1_idx=0,
+            freq2_idx=2,
+        )
+        assert isinstance(alpha, float)
+
+    def test_spectral_index_finite_for_positive_flux(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index() returns finite value for positive flux data."""
+        # Test fixture has positive random data
+        alpha = valid_ovro_dataset.radport.spectral_index(l=0.0, m=0.0)
+        assert np.isfinite(alpha)
+
+    def test_spectral_index_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.spectral_index(l=0.0, m=0.0, var="INVALID")
+
+
+class TestRadportSpectralIndexMap:
+    """Tests for RadportAccessor.spectral_index_map() method."""
+
+    def test_spectral_index_map_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index_map() returns an xarray DataArray."""
+        alpha_map = valid_ovro_dataset.radport.spectral_index_map()
+        assert isinstance(alpha_map, xr.DataArray)
+
+    def test_spectral_index_map_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index_map() returns data with (l, m) dimensions."""
+        alpha_map = valid_ovro_dataset.radport.spectral_index_map()
+        assert alpha_map.dims == ("l", "m")
+
+    def test_spectral_index_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index_map() accepts freq_mhz parameters."""
+        alpha_map = valid_ovro_dataset.radport.spectral_index_map(
+            freq1_mhz=46.0,
+            freq2_mhz=54.0,
+        )
+        assert isinstance(alpha_map, xr.DataArray)
+
+    def test_spectral_index_map_has_freq_attrs(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index_map() includes frequency info in attrs."""
+        alpha_map = valid_ovro_dataset.radport.spectral_index_map()
+        assert "freq1_hz" in alpha_map.attrs
+        assert "freq2_hz" in alpha_map.attrs
+
+    def test_spectral_index_map_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """spectral_index_map() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.spectral_index_map(var="INVALID")
+
+
+class TestRadportIntegratedFlux:
+    """Tests for RadportAccessor.integrated_flux() method."""
+
+    def test_integrated_flux_returns_float(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """integrated_flux() returns a float."""
+        flux = valid_ovro_dataset.radport.integrated_flux(l=0.0, m=0.0)
+        assert isinstance(flux, float)
+
+    def test_integrated_flux_with_freq_range(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """integrated_flux() accepts freq_min/max_mhz parameters."""
+        flux = valid_ovro_dataset.radport.integrated_flux(
+            l=0.0, m=0.0,
+            freq_min_mhz=46.0,
+            freq_max_mhz=54.0,
+        )
+        assert isinstance(flux, float)
+
+    def test_integrated_flux_with_freq_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """integrated_flux() accepts freq_indices parameter."""
+        flux = valid_ovro_dataset.radport.integrated_flux(
+            l=0.0, m=0.0,
+            freq_indices=[0, 1, 2],
+        )
+        assert isinstance(flux, float)
+
+    def test_integrated_flux_positive_for_positive_data(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """integrated_flux() returns positive value for positive flux data."""
+        flux = valid_ovro_dataset.radport.integrated_flux(l=0.0, m=0.0)
+        assert flux > 0
+
+    def test_integrated_flux_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """integrated_flux() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.integrated_flux(l=0.0, m=0.0, var="INVALID")
+
+
+class TestRadportPlotSpectralIndexMap:
+    """Tests for RadportAccessor.plot_spectral_index_map() method."""
+
+    def test_plot_spectral_index_map_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectral_index_map() returns a matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_spectral_index_map()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectral_index_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectral_index_map() accepts freq_mhz parameters."""
+        fig = valid_ovro_dataset.radport.plot_spectral_index_map(
+            freq1_mhz=46.0,
+            freq2_mhz=54.0,
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectral_index_map_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectral_index_map() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset.radport.plot_spectral_index_map(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_spectral_index_map_no_colorbar(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_spectral_index_map() accepts add_colorbar=False."""
+        fig = valid_ovro_dataset.radport.plot_spectral_index_map(add_colorbar=False)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
