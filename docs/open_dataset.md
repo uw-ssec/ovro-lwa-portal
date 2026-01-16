@@ -1042,6 +1042,96 @@ peak_map.plot()
 
 - Uses `scipy.ndimage` for efficient local statistics (uniform_filter, maximum_filter)
 
+## Spectral Analysis Methods
+
+Analyze spectral properties across the frequency dimension.
+
+### Spectral Index at a Point
+
+Compute the spectral index (power-law slope) at a specific location:
+
+```python
+# Spectral index at image center using first and last frequencies
+alpha = ds.radport.spectral_index(l=0.0, m=0.0)
+print(f"Spectral index: {alpha:.2f}")
+
+# Use specific frequency range in MHz
+alpha = ds.radport.spectral_index(l=0.1, m=-0.2, freq1_mhz=46.0, freq2_mhz=54.0)
+
+# Use frequency indices
+alpha = ds.radport.spectral_index(l=0.0, m=0.0, freq1_idx=0, freq2_idx=-1)
+```
+
+The spectral index α is defined by S ∝ ν^α, computed as:
+α = log(S₂/S₁) / log(ν₂/ν₁)
+
+Typical values:
+- α ≈ -0.7: Synchrotron emission (most radio sources)
+- α ≈ +2.0: Thermal emission (optically thick)
+- α ≈ -0.1: Free-free emission (optically thin)
+
+### Spectral Index Map
+
+Compute spectral index for every pixel in the image:
+
+```python
+# Get spectral index map
+alpha_map = ds.radport.spectral_index_map(time_idx=0)
+alpha_map.plot(vmin=-2, vmax=1, cmap='RdBu_r')
+
+# With specific frequency range
+alpha_map = ds.radport.spectral_index_map(freq1_mhz=46.0, freq2_mhz=54.0)
+
+# Plot with diverging colormap and horizon mask
+fig = ds.radport.plot_spectral_index_map(
+    freq1_mhz=46.0,
+    freq2_mhz=54.0,
+    mask_radius=1800,
+    vmin=-2, vmax=1
+)
+```
+
+### Integrated Flux Density
+
+Integrate flux density over a frequency range at a specific location:
+
+```python
+# Integrate over all frequencies at image center
+flux_int = ds.radport.integrated_flux(l=0.0, m=0.0)
+print(f"Integrated flux: {flux_int:.2e} Jy·Hz")
+
+# Integrate over specific frequency range
+flux_int = ds.radport.integrated_flux(
+    l=0.1, m=-0.2,
+    freq1_mhz=46.0, freq2_mhz=54.0
+)
+
+# Use frequency indices
+flux_int = ds.radport.integrated_flux(l=0.0, m=0.0, freq1_idx=0, freq2_idx=5)
+```
+
+Uses trapezoidal integration (numpy.trapezoid) for accurate results.
+
+### Spectral Analysis Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `l` | float | required | l direction cosine |
+| `m` | float | required | m direction cosine |
+| `time_idx` | int | `0` | Time index |
+| `freq1_idx` | int | `None` | First frequency index |
+| `freq2_idx` | int | `None` | Second frequency index |
+| `freq1_mhz` | float | `None` | First frequency in MHz |
+| `freq2_mhz` | float | `None` | Second frequency in MHz |
+| `var` | str | `"SKY"` | Variable to analyze |
+| `pol` | int | `0` | Polarization index |
+
+### Notes
+
+- Non-positive flux values result in NaN spectral indices
+- At least two frequency channels are required for spectral index calculation
+- Frequency range defaults to first and last channels if not specified
+
 ## API Reference
 
 For complete API documentation, see:
