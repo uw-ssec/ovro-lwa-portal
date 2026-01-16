@@ -106,3 +106,53 @@ def dataset_missing_sky_variable() -> xr.Dataset:
             "m": np.linspace(-1, 1, 10),
         },
     )
+
+
+@pytest.fixture
+def valid_ovro_dataset_with_wcs() -> xr.Dataset:
+    """Create a valid OVRO-LWA dataset with WCS coordinate information.
+
+    Returns
+    -------
+    xr.Dataset
+        A dataset with SKY variable and WCS header for coordinate transforms.
+    """
+    np.random.seed(42)
+
+    # Simple FITS WCS header for a 50x50 image centered at RA=180, Dec=45
+    wcs_header = """NAXIS   =                    2
+NAXIS1  =                   50
+NAXIS2  =                   50
+CTYPE1  = 'RA---SIN'
+CTYPE2  = 'DEC--SIN'
+CRPIX1  =                 25.0
+CRPIX2  =                 25.0
+CRVAL1  =                180.0
+CRVAL2  =                 45.0
+CDELT1  =                 -1.0
+CDELT2  =                  1.0
+CUNIT1  = 'deg'
+CUNIT2  = 'deg'
+RADESYS = 'FK5'
+EQUINOX =               2000.0"""
+
+    ds = xr.Dataset(
+        data_vars={
+            "SKY": (
+                ["time", "frequency", "polarization", "l", "m"],
+                np.random.rand(2, 3, 2, 50, 50) * 10,
+            ),
+        },
+        coords={
+            "time": [60000.0, 60000.1],
+            "frequency": [46e6, 50e6, 54e6],
+            "polarization": [0, 1],
+            "l": np.linspace(-1, 1, 50),
+            "m": np.linspace(-1, 1, 50),
+        },
+    )
+
+    # Add WCS header to variable attrs
+    ds["SKY"].attrs["fits_wcs_header"] = wcs_header
+
+    return ds
