@@ -451,3 +451,549 @@ class TestRadportPlotWithNaN:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Phase B Tests: Cutout, Dynamic Spectrum, Difference Maps
+# =============================================================================
+
+
+class TestRadportCutout:
+    """Tests for cutout() method."""
+
+    def test_cutout_returns_dataarray(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """cutout() returns an xarray DataArray."""
+        cutout = valid_ovro_dataset.radport.cutout(
+            l_center=0.0, m_center=0.0, dl=0.3, dm=0.3
+        )
+        assert isinstance(cutout, xr.DataArray)
+
+    def test_cutout_has_correct_dimensions(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """cutout() returns 2D DataArray with l and m dimensions."""
+        cutout = valid_ovro_dataset.radport.cutout(
+            l_center=0.0, m_center=0.0, dl=0.3, dm=0.3
+        )
+        assert set(cutout.dims) == {"l", "m"}
+
+    def test_cutout_smaller_than_full_image(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """cutout() returns smaller region than full image."""
+        cutout = valid_ovro_dataset.radport.cutout(
+            l_center=0.0, m_center=0.0, dl=0.2, dm=0.2
+        )
+        full_size = valid_ovro_dataset.sizes["l"] * valid_ovro_dataset.sizes["m"]
+        assert cutout.size < full_size
+
+    def test_cutout_with_freq_mhz(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """cutout() accepts freq_mhz parameter."""
+        cutout = valid_ovro_dataset.radport.cutout(
+            l_center=0.0, m_center=0.0, dl=0.3, dm=0.3, freq_mhz=50.0
+        )
+        assert cutout.attrs["freq_idx"] == 1  # 50 MHz is index 1
+
+    def test_cutout_metadata_attrs(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """cutout() adds metadata attributes."""
+        cutout = valid_ovro_dataset.radport.cutout(
+            l_center=0.1, m_center=-0.1, dl=0.2, dm=0.3
+        )
+        assert cutout.attrs["cutout_l_center"] == 0.1
+        assert cutout.attrs["cutout_m_center"] == -0.1
+        assert cutout.attrs["cutout_dl"] == 0.2
+        assert cutout.attrs["cutout_dm"] == 0.3
+
+    def test_cutout_invalid_variable_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """cutout() raises ValueError for non-existent variable."""
+        with pytest.raises(ValueError, match="not found"):
+            valid_ovro_dataset.radport.cutout(
+                l_center=0.0, m_center=0.0, dl=0.1, dm=0.1, var="BEAM"
+            )
+
+    def test_cutout_out_of_bounds_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """cutout() raises ValueError when region is outside data bounds."""
+        with pytest.raises(ValueError, match="empty"):
+            valid_ovro_dataset.radport.cutout(
+                l_center=5.0, m_center=5.0, dl=0.1, dm=0.1  # Outside [-1, 1] range
+            )
+
+
+class TestRadportPlotCutout:
+    """Tests for plot_cutout() method."""
+
+    def test_plot_cutout_returns_figure(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """plot_cutout() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_cutout(
+            l_center=0.0, m_center=0.0, dl=0.3, dm=0.3
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_cutout_with_options(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """plot_cutout() accepts customization options."""
+        fig = valid_ovro_dataset.radport.plot_cutout(
+            l_center=0.0,
+            m_center=0.0,
+            dl=0.3,
+            dm=0.3,
+            freq_mhz=50.0,
+            cmap="viridis",
+            figsize=(8, 8),
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_cutout_title_contains_bounds(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_cutout() title includes cutout bounds."""
+        fig = valid_ovro_dataset.radport.plot_cutout(
+            l_center=0.0, m_center=0.0, dl=0.1, dm=0.1
+        )
+        try:
+            ax = fig.axes[0]
+            title = ax.get_title()
+            assert "l=" in title
+            assert "m=" in title
+        finally:
+            plt.close(fig)
+
+
+class TestRadportDynamicSpectrum:
+    """Tests for dynamic_spectrum() method."""
+
+    def test_dynamic_spectrum_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum() returns xarray DataArray."""
+        dynspec = valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0)
+        assert isinstance(dynspec, xr.DataArray)
+
+    def test_dynamic_spectrum_has_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum() returns 2D array with time and frequency."""
+        dynspec = valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0)
+        assert set(dynspec.dims) == {"time", "frequency"}
+
+    def test_dynamic_spectrum_shape(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """dynamic_spectrum() has expected shape."""
+        dynspec = valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0)
+        assert dynspec.sizes["time"] == 2
+        assert dynspec.sizes["frequency"] == 3
+
+    def test_dynamic_spectrum_metadata(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """dynamic_spectrum() adds pixel metadata attributes."""
+        dynspec = valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0)
+        assert "pixel_l" in dynspec.attrs
+        assert "pixel_m" in dynspec.attrs
+        assert "l_idx" in dynspec.attrs
+        assert "m_idx" in dynspec.attrs
+
+    def test_dynamic_spectrum_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum() raises ValueError for non-existent variable."""
+        with pytest.raises(ValueError, match="not found"):
+            valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0, var="BEAM")
+
+
+class TestRadportPlotDynamicSpectrum:
+    """Tests for plot_dynamic_spectrum() method."""
+
+    def test_plot_dynamic_spectrum_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum(l=0.0, m=0.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_axis_labels(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum() has correct axis labels."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum(l=0.0, m=0.0)
+        try:
+            ax = fig.axes[0]
+            assert "Time" in ax.get_xlabel()
+            assert "Frequency" in ax.get_ylabel()
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_with_options(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum() accepts customization options."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum(
+            l=0.0, m=0.0, cmap="viridis", robust=False, vmin=0.0, vmax=10.0
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+
+class TestRadportDiff:
+    """Tests for diff() method."""
+
+    def test_diff_time_returns_dataarray(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() with mode='time' returns xarray DataArray."""
+        diff = valid_ovro_dataset.radport.diff(mode="time", time_idx=1)
+        assert isinstance(diff, xr.DataArray)
+
+    def test_diff_frequency_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """diff() with mode='frequency' returns xarray DataArray."""
+        diff = valid_ovro_dataset.radport.diff(mode="frequency", freq_idx=1)
+        assert isinstance(diff, xr.DataArray)
+
+    def test_diff_has_lm_dims(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() returns 2D array with l and m dimensions."""
+        diff = valid_ovro_dataset.radport.diff(mode="time", time_idx=1)
+        assert set(diff.dims) == {"l", "m"}
+
+    def test_diff_time_metadata(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() with mode='time' adds correct metadata."""
+        diff = valid_ovro_dataset.radport.diff(mode="time", time_idx=1)
+        assert diff.attrs["diff_mode"] == "time"
+        assert diff.attrs["time_idx_current"] == 1
+        assert diff.attrs["time_idx_prev"] == 0
+
+    def test_diff_frequency_metadata(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() with mode='frequency' adds correct metadata."""
+        diff = valid_ovro_dataset.radport.diff(mode="frequency", freq_idx=2)
+        assert diff.attrs["diff_mode"] == "frequency"
+        assert diff.attrs["freq_idx_current"] == 2
+        assert diff.attrs["freq_idx_prev"] == 1
+
+    def test_diff_time_idx_zero_raises(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() with mode='time' and time_idx=0 raises ValueError."""
+        with pytest.raises(ValueError, match="time_idx must be >= 1"):
+            valid_ovro_dataset.radport.diff(mode="time", time_idx=0)
+
+    def test_diff_freq_idx_zero_raises(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() with mode='frequency' and freq_idx=0 raises ValueError."""
+        with pytest.raises(ValueError, match="freq_idx must be >= 1"):
+            valid_ovro_dataset.radport.diff(mode="frequency", freq_idx=0)
+
+    def test_diff_with_freq_mhz(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """diff() accepts freq_mhz parameter."""
+        diff = valid_ovro_dataset.radport.diff(mode="time", time_idx=1, freq_mhz=50.0)
+        assert diff.attrs["freq_idx"] == 1
+
+
+class TestRadportPlotDiff:
+    """Tests for plot_diff() method."""
+
+    def test_plot_diff_time_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_diff() with mode='time' returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_diff(mode="time", time_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_diff_frequency_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_diff() with mode='frequency' returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_diff(mode="frequency", freq_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_diff_uses_diverging_cmap(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_diff() uses diverging colormap by default."""
+        fig = valid_ovro_dataset.radport.plot_diff(mode="time", time_idx=1)
+        try:
+            # Default cmap is RdBu_r (diverging)
+            ax = fig.axes[0]
+            im = ax.images[0]
+            assert im.cmap.name == "RdBu_r"
+        finally:
+            plt.close(fig)
+
+    def test_plot_diff_symmetric_scale(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """plot_diff() uses symmetric color scale by default."""
+        fig = valid_ovro_dataset.radport.plot_diff(mode="time", time_idx=1)
+        try:
+            ax = fig.axes[0]
+            im = ax.images[0]
+            vmin, vmax = im.get_clim()
+            # Symmetric means |vmin| == |vmax|
+            assert abs(abs(vmin) - abs(vmax)) < 0.01
+        finally:
+            plt.close(fig)
+
+    def test_plot_diff_title_contains_info(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_diff() title contains relevant information."""
+        fig = valid_ovro_dataset.radport.plot_diff(mode="time", time_idx=1)
+        try:
+            ax = fig.axes[0]
+            title = ax.get_title()
+            assert "Diff" in title
+        finally:
+            plt.close(fig)
+
+
+# =============================================================================
+# Phase C Tests: Data Quality and Grid Plots
+# =============================================================================
+
+
+class TestRadportFindValidFrame:
+    """Tests for find_valid_frame() method."""
+
+    def test_find_valid_frame_returns_tuple(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_valid_frame() returns a tuple of two integers."""
+        result = valid_ovro_dataset.radport.find_valid_frame()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], int)
+        assert isinstance(result[1], int)
+
+    def test_find_valid_frame_returns_first_valid(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_valid_frame() returns first (0, 0) for all-valid dataset."""
+        ti, fi = valid_ovro_dataset.radport.find_valid_frame()
+        assert ti == 0
+        assert fi == 0
+
+    def test_find_valid_frame_with_threshold(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_valid_frame() respects min_finite_fraction threshold."""
+        # With 100% threshold, should still find frame (all data is finite)
+        ti, fi = valid_ovro_dataset.radport.find_valid_frame(min_finite_fraction=1.0)
+        assert ti >= 0
+        assert fi >= 0
+
+    def test_find_valid_frame_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_valid_frame() raises ValueError for non-existent variable."""
+        with pytest.raises(ValueError, match="not found"):
+            valid_ovro_dataset.radport.find_valid_frame(var="BEAM")
+
+
+class TestRadportFiniteFraction:
+    """Tests for finite_fraction() method."""
+
+    def test_finite_fraction_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """finite_fraction() returns xarray DataArray."""
+        frac = valid_ovro_dataset.radport.finite_fraction()
+        assert isinstance(frac, xr.DataArray)
+
+    def test_finite_fraction_has_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """finite_fraction() returns 2D array with time and frequency dims."""
+        frac = valid_ovro_dataset.radport.finite_fraction()
+        assert set(frac.dims) == {"time", "frequency"}
+
+    def test_finite_fraction_values_in_range(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """finite_fraction() values are between 0 and 1."""
+        frac = valid_ovro_dataset.radport.finite_fraction()
+        assert float(frac.min()) >= 0.0
+        assert float(frac.max()) <= 1.0
+
+    def test_finite_fraction_all_valid_data(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """finite_fraction() returns 1.0 for all-valid dataset."""
+        frac = valid_ovro_dataset.radport.finite_fraction()
+        assert float(frac.min()) == 1.0
+
+    def test_finite_fraction_metadata(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """finite_fraction() adds metadata attributes."""
+        frac = valid_ovro_dataset.radport.finite_fraction()
+        assert frac.attrs["variable"] == "SKY"
+        assert frac.attrs["pol"] == 0
+
+
+class TestRadportPlotGrid:
+    """Tests for plot_grid() method."""
+
+    def test_plot_grid_returns_figure(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """plot_grid() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_grid()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_with_time_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() accepts time_indices parameter."""
+        fig = valid_ovro_dataset.radport.plot_grid(time_indices=[0, 1])
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_with_freq_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() accepts freq_indices parameter."""
+        fig = valid_ovro_dataset.radport.plot_grid(freq_indices=[0, 1, 2])
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_with_freq_mhz_list(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() accepts freq_mhz_list parameter."""
+        fig = valid_ovro_dataset.radport.plot_grid(freq_mhz_list=[46.0, 50.0])
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_custom_ncols(self, valid_ovro_dataset: xr.Dataset) -> None:
+        """plot_grid() accepts ncols parameter."""
+        fig = valid_ovro_dataset.radport.plot_grid(ncols=2)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset.radport.plot_grid(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_grid_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() raises ValueError for non-existent variable."""
+        with pytest.raises(ValueError, match="not found"):
+            valid_ovro_dataset.radport.plot_grid(var="BEAM")
+
+    def test_plot_grid_creates_multiple_axes(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_grid() creates correct number of axes."""
+        # 2 times x 3 frequencies = 6 panels
+        fig = valid_ovro_dataset.radport.plot_grid()
+        try:
+            # At least 6 axes (may have colorbar axis)
+            assert len(fig.axes) >= 6
+        finally:
+            plt.close(fig)
+
+
+class TestRadportPlotFrequencyGrid:
+    """Tests for plot_frequency_grid() method."""
+
+    def test_plot_frequency_grid_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_grid() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_frequency_grid()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_frequency_grid_single_time(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_grid() plots single time across frequencies."""
+        fig = valid_ovro_dataset.radport.plot_frequency_grid(time_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_frequency_grid_with_freq_list(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_frequency_grid() accepts freq_mhz_list parameter."""
+        fig = valid_ovro_dataset.radport.plot_frequency_grid(
+            freq_mhz_list=[46.0, 54.0]
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+
+class TestRadportPlotTimeGrid:
+    """Tests for plot_time_grid() method."""
+
+    def test_plot_time_grid_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_grid() returns matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_time_grid()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_grid_with_freq_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_grid() accepts freq_idx parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_grid(freq_idx=1)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_grid_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_grid() accepts freq_mhz parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_grid(freq_mhz=50.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_time_grid_with_time_indices(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_time_grid() accepts time_indices parameter."""
+        fig = valid_ovro_dataset.radport.plot_time_grid(
+            freq_mhz=50.0, time_indices=[0, 1]
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
