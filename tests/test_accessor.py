@@ -1584,3 +1584,245 @@ class TestRadportPlotWcs:
         """plot_wcs() raises ValueError for invalid variable."""
         with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
             valid_ovro_dataset_with_wcs.radport.plot_wcs(var="INVALID")
+
+
+# =============================================================================
+# Phase F: Animation & Export Tests
+# =============================================================================
+
+
+class TestRadportAnimateTime:
+    """Tests for RadportAccessor.animate_time() method."""
+
+    def test_animate_time_returns_animation(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() returns a FuncAnimation object."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_time()
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_time_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() accepts freq_mhz parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_time(freq_mhz=50.0)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_time_with_freq_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() accepts freq_idx parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_time(freq_idx=1)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_time_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() accepts mask_radius parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_time(mask_radius=20)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_time_custom_cmap(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() accepts custom colormap."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_time(cmap="viridis")
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_time_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_time() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.animate_time(var="INVALID")
+
+
+class TestRadportAnimateFrequency:
+    """Tests for RadportAccessor.animate_frequency() method."""
+
+    def test_animate_frequency_returns_animation(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_frequency() returns a FuncAnimation object."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_frequency()
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_frequency_with_time_idx(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_frequency() accepts time_idx parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_frequency(time_idx=1)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_frequency_with_time_mjd(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_frequency() accepts time_mjd parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_frequency(time_mjd=60000.0)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_frequency_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_frequency() accepts mask_radius parameter."""
+        from matplotlib.animation import FuncAnimation
+
+        anim = valid_ovro_dataset.radport.animate_frequency(mask_radius=20)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_frequency_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """animate_frequency() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.animate_frequency(var="INVALID")
+
+
+class TestRadportExportFrames:
+    """Tests for RadportAccessor.export_frames() method."""
+
+    def test_export_frames_returns_list(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() returns a list of file paths."""
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+        )
+        assert isinstance(files, list)
+        assert len(files) == 1
+
+    def test_export_frames_creates_files(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() creates actual files on disk."""
+        import os
+
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+        )
+        for f in files:
+            assert os.path.exists(f)
+
+    def test_export_frames_all_combinations(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() exports all time/freq combinations when not specified."""
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(output_dir)
+        # Dataset has 2 times x 3 frequencies = 6 frames
+        assert len(files) == 6
+
+    def test_export_frames_custom_format(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() accepts custom format parameter."""
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+            format="jpg",
+        )
+        assert files[0].endswith(".jpg")
+
+    def test_export_frames_custom_template(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() accepts custom filename template."""
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+            filename_template="frame_{time_idx}_{freq_idx}.{format}",
+        )
+        assert "frame_0_0.png" in files[0]
+
+    def test_export_frames_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() accepts mask_radius parameter."""
+        import os
+
+        output_dir = str(tmp_path / "frames")
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+            mask_radius=20,
+        )
+        assert len(files) == 1
+        assert os.path.exists(files[0])
+
+    def test_export_frames_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() raises ValueError for invalid variable."""
+        output_dir = str(tmp_path / "frames")
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.export_frames(output_dir, var="INVALID")
+
+    def test_export_frames_creates_directory(
+        self, valid_ovro_dataset: xr.Dataset, tmp_path
+    ) -> None:
+        """export_frames() creates output directory if it doesn't exist."""
+        import os
+
+        output_dir = str(tmp_path / "new_directory" / "frames")
+        assert not os.path.exists(output_dir)
+        files = valid_ovro_dataset.radport.export_frames(
+            output_dir,
+            time_indices=[0],
+            freq_indices=[0],
+        )
+        assert os.path.exists(output_dir)
+        assert len(files) == 1
