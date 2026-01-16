@@ -14,6 +14,9 @@ import xarray as xr
 from ovro_lwa_portal.io import (
     DataSourceError,
     _detect_source_type,
+    _extract_doi_from_datacite_url,
+    _is_datacite_api_url,
+    _is_datacite_test_url,
     _is_doi,
     _normalize_doi,
     open_dataset,
@@ -50,50 +53,107 @@ class TestDOIDetection:
         assert _normalize_doi("10.5281/zenodo.1234567") == "10.5281/zenodo.1234567"
 
 
+class TestDataCiteAPIDetection:
+    """Tests for DataCite API URL detection."""
+
+    def test_is_datacite_api_url_production(self) -> None:
+        """Test detection of production DataCite API URLs."""
+        assert _is_datacite_api_url("https://api.datacite.org/dois/10.33569/9wsys-h7b71")
+        assert _is_datacite_api_url("http://api.datacite.org/dois/10.5281/zenodo.1234567")
+
+    def test_is_datacite_api_url_test(self) -> None:
+        """Test detection of test DataCite API URLs."""
+        assert _is_datacite_api_url("https://api.test.datacite.org/dois/10.33569/9wsys-h7b71")
+        assert _is_datacite_api_url("http://api.test.datacite.org/dois/10.5281/zenodo.1234567")
+
+    def test_is_not_datacite_api_url(self) -> None:
+        """Test that non-DataCite URLs are not detected."""
+        assert not _is_datacite_api_url("https://example.com/dois/10.33569/9wsys-h7b71")
+        assert not _is_datacite_api_url("https://datacite.org/dois/10.33569/9wsys-h7b71")
+        assert not _is_datacite_api_url("10.33569/9wsys-h7b71")
+
+    def test_is_datacite_test_url(self) -> None:
+        """Test detection of DataCite test API URLs."""
+        assert _is_datacite_test_url("https://api.test.datacite.org/dois/10.33569/9wsys-h7b71")
+        assert not _is_datacite_test_url("https://api.datacite.org/dois/10.33569/9wsys-h7b71")
+
+    def test_extract_doi_from_datacite_url(self) -> None:
+        """Test DOI extraction from DataCite API URLs."""
+        assert _extract_doi_from_datacite_url(
+            "https://api.datacite.org/dois/10.33569/9wsys-h7b71"
+        ) == "10.33569/9wsys-h7b71"
+        assert _extract_doi_from_datacite_url(
+            "https://api.test.datacite.org/dois/10.5281/zenodo.1234567"
+        ) == "10.5281/zenodo.1234567"
+
+    def test_extract_doi_from_invalid_url_raises(self) -> None:
+        """Test that invalid URLs raise ValueError."""
+        with pytest.raises(ValueError, match="Not a valid DataCite API URL"):
+            _extract_doi_from_datacite_url("https://example.com/data.zarr")
+
+
 class TestSourceTypeDetection:
     """Tests for source type detection."""
 
     def test_detect_local_path(self) -> None:
         """Test detection of local file paths."""
-        source_type, normalized = _detect_source_type("/path/to/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("/path/to/data.zarr")
         assert source_type == "local"
         assert normalized == "/path/to/data.zarr"
 
-        source_type, normalized = _detect_source_type(Path("relative/path/data.zarr"))
+        source_type, normalized, use_test = _detect_source_type(Path("relative/path/data.zarr"))
         assert source_type == "local"
 
     def test_detect_remote_http(self) -> None:
         """Test detection of HTTP/HTTPS URLs."""
-        source_type, normalized = _detect_source_type("https://example.com/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("https://example.com/data.zarr")
         assert source_type == "remote"
         assert normalized == "https://example.com/data.zarr"
 
-        source_type, normalized = _detect_source_type("http://example.com/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("http://example.com/data.zarr")
         assert source_type == "remote"
 
     def test_detect_remote_s3(self) -> None:
         """Test detection of S3 URLs."""
-        source_type, normalized = _detect_source_type("s3://bucket/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("s3://bucket/data.zarr")
         assert source_type == "remote"
         assert normalized == "s3://bucket/data.zarr"
 
     def test_detect_remote_gcs(self) -> None:
         """Test detection of Google Cloud Storage URLs."""
-        source_type, normalized = _detect_source_type("gs://bucket/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("gs://bucket/data.zarr")
         assert source_type == "remote"
 
-        source_type, normalized = _detect_source_type("gcs://bucket/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("gcs://bucket/data.zarr")
         assert source_type == "remote"
 
     def test_detect_doi(self) -> None:
         """Test detection of DOI identifiers."""
-        source_type, normalized = _detect_source_type("doi:10.5281/zenodo.1234567")
+        source_type, normalized, use_test = _detect_source_type("doi:10.5281/zenodo.1234567")
         assert source_type == "doi"
         assert normalized == "10.5281/zenodo.1234567"
 
-        source_type, normalized = _detect_source_type("10.5281/zenodo.1234567")
+        source_type, normalized, use_test = _detect_source_type("10.5281/zenodo.1234567")
         assert source_type == "doi"
         assert normalized == "10.5281/zenodo.1234567"
+
+    def test_detect_datacite_api_production(self) -> None:
+        """Test detection of production DataCite API URLs."""
+        source_type, normalized, use_test = _detect_source_type(
+            "https://api.datacite.org/dois/10.33569/9wsys-h7b71"
+        )
+        assert source_type == "datacite_api"
+        assert normalized == "10.33569/9wsys-h7b71"
+        assert use_test is False
+
+    def test_detect_datacite_api_test(self) -> None:
+        """Test detection of test DataCite API URLs."""
+        source_type, normalized, use_test = _detect_source_type(
+            "https://api.test.datacite.org/dois/10.33569/9wsys-h7b71"
+        )
+        assert source_type == "datacite_api"
+        assert normalized == "10.33569/9wsys-h7b71"
+        assert use_test is True
 
 
 class TestOpenDataset:
@@ -204,7 +264,7 @@ class TestOpenDataset:
         """Test that S3 URL detection works (actual loading requires s3fs)."""
         # We can't easily test S3 loading without s3fs installed
         # This test just verifies source type detection
-        source_type, normalized = _detect_source_type("s3://bucket/data.zarr")
+        source_type, normalized, use_test = _detect_source_type("s3://bucket/data.zarr")
         assert source_type == "remote"
         assert normalized == "s3://bucket/data.zarr"
 
@@ -223,7 +283,70 @@ class TestOpenDataset:
         doi = "doi:10.5281/zenodo.1234567"
         loaded_ds = open_dataset(doi)
 
-        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567")
+        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567", production=True)
+        mock_open_zarr.assert_called_once()
+        assert isinstance(loaded_ds, xr.Dataset)
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_open_doi_with_test_api(self, mock_open_zarr: Mock, mock_resolve_doi: Mock) -> None:
+        """Test opening a dataset via DOI using test DataCite API."""
+        mock_resolve_doi.return_value = "https://example.com/data.zarr"
+        mock_ds = xr.Dataset(
+            {
+                "SKY": (["time", "frequency"], np.random.rand(2, 3)),
+            }
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        doi = "10.33569/9wsys-h7b71"
+        loaded_ds = open_dataset(doi, production=False)
+
+        mock_resolve_doi.assert_called_once_with("10.33569/9wsys-h7b71", production=False)
+        mock_open_zarr.assert_called_once()
+        assert isinstance(loaded_ds, xr.Dataset)
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_open_datacite_api_url_test(
+        self, mock_open_zarr: Mock, mock_resolve_doi: Mock
+    ) -> None:
+        """Test opening via DataCite test API URL auto-detects test API."""
+        mock_resolve_doi.return_value = "https://example.com/data.zarr"
+        mock_ds = xr.Dataset(
+            {
+                "SKY": (["time", "frequency"], np.random.rand(2, 3)),
+            }
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        url = "https://api.test.datacite.org/dois/10.33569/9wsys-h7b71"
+        loaded_ds = open_dataset(url)
+
+        # Should auto-detect test API from URL and use production=False
+        mock_resolve_doi.assert_called_once_with("10.33569/9wsys-h7b71", production=False)
+        mock_open_zarr.assert_called_once()
+        assert isinstance(loaded_ds, xr.Dataset)
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_open_datacite_api_url_production(
+        self, mock_open_zarr: Mock, mock_resolve_doi: Mock
+    ) -> None:
+        """Test opening via DataCite production API URL auto-detects production API."""
+        mock_resolve_doi.return_value = "https://example.com/data.zarr"
+        mock_ds = xr.Dataset(
+            {
+                "SKY": (["time", "frequency"], np.random.rand(2, 3)),
+            }
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        url = "https://api.datacite.org/dois/10.33569/9wsys-h7b71"
+        loaded_ds = open_dataset(url)
+
+        # Should auto-detect production API from URL and use production=True
+        mock_resolve_doi.assert_called_once_with("10.33569/9wsys-h7b71", production=True)
         mock_open_zarr.assert_called_once()
         assert isinstance(loaded_ds, xr.Dataset)
 
