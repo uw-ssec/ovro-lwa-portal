@@ -763,6 +763,102 @@ fig = ds.radport.plot_frequency_average(
 )
 ```
 
+## WCS & Coordinate Methods
+
+If your dataset includes WCS (World Coordinate System) information, you can use
+coordinate transformation and WCS-projected plotting. WCS headers are typically
+stored in variable attributes or dataset attributes.
+
+### Checking WCS Availability
+
+```python
+# Check if WCS information is available
+if ds.radport.has_wcs:
+    print("WCS information found!")
+    fig = ds.radport.plot_wcs()
+else:
+    print("No WCS information available")
+```
+
+### Coordinate Transforms
+
+Convert between pixel indices and celestial coordinates (RA/Dec):
+
+```python
+# Convert pixel indices to RA/Dec
+ra, dec = ds.radport.pixel_to_coords(l_idx=100, m_idx=100)
+print(f"Pixel (100, 100) -> RA={ra:.2f}°, Dec={dec:.2f}°")
+
+# Convert RA/Dec to pixel indices
+l_idx, m_idx = ds.radport.coords_to_pixel(ra=180.0, dec=45.0)
+print(f"RA=180°, Dec=45° -> Pixel ({l_idx}, {m_idx})")
+```
+
+### WCS Plotting
+
+Plot with celestial coordinate grid overlay:
+
+```python
+# Basic WCS plot
+fig = ds.radport.plot_wcs()
+
+# Plot with customizations
+fig = ds.radport.plot_wcs(
+    freq_mhz=50.0,        # Frequency selection
+    time_idx=0,           # Time index
+    cmap="inferno",       # Colormap
+    mask_radius=1800,     # Circular mask
+    grid_color="white",   # Grid line color
+    grid_alpha=0.6,       # Grid transparency
+    grid_linestyle=":",   # Grid line style
+    label_color="white",  # Axis label color
+    facecolor="black",    # Background color
+)
+```
+
+### WCS Method Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `var` | str | `"SKY"` | Variable to plot |
+| `time_idx` | int | `0` | Time index |
+| `freq_idx` | int | `0` | Frequency index |
+| `freq_mhz` | float | `None` | Frequency in MHz (overrides `freq_idx`) |
+| `pol` | int | `0` | Polarization index |
+| `cmap` | str | `"inferno"` | Colormap |
+| `vmin` | float | `None` | Minimum value for color scale |
+| `vmax` | float | `None` | Maximum value for color scale |
+| `robust` | bool | `True` | Use percentile-based scaling |
+| `mask_radius` | int | `None` | Circular mask radius in pixels |
+| `figsize` | tuple | `(10, 10)` | Figure size in inches |
+| `add_colorbar` | bool | `True` | Whether to add a colorbar |
+| `grid_color` | str | `"white"` | Coordinate grid color |
+| `grid_alpha` | float | `0.6` | Grid transparency |
+| `grid_linestyle` | str | `":"` | Grid line style |
+| `label_color` | str | `"white"` | Axis label color |
+| `facecolor` | str | `"black"` | Background color |
+
+### WCS Data Sources
+
+The accessor looks for WCS information in the following locations (in order):
+
+1. Variable attributes: `ds["SKY"].attrs["fits_wcs_header"]`
+2. Dataset attributes: `ds.attrs["fits_wcs_header"]`
+3. Dedicated variable: `ds["wcs_header_str"]`
+
+WCS headers should be in FITS format and typically include:
+
+```
+CTYPE1  = 'RA---SIN'
+CTYPE2  = 'DEC--SIN'
+CRPIX1  =                 2048.0
+CRPIX2  =                 2048.0
+CRVAL1  =                  180.0
+CRVAL2  =                   45.0
+CDELT1  =                -0.0125
+CDELT2  =                 0.0125
+```
+
 ## API Reference
 
 For complete API documentation, see:
