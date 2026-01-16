@@ -3237,3 +3237,537 @@ class RadportAccessor:
                 exported_files.append(filepath)
 
         return exported_files
+
+    # =========================================================================
+    # Phase G: Source Detection Methods
+    # =========================================================================
+
+    def rms_map(
+        self,
+        time_idx: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        box_size: int = 50,
+    ) -> xr.DataArray:
+        """Compute local RMS noise estimate map using a sliding box.
+
+        The RMS is computed using a uniform filter approach where each pixel's
+        RMS is estimated from the surrounding box_size x box_size region.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the frame.
+        freq_idx : int, optional
+            Frequency index for the frame. Defaults to 0 if neither freq_idx
+            nor freq_mhz is provided.
+        freq_mhz : float, optional
+            Select frequency by value in MHz. Overrides freq_idx if provided.
+        var : str, default "SKY"
+            Data variable to analyze ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        box_size : int, default 50
+            Size of the sliding box for local RMS computation.
+
+        Returns
+        -------
+        xr.DataArray
+            2D array of local RMS values with dimensions (l, m).
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> rms = ds.radport.rms_map(freq_mhz=50.0, box_size=100)
+        >>> rms.plot()
+        """
+        from scipy.ndimage import uniform_filter
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Get frame data
+        data = self._obj[var].isel(
+            time=time_idx, frequency=fi, polarization=pol
+        ).values.astype(float)
+
+        # Replace NaN with 0 for filtering (we'll handle NaN regions later)
+        nan_mask = ~np.isfinite(data)
+        data_filled = np.where(nan_mask, 0.0, data)
+
+        # Compute local mean and mean of squares
+        local_mean = uniform_filter(data_filled, size=box_size, mode="constant")
+        local_mean_sq = uniform_filter(data_filled**2, size=box_size, mode="constant")
+
+        # Count valid pixels in each box
+        valid_count = uniform_filter(
+            (~nan_mask).astype(float), size=box_size, mode="constant"
+        )
+        valid_count = np.maximum(valid_count, 1e-10)  # Avoid division by zero
+
+        # Correct for the fact that we filled NaN with 0
+        local_mean = local_mean / valid_count * (box_size**2)
+        local_mean_sq = local_mean_sq / valid_count * (box_size**2)
+
+        # Compute variance: E[X^2] - E[X]^2
+        local_var = local_mean_sq - local_mean**2
+        local_var = np.maximum(local_var, 0.0)  # Ensure non-negative
+
+        # RMS is sqrt of variance
+        rms = np.sqrt(local_var)
+
+        # Restore NaN where original was NaN
+        rms[nan_mask] = np.nan
+
+        # Create DataArray with coordinates
+        return xr.DataArray(
+            rms,
+            dims=["l", "m"],
+            coords={
+                "l": self._obj.coords["l"],
+                "m": self._obj.coords["m"],
+            },
+            name="rms",
+            attrs={
+                "long_name": "Local RMS noise estimate",
+                "units": "Jy/beam",
+                "box_size": box_size,
+            },
+        )
+
+    def snr_map(
+        self,
+        time_idx: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        box_size: int = 50,
+    ) -> xr.DataArray:
+        """Compute signal-to-noise ratio map.
+
+        The SNR is computed as the signal divided by the local RMS noise
+        estimate from a sliding box.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the frame.
+        freq_idx : int, optional
+            Frequency index for the frame. Defaults to 0 if neither freq_idx
+            nor freq_mhz is provided.
+        freq_mhz : float, optional
+            Select frequency by value in MHz. Overrides freq_idx if provided.
+        var : str, default "SKY"
+            Data variable to analyze ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        box_size : int, default 50
+            Size of the sliding box for local RMS computation.
+
+        Returns
+        -------
+        xr.DataArray
+            2D array of SNR values with dimensions (l, m).
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> snr = ds.radport.snr_map(freq_mhz=50.0)
+        >>> # Find pixels with SNR > 5
+        >>> significant = snr.where(snr > 5)
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Get signal
+        signal = self._obj[var].isel(
+            time=time_idx, frequency=fi, polarization=pol
+        ).values.astype(float)
+
+        # Get RMS map
+        rms = self.rms_map(
+            time_idx=time_idx,
+            freq_idx=fi,
+            var=var,
+            pol=pol,
+            box_size=box_size,
+        ).values
+
+        # Compute SNR (avoiding division by zero)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            snr = signal / rms
+            snr[~np.isfinite(snr)] = np.nan
+
+        # Create DataArray with coordinates
+        return xr.DataArray(
+            snr,
+            dims=["l", "m"],
+            coords={
+                "l": self._obj.coords["l"],
+                "m": self._obj.coords["m"],
+            },
+            name="snr",
+            attrs={
+                "long_name": "Signal-to-noise ratio",
+                "units": "",
+                "box_size": box_size,
+            },
+        )
+
+    def find_peaks(
+        self,
+        time_idx: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        threshold_sigma: float = 5.0,
+        box_size: int = 50,
+        min_separation: int = 5,
+    ) -> list[dict]:
+        """Find peaks above threshold in the image.
+
+        Identifies local maxima that exceed the specified SNR threshold.
+        Uses local maximum detection with minimum separation between peaks.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the frame.
+        freq_idx : int, optional
+            Frequency index for the frame. Defaults to 0 if neither freq_idx
+            nor freq_mhz is provided.
+        freq_mhz : float, optional
+            Select frequency by value in MHz. Overrides freq_idx if provided.
+        var : str, default "SKY"
+            Data variable to analyze ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        threshold_sigma : float, default 5.0
+            Minimum SNR threshold for peak detection.
+        box_size : int, default 50
+            Size of the sliding box for local RMS computation.
+        min_separation : int, default 5
+            Minimum separation between peaks in pixels.
+
+        Returns
+        -------
+        list of dict
+            List of detected peaks, each with keys:
+            - l: l coordinate value
+            - m: m coordinate value
+            - l_idx: l pixel index
+            - m_idx: m pixel index
+            - flux: peak flux value (Jy/beam)
+            - snr: signal-to-noise ratio
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> peaks = ds.radport.find_peaks(freq_mhz=50.0, threshold_sigma=5.0)
+        >>> print(f"Found {len(peaks)} peaks")
+        >>> for p in peaks[:5]:
+        ...     print(f"  l={p['l']:.3f}, m={p['m']:.3f}, flux={p['flux']:.2f}, SNR={p['snr']:.1f}")
+        """
+        from scipy.ndimage import maximum_filter
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Get signal and SNR maps
+        signal = self._obj[var].isel(
+            time=time_idx, frequency=fi, polarization=pol
+        ).values.astype(float)
+
+        snr = self.snr_map(
+            time_idx=time_idx,
+            freq_idx=fi,
+            var=var,
+            pol=pol,
+            box_size=box_size,
+        ).values
+
+        # Find local maxima using maximum filter
+        # A pixel is a local max if it equals the max in its neighborhood
+        local_max = maximum_filter(signal, size=min_separation * 2 + 1)
+        is_local_max = (signal == local_max) & np.isfinite(signal)
+
+        # Apply SNR threshold
+        is_peak = is_local_max & (snr >= threshold_sigma)
+
+        # Get peak locations
+        l_indices, m_indices = np.where(is_peak)
+
+        # Get coordinate values
+        l_coords = self._obj.coords["l"].values
+        m_coords = self._obj.coords["m"].values
+
+        # Build list of peaks sorted by SNR (descending)
+        peaks = []
+        for l_idx, m_idx in zip(l_indices, m_indices):
+            peaks.append(
+                {
+                    "l": float(l_coords[l_idx]),
+                    "m": float(m_coords[m_idx]),
+                    "l_idx": int(l_idx),
+                    "m_idx": int(m_idx),
+                    "flux": float(signal[l_idx, m_idx]),
+                    "snr": float(snr[l_idx, m_idx]),
+                }
+            )
+
+        # Sort by SNR descending
+        peaks.sort(key=lambda p: p["snr"], reverse=True)
+
+        return peaks
+
+    def peak_flux_map(
+        self,
+        var: str = "SKY",
+        pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+    ) -> xr.DataArray:
+        """Compute peak flux at each pixel across all times.
+
+        For each (l, m) pixel, finds the maximum flux value across
+        all time steps at the specified frequency.
+
+        Parameters
+        ----------
+        var : str, default "SKY"
+            Data variable to analyze ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        freq_idx : int, optional
+            Frequency index. Defaults to 0 if neither freq_idx
+            nor freq_mhz is provided.
+        freq_mhz : float, optional
+            Select frequency by value in MHz. Overrides freq_idx if provided.
+
+        Returns
+        -------
+        xr.DataArray
+            2D array of peak flux values with dimensions (l, m).
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Find brightest emission at each pixel across all times
+        >>> peak_map = ds.radport.peak_flux_map(freq_mhz=50.0)
+        >>> peak_map.plot()
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Get data for all times at this frequency
+        data = self._obj[var].isel(frequency=fi, polarization=pol)
+
+        # Compute max across time dimension
+        peak_flux = data.max(dim="time", skipna=True)
+
+        # Update attributes
+        peak_flux.name = "peak_flux"
+        peak_flux.attrs = {
+            "long_name": "Peak flux across time",
+            "units": "Jy/beam",
+        }
+
+        return peak_flux
+
+    def plot_snr_map(
+        self,
+        time_idx: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        box_size: int = 50,
+        cmap: str = "RdBu_r",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        add_colorbar: bool = True,
+        symmetric: bool = True,
+    ) -> "Figure":
+        """Plot the signal-to-noise ratio map.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the frame.
+        freq_idx : int, optional
+            Frequency index for the frame.
+        freq_mhz : float, optional
+            Select frequency by value in MHz.
+        var : str, default "SKY"
+            Data variable to analyze.
+        pol : int, default 0
+            Polarization index.
+        box_size : int, default 50
+            Size of the sliding box for local RMS computation.
+        cmap : str, default "RdBu_r"
+            Colormap (diverging recommended for SNR).
+        vmin : float, optional
+            Minimum value for color scaling.
+        vmax : float, optional
+            Maximum value for color scaling.
+        mask_radius : int, optional
+            Apply circular mask with this radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add a colorbar.
+        symmetric : bool, default True
+            Use symmetric color scale centered at zero.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The generated figure.
+
+        Example
+        -------
+        >>> fig = ds.radport.plot_snr_map(freq_mhz=50.0, mask_radius=1800)
+        """
+        # Get SNR map
+        snr = self.snr_map(
+            time_idx=time_idx,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
+            var=var,
+            pol=pol,
+            box_size=box_size,
+        )
+
+        snr_values = snr.values.copy()
+
+        # Apply mask if requested
+        if mask_radius is not None:
+            nl = len(self._obj.coords["l"])
+            nm = len(self._obj.coords["m"])
+            center_l, center_m = nl // 2, nm // 2
+            l_idx, m_idx = np.ogrid[:nl, :nm]
+            dist = np.sqrt((l_idx - center_l) ** 2 + (m_idx - center_m) ** 2)
+            mask = dist > mask_radius
+            snr_values[mask] = np.nan
+
+        # Compute color scale
+        if symmetric and vmin is None and vmax is None:
+            finite_vals = snr_values[np.isfinite(snr_values)]
+            if len(finite_vals) > 0:
+                max_abs = np.percentile(np.abs(finite_vals), 98)
+                vmin = -max_abs
+                vmax = max_abs
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=figsize)
+
+        im = ax.imshow(
+            snr_values.T,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="equal",
+        )
+
+        # Add colorbar
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label("SNR (σ)", fontsize=11)
+
+        # Labels
+        ax.set_xlabel("l index", fontsize=11)
+        ax.set_ylabel("m index", fontsize=11)
+
+        # Get frequency for title
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        freq_hz = float(self._obj.coords["frequency"].values[fi])
+        time_val = self._obj.coords["time"].values[time_idx]
+        try:
+            time_str = f"{float(time_val):.6f}"
+        except (TypeError, ValueError):
+            time_str = str(time_val)
+
+        ax.set_title(
+            f"SNR Map at t={time_str} MJD, f={freq_hz/1e6:.2f} MHz\n"
+            f"(box_size={box_size})",
+            fontsize=11,
+        )
+
+        return fig
