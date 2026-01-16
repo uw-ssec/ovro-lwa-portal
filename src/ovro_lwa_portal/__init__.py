@@ -12,7 +12,8 @@ try:
 except ImportError:
     __version__ = "0.0.0+unknown"
 
+from . import accessor  # Register xarray accessor on import
 from . import fits_to_zarr_xradio
 from .io import open_dataset
 
-__all__ = ["__version__", "fits_to_zarr_xradio", "open_dataset"]
+__all__ = ["__version__", "fits_to_zarr_xradio", "open_dataset", "accessor"]
