@@ -3771,3 +3771,491 @@ class RadportAccessor:
         )
 
         return fig
+
+    # =========================================================================
+    # Phase H: Spectral Analysis Methods
+    # =========================================================================
+
+    def spectral_index(
+        self,
+        l: float,
+        m: float,
+        time_idx: int = 0,
+        pol: int = 0,
+        freq1_mhz: float | None = None,
+        freq2_mhz: float | None = None,
+        freq1_idx: int | None = None,
+        freq2_idx: int | None = None,
+        var: str = "SKY",
+    ) -> float:
+        """Compute spectral index (power-law slope) between two frequencies.
+
+        The spectral index α is defined by the power-law relationship S ∝ ν^α,
+        computed as: α = log(S2/S1) / log(ν2/ν1)
+
+        Parameters
+        ----------
+        l : float
+            The l coordinate value for the pixel location.
+        m : float
+            The m coordinate value for the pixel location.
+        time_idx : int, default 0
+            Time index for the measurement.
+        pol : int, default 0
+            Polarization index.
+        freq1_mhz : float, optional
+            First frequency in MHz. If not provided, uses freq1_idx or first channel.
+        freq2_mhz : float, optional
+            Second frequency in MHz. If not provided, uses freq2_idx or last channel.
+        freq1_idx : int, optional
+            First frequency index. Overridden by freq1_mhz if provided.
+        freq2_idx : int, optional
+            Second frequency index. Overridden by freq2_mhz if provided.
+        var : str, default "SKY"
+            Data variable to analyze.
+
+        Returns
+        -------
+        float
+            Spectral index α where S ∝ ν^α. Returns NaN if calculation
+            is not possible (e.g., non-positive flux values).
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Compute spectral index at image center between 46 and 54 MHz
+        >>> alpha = ds.radport.spectral_index(
+        ...     l=0.0, m=0.0,
+        ...     freq1_mhz=46.0,
+        ...     freq2_mhz=54.0,
+        ... )
+        >>> print(f"Spectral index: {alpha:.2f}")
+
+        Notes
+        -----
+        - Assumes power-law spectrum: S ∝ ν^α
+        - Returns NaN for non-positive flux values (cannot take log)
+        - Typical radio sources have α ≈ -0.7 (synchrotron emission)
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Get pixel indices
+        l_idx, m_idx = self.nearest_lm_idx(l, m)
+
+        # Resolve frequency indices
+        if freq1_mhz is not None:
+            fi1 = self.nearest_freq_idx(freq1_mhz)
+        elif freq1_idx is not None:
+            fi1 = freq1_idx
+        else:
+            fi1 = 0
+
+        if freq2_mhz is not None:
+            fi2 = self.nearest_freq_idx(freq2_mhz)
+        elif freq2_idx is not None:
+            fi2 = freq2_idx
+        else:
+            fi2 = len(self._obj.coords["frequency"]) - 1
+
+        # Get flux values at both frequencies
+        s1 = float(
+            self._obj[var]
+            .isel(time=time_idx, frequency=fi1, polarization=pol, l=l_idx, m=m_idx)
+            .values
+        )
+        s2 = float(
+            self._obj[var]
+            .isel(time=time_idx, frequency=fi2, polarization=pol, l=l_idx, m=m_idx)
+            .values
+        )
+
+        # Get frequency values in Hz
+        nu1 = float(self._obj.coords["frequency"].values[fi1])
+        nu2 = float(self._obj.coords["frequency"].values[fi2])
+
+        # Compute spectral index: α = log(S2/S1) / log(ν2/ν1)
+        # Handle non-positive flux values
+        if s1 <= 0 or s2 <= 0 or nu1 <= 0 or nu2 <= 0 or nu1 == nu2:
+            return float("nan")
+
+        alpha = np.log(s2 / s1) / np.log(nu2 / nu1)
+        return float(alpha)
+
+    def spectral_index_map(
+        self,
+        time_idx: int = 0,
+        pol: int = 0,
+        freq1_mhz: float | None = None,
+        freq2_mhz: float | None = None,
+        freq1_idx: int | None = None,
+        freq2_idx: int | None = None,
+        var: str = "SKY",
+    ) -> xr.DataArray:
+        """Compute spectral index map across the image.
+
+        Computes the spectral index α at each pixel, where S ∝ ν^α.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the measurement.
+        pol : int, default 0
+            Polarization index.
+        freq1_mhz : float, optional
+            First frequency in MHz. If not provided, uses freq1_idx or first channel.
+        freq2_mhz : float, optional
+            Second frequency in MHz. If not provided, uses freq2_idx or last channel.
+        freq1_idx : int, optional
+            First frequency index. Overridden by freq1_mhz if provided.
+        freq2_idx : int, optional
+            Second frequency index. Overridden by freq2_mhz if provided.
+        var : str, default "SKY"
+            Data variable to analyze.
+
+        Returns
+        -------
+        xr.DataArray
+            2D array of spectral index values with dimensions (l, m).
+            NaN values indicate pixels where the calculation was not possible.
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Compute spectral index map between first and last frequency
+        >>> alpha_map = ds.radport.spectral_index_map()
+        >>> alpha_map.plot(vmin=-3, vmax=1, cmap="RdBu_r")
+        >>>
+        >>> # Compute between specific frequencies
+        >>> alpha_map = ds.radport.spectral_index_map(
+        ...     freq1_mhz=46.0,
+        ...     freq2_mhz=54.0,
+        ... )
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency indices
+        if freq1_mhz is not None:
+            fi1 = self.nearest_freq_idx(freq1_mhz)
+        elif freq1_idx is not None:
+            fi1 = freq1_idx
+        else:
+            fi1 = 0
+
+        if freq2_mhz is not None:
+            fi2 = self.nearest_freq_idx(freq2_mhz)
+        elif freq2_idx is not None:
+            fi2 = freq2_idx
+        else:
+            fi2 = len(self._obj.coords["frequency"]) - 1
+
+        # Get flux arrays at both frequencies
+        s1 = self._obj[var].isel(
+            time=time_idx, frequency=fi1, polarization=pol
+        ).values.astype(float)
+        s2 = self._obj[var].isel(
+            time=time_idx, frequency=fi2, polarization=pol
+        ).values.astype(float)
+
+        # Get frequency values in Hz
+        nu1 = float(self._obj.coords["frequency"].values[fi1])
+        nu2 = float(self._obj.coords["frequency"].values[fi2])
+
+        # Compute spectral index: α = log(S2/S1) / log(ν2/ν1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            # Mask non-positive values
+            valid_mask = (s1 > 0) & (s2 > 0)
+            alpha = np.full_like(s1, np.nan)
+            alpha[valid_mask] = (
+                np.log(s2[valid_mask] / s1[valid_mask]) / np.log(nu2 / nu1)
+            )
+
+        # Create DataArray with coordinates
+        return xr.DataArray(
+            alpha,
+            dims=["l", "m"],
+            coords={
+                "l": self._obj.coords["l"],
+                "m": self._obj.coords["m"],
+            },
+            name="spectral_index",
+            attrs={
+                "long_name": "Spectral index",
+                "units": "",
+                "freq1_hz": nu1,
+                "freq2_hz": nu2,
+                "freq1_mhz": nu1 / 1e6,
+                "freq2_mhz": nu2 / 1e6,
+            },
+        )
+
+    def integrated_flux(
+        self,
+        l: float,
+        m: float,
+        time_idx: int = 0,
+        pol: int = 0,
+        freq_min_mhz: float | None = None,
+        freq_max_mhz: float | None = None,
+        freq_indices: list[int] | None = None,
+        var: str = "SKY",
+    ) -> float:
+        """Compute integrated flux density over a frequency band.
+
+        Integrates the flux density across the specified frequency range
+        using the trapezoidal rule.
+
+        Parameters
+        ----------
+        l : float
+            The l coordinate value for the pixel location.
+        m : float
+            The m coordinate value for the pixel location.
+        time_idx : int, default 0
+            Time index for the measurement.
+        pol : int, default 0
+            Polarization index.
+        freq_min_mhz : float, optional
+            Minimum frequency in MHz. If not provided, uses full range.
+        freq_max_mhz : float, optional
+            Maximum frequency in MHz. If not provided, uses full range.
+        freq_indices : list of int, optional
+            Specific frequency indices to include. Overrides freq_min/max_mhz.
+        var : str, default "SKY"
+            Data variable to analyze.
+
+        Returns
+        -------
+        float
+            Integrated flux density in Jy·Hz. Divide by bandwidth to get
+            average flux density.
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Compute integrated flux at image center across all frequencies
+        >>> flux = ds.radport.integrated_flux(l=0.0, m=0.0)
+        >>> print(f"Integrated flux: {flux:.2e} Jy·Hz")
+        >>>
+        >>> # Compute over specific band
+        >>> flux = ds.radport.integrated_flux(
+        ...     l=0.0, m=0.0,
+        ...     freq_min_mhz=45.0,
+        ...     freq_max_mhz=55.0,
+        ... )
+
+        Notes
+        -----
+        Uses trapezoidal integration over the frequency axis.
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Get pixel indices
+        l_idx, m_idx = self.nearest_lm_idx(l, m)
+
+        # Get all frequency values
+        freq_hz = self._obj.coords["frequency"].values
+
+        # Determine which frequencies to include
+        if freq_indices is not None:
+            indices = freq_indices
+        else:
+            if freq_min_mhz is not None:
+                min_idx = self.nearest_freq_idx(freq_min_mhz)
+            else:
+                min_idx = 0
+
+            if freq_max_mhz is not None:
+                max_idx = self.nearest_freq_idx(freq_max_mhz)
+            else:
+                max_idx = len(freq_hz) - 1
+
+            # Ensure proper ordering
+            if min_idx > max_idx:
+                min_idx, max_idx = max_idx, min_idx
+
+            indices = list(range(min_idx, max_idx + 1))
+
+        if len(indices) < 2:
+            # Need at least 2 points for integration
+            if len(indices) == 1:
+                # Return single point value (no integration possible)
+                return float(
+                    self._obj[var]
+                    .isel(
+                        time=time_idx,
+                        frequency=indices[0],
+                        polarization=pol,
+                        l=l_idx,
+                        m=m_idx,
+                    )
+                    .values
+                )
+            return 0.0
+
+        # Get flux values at selected frequencies
+        flux_values = []
+        freq_values = []
+        for fi in indices:
+            flux = float(
+                self._obj[var]
+                .isel(time=time_idx, frequency=fi, polarization=pol, l=l_idx, m=m_idx)
+                .values
+            )
+            flux_values.append(flux)
+            freq_values.append(float(freq_hz[fi]))
+
+        flux_values = np.array(flux_values)
+        freq_values = np.array(freq_values)
+
+        # Integrate using trapezoidal rule
+        integrated = np.trapezoid(flux_values, freq_values)
+
+        return float(integrated)
+
+    def plot_spectral_index_map(
+        self,
+        time_idx: int = 0,
+        pol: int = 0,
+        freq1_mhz: float | None = None,
+        freq2_mhz: float | None = None,
+        freq1_idx: int | None = None,
+        freq2_idx: int | None = None,
+        var: str = "SKY",
+        cmap: str = "RdBu_r",
+        vmin: float | None = -3.0,
+        vmax: float | None = 1.0,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        add_colorbar: bool = True,
+    ) -> "Figure":
+        """Plot the spectral index map.
+
+        Parameters
+        ----------
+        time_idx : int, default 0
+            Time index for the measurement.
+        pol : int, default 0
+            Polarization index.
+        freq1_mhz : float, optional
+            First frequency in MHz.
+        freq2_mhz : float, optional
+            Second frequency in MHz.
+        freq1_idx : int, optional
+            First frequency index.
+        freq2_idx : int, optional
+            Second frequency index.
+        var : str, default "SKY"
+            Data variable to analyze.
+        cmap : str, default "RdBu_r"
+            Colormap (diverging recommended for spectral index).
+        vmin : float, default -3.0
+            Minimum value for color scaling.
+        vmax : float, default 1.0
+            Maximum value for color scaling.
+        mask_radius : int, optional
+            Apply circular mask with this radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add a colorbar.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The generated figure.
+
+        Example
+        -------
+        >>> fig = ds.radport.plot_spectral_index_map(
+        ...     freq1_mhz=46.0,
+        ...     freq2_mhz=54.0,
+        ...     mask_radius=1800,
+        ... )
+        """
+        # Get spectral index map
+        alpha_map = self.spectral_index_map(
+            time_idx=time_idx,
+            pol=pol,
+            freq1_mhz=freq1_mhz,
+            freq2_mhz=freq2_mhz,
+            freq1_idx=freq1_idx,
+            freq2_idx=freq2_idx,
+            var=var,
+        )
+
+        alpha_values = alpha_map.values.copy()
+
+        # Apply mask if requested
+        if mask_radius is not None:
+            nl = len(self._obj.coords["l"])
+            nm = len(self._obj.coords["m"])
+            center_l, center_m = nl // 2, nm // 2
+            l_idx, m_idx = np.ogrid[:nl, :nm]
+            dist = np.sqrt((l_idx - center_l) ** 2 + (m_idx - center_m) ** 2)
+            mask = dist > mask_radius
+            alpha_values[mask] = np.nan
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=figsize)
+
+        im = ax.imshow(
+            alpha_values.T,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="equal",
+        )
+
+        # Add colorbar
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label("Spectral Index (α)", fontsize=11)
+
+        # Labels
+        ax.set_xlabel("l index", fontsize=11)
+        ax.set_ylabel("m index", fontsize=11)
+
+        # Title
+        freq1_hz = alpha_map.attrs.get("freq1_hz", 0)
+        freq2_hz = alpha_map.attrs.get("freq2_hz", 0)
+        time_val = self._obj.coords["time"].values[time_idx]
+        try:
+            time_str = f"{float(time_val):.6f}"
+        except (TypeError, ValueError):
+            time_str = str(time_val)
+
+        ax.set_title(
+            f"Spectral Index Map at t={time_str} MJD\n"
+            f"({freq1_hz/1e6:.1f} - {freq2_hz/1e6:.1f} MHz)",
+            fontsize=11,
+        )
+
+        return fig
