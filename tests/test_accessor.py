@@ -1826,3 +1826,236 @@ class TestRadportExportFrames:
         )
         assert os.path.exists(output_dir)
         assert len(files) == 1
+
+
+# =============================================================================
+# Phase G: Source Detection Tests
+# =============================================================================
+
+
+class TestRadportRmsMap:
+    """Tests for RadportAccessor.rms_map() method."""
+
+    def test_rms_map_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() returns an xarray DataArray."""
+        rms = valid_ovro_dataset.radport.rms_map()
+        assert isinstance(rms, xr.DataArray)
+
+    def test_rms_map_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() returns data with (l, m) dimensions."""
+        rms = valid_ovro_dataset.radport.rms_map()
+        assert rms.dims == ("l", "m")
+
+    def test_rms_map_positive_values(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() returns non-negative values."""
+        rms = valid_ovro_dataset.radport.rms_map()
+        finite_vals = rms.values[np.isfinite(rms.values)]
+        assert np.all(finite_vals >= 0)
+
+    def test_rms_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() accepts freq_mhz parameter."""
+        rms = valid_ovro_dataset.radport.rms_map(freq_mhz=50.0)
+        assert isinstance(rms, xr.DataArray)
+
+    def test_rms_map_with_box_size(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() accepts box_size parameter."""
+        rms = valid_ovro_dataset.radport.rms_map(box_size=10)
+        assert rms.attrs["box_size"] == 10
+
+    def test_rms_map_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """rms_map() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.rms_map(var="INVALID")
+
+
+class TestRadportSnrMap:
+    """Tests for RadportAccessor.snr_map() method."""
+
+    def test_snr_map_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """snr_map() returns an xarray DataArray."""
+        snr = valid_ovro_dataset.radport.snr_map()
+        assert isinstance(snr, xr.DataArray)
+
+    def test_snr_map_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """snr_map() returns data with (l, m) dimensions."""
+        snr = valid_ovro_dataset.radport.snr_map()
+        assert snr.dims == ("l", "m")
+
+    def test_snr_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """snr_map() accepts freq_mhz parameter."""
+        snr = valid_ovro_dataset.radport.snr_map(freq_mhz=50.0)
+        assert isinstance(snr, xr.DataArray)
+
+    def test_snr_map_with_box_size(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """snr_map() accepts box_size parameter."""
+        snr = valid_ovro_dataset.radport.snr_map(box_size=10)
+        assert snr.attrs["box_size"] == 10
+
+    def test_snr_map_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """snr_map() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.snr_map(var="INVALID")
+
+
+class TestRadportFindPeaks:
+    """Tests for RadportAccessor.find_peaks() method."""
+
+    def test_find_peaks_returns_list(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_peaks() returns a list."""
+        peaks = valid_ovro_dataset.radport.find_peaks()
+        assert isinstance(peaks, list)
+
+    def test_find_peaks_dict_structure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_peaks() returns dicts with expected keys."""
+        # Use low threshold to ensure we get peaks
+        peaks = valid_ovro_dataset.radport.find_peaks(threshold_sigma=0.1)
+        if len(peaks) > 0:
+            expected_keys = {"l", "m", "l_idx", "m_idx", "flux", "snr"}
+            assert set(peaks[0].keys()) == expected_keys
+
+    def test_find_peaks_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_peaks() accepts freq_mhz parameter."""
+        peaks = valid_ovro_dataset.radport.find_peaks(freq_mhz=50.0)
+        assert isinstance(peaks, list)
+
+    def test_find_peaks_threshold_filters(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """Higher threshold should return fewer or equal peaks."""
+        peaks_low = valid_ovro_dataset.radport.find_peaks(threshold_sigma=0.1)
+        peaks_high = valid_ovro_dataset.radport.find_peaks(threshold_sigma=10.0)
+        assert len(peaks_high) <= len(peaks_low)
+
+    def test_find_peaks_sorted_by_snr(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_peaks() returns peaks sorted by SNR descending."""
+        peaks = valid_ovro_dataset.radport.find_peaks(threshold_sigma=0.1)
+        if len(peaks) >= 2:
+            snrs = [p["snr"] for p in peaks]
+            assert snrs == sorted(snrs, reverse=True)
+
+    def test_find_peaks_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_peaks() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.find_peaks(var="INVALID")
+
+
+class TestRadportPeakFluxMap:
+    """Tests for RadportAccessor.peak_flux_map() method."""
+
+    def test_peak_flux_map_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """peak_flux_map() returns an xarray DataArray."""
+        peak_map = valid_ovro_dataset.radport.peak_flux_map()
+        assert isinstance(peak_map, xr.DataArray)
+
+    def test_peak_flux_map_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """peak_flux_map() returns data with (l, m) dimensions."""
+        peak_map = valid_ovro_dataset.radport.peak_flux_map()
+        assert peak_map.dims == ("l", "m")
+
+    def test_peak_flux_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """peak_flux_map() accepts freq_mhz parameter."""
+        peak_map = valid_ovro_dataset.radport.peak_flux_map(freq_mhz=50.0)
+        assert isinstance(peak_map, xr.DataArray)
+
+    def test_peak_flux_map_max_across_time(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """peak_flux_map() returns maximum across time dimension."""
+        peak_map = valid_ovro_dataset.radport.peak_flux_map()
+        # Get data manually to verify
+        data = valid_ovro_dataset["SKY"].isel(frequency=0, polarization=0)
+        expected_max = data.max(dim="time", skipna=True)
+        # Check a few values match
+        np.testing.assert_array_almost_equal(
+            peak_map.values[:5, :5],
+            expected_max.values[:5, :5],
+        )
+
+    def test_peak_flux_map_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """peak_flux_map() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.peak_flux_map(var="INVALID")
+
+
+class TestRadportPlotSnrMap:
+    """Tests for RadportAccessor.plot_snr_map() method."""
+
+    def test_plot_snr_map_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_snr_map() returns a matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_snr_map()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_snr_map_with_freq_mhz(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_snr_map() accepts freq_mhz parameter."""
+        fig = valid_ovro_dataset.radport.plot_snr_map(freq_mhz=50.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_snr_map_with_mask_radius(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_snr_map() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset.radport.plot_snr_map(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_snr_map_no_colorbar(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_snr_map() accepts add_colorbar=False."""
+        fig = valid_ovro_dataset.radport.plot_snr_map(add_colorbar=False)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
