@@ -2278,3 +2278,371 @@ class RadportAccessor:
 
         fig.tight_layout()
         return fig
+
+    # =========================================================================
+    # WCS & Coordinate Methods
+    # =========================================================================
+
+    def _get_wcs(self, var: Literal["SKY", "BEAM"] = "SKY"):
+        """Get WCS object from the dataset.
+
+        Parameters
+        ----------
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to get WCS from (checks attrs first).
+
+        Returns
+        -------
+        astropy.wcs.WCS
+            The WCS object for coordinate transformations.
+
+        Raises
+        ------
+        ImportError
+            If astropy is not installed.
+        ValueError
+            If no WCS header is found in the dataset.
+        """
+        try:
+            from astropy.io.fits import Header
+            from astropy.wcs import WCS
+        except ImportError as e:
+            raise ImportError(
+                "astropy is required for WCS functionality. "
+                "Install with: pip install astropy"
+            ) from e
+
+        # Try to get WCS header string from various locations
+        hdr_str = None
+
+        # 1. Check variable attrs
+        if var in self._obj.data_vars:
+            hdr_str = self._obj[var].attrs.get("fits_wcs_header")
+
+        # 2. Check dataset attrs
+        if not hdr_str:
+            hdr_str = self._obj.attrs.get("fits_wcs_header")
+
+        # 3. Check wcs_header_str variable
+        if not hdr_str and "wcs_header_str" in self._obj:
+            val = self._obj["wcs_header_str"].values
+            if isinstance(val, np.ndarray):
+                val = val.item()
+            if isinstance(val, (bytes, bytearray)) or type(val).__name__ == "bytes_":
+                hdr_str = val.decode("utf-8", errors="replace")
+            else:
+                hdr_str = str(val)
+
+        if not hdr_str:
+            raise ValueError(
+                "No WCS header found in dataset. Expected 'fits_wcs_header' "
+                "attribute on variable/dataset or 'wcs_header_str' variable."
+            )
+
+        return WCS(Header.fromstring(hdr_str, sep="\n"))
+
+    @property
+    def has_wcs(self) -> bool:
+        """Check if WCS coordinate information is available.
+
+        Returns
+        -------
+        bool
+            True if WCS header is available in the dataset.
+
+        Example
+        -------
+        >>> if ds.radport.has_wcs:
+        ...     fig = ds.radport.plot_wcs()
+        """
+        try:
+            self._get_wcs()
+            return True
+        except (ImportError, ValueError):
+            return False
+
+    def pixel_to_coords(
+        self,
+        l_idx: int,
+        m_idx: int,
+    ) -> tuple[float, float]:
+        """Convert pixel indices to celestial coordinates (RA, Dec).
+
+        Parameters
+        ----------
+        l_idx : int
+            Index along the l dimension.
+        m_idx : int
+            Index along the m dimension.
+
+        Returns
+        -------
+        tuple of float
+            (ra, dec) in degrees. RA is in range [0, 360).
+
+        Raises
+        ------
+        ValueError
+            If WCS is not available or indices are out of bounds.
+
+        Example
+        -------
+        >>> ra, dec = ds.radport.pixel_to_coords(100, 100)
+        >>> print(f"RA={ra:.2f}°, Dec={dec:.2f}°")
+        """
+        wcs = self._get_wcs()
+
+        # Validate indices
+        n_l = self._obj.sizes["l"]
+        n_m = self._obj.sizes["m"]
+        if not (0 <= l_idx < n_l):
+            raise ValueError(f"l_idx={l_idx} out of bounds [0, {n_l})")
+        if not (0 <= m_idx < n_m):
+            raise ValueError(f"m_idx={m_idx} out of bounds [0, {n_m})")
+
+        # WCS pixel_to_world expects (x, y) which is (l, m) in our convention
+        coord = wcs.pixel_to_world(l_idx, m_idx)
+        ra = float(coord.ra.wrap_at("360d").deg)
+        dec = float(coord.dec.deg)
+
+        return ra, dec
+
+    def coords_to_pixel(
+        self,
+        ra: float,
+        dec: float,
+    ) -> tuple[int, int]:
+        """Convert celestial coordinates (RA, Dec) to pixel indices.
+
+        Parameters
+        ----------
+        ra : float
+            Right Ascension in degrees.
+        dec : float
+            Declination in degrees.
+
+        Returns
+        -------
+        tuple of int
+            (l_idx, m_idx) pixel indices (rounded to nearest integer).
+
+        Raises
+        ------
+        ValueError
+            If WCS is not available or coordinates are outside the image.
+
+        Example
+        -------
+        >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0)
+        """
+        try:
+            from astropy.coordinates import SkyCoord
+            from astropy import units as u
+        except ImportError as e:
+            raise ImportError(
+                "astropy is required for coordinate transformations."
+            ) from e
+
+        wcs = self._get_wcs()
+
+        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="fk5")
+        x, y = wcs.world_to_pixel(coord)
+
+        l_idx = int(round(float(x)))
+        m_idx = int(round(float(y)))
+
+        # Validate result is within bounds
+        n_l = self._obj.sizes["l"]
+        n_m = self._obj.sizes["m"]
+        if not (0 <= l_idx < n_l) or not (0 <= m_idx < n_m):
+            raise ValueError(
+                f"Coordinates (RA={ra}, Dec={dec}) map to pixel ({l_idx}, {m_idx}) "
+                f"which is outside image bounds [0, {n_l}) x [0, {n_m})"
+            )
+
+        return l_idx, m_idx
+
+    def plot_wcs(
+        self,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        time_idx: int = 0,
+        freq_idx: int = 0,
+        freq_mhz: float | None = None,
+        pol: int = 0,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (10, 10),
+        add_colorbar: bool = True,
+        grid_color: str = "white",
+        grid_alpha: float = 0.6,
+        grid_linestyle: str = ":",
+        label_color: str = "white",
+        facecolor: str = "black",
+        **kwargs: Any,
+    ) -> Figure:
+        """Plot with WCS projection and celestial coordinate grid.
+
+        Creates a publication-quality plot with RA/Dec coordinate axes
+        and optional grid overlay.
+
+        Parameters
+        ----------
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        time_idx : int, default 0
+            Time index.
+        freq_idx : int, default 0
+            Frequency index. Ignored if `freq_mhz` is provided.
+        freq_mhz : float, optional
+            Frequency in MHz (overrides freq_idx).
+        pol : int, default 0
+            Polarization index.
+        cmap : str, default 'inferno'
+            Colormap name.
+        vmin, vmax : float, optional
+            Color scale limits.
+        robust : bool, default True
+            Use 2nd/98th percentile for scaling.
+        mask_radius : int, optional
+            Circular mask radius in pixels.
+        figsize : tuple, default (10, 10)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add colorbar.
+        grid_color : str, default 'white'
+            Color of coordinate grid lines.
+        grid_alpha : float, default 0.6
+            Transparency of grid lines.
+        grid_linestyle : str, default ':'
+            Line style for grid.
+        label_color : str, default 'white'
+            Color for axis labels and ticks.
+        facecolor : str, default 'black'
+            Background color for the plot.
+        **kwargs : dict
+            Additional arguments passed to imshow.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+
+        Raises
+        ------
+        ValueError
+            If WCS is not available in the dataset.
+
+        Example
+        -------
+        >>> fig = ds.radport.plot_wcs(freq_mhz=50.0, mask_radius=1800)
+        """
+        try:
+            from astropy import units as u
+        except ImportError as e:
+            raise ImportError(
+                "astropy is required for WCS plotting."
+            ) from e
+
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        wcs = self._get_wcs(var)
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        else:
+            fi = freq_idx
+
+        # Extract data
+        da = self._obj[var].isel(
+            time=time_idx, frequency=fi, polarization=pol
+        )
+
+        # Ensure proper dimension order (m, l) for imshow
+        if set(da.dims) == {"m", "l"}:
+            da = da.transpose("m", "l")
+
+        data = da.values.astype(float).copy()
+
+        # Apply mask if requested
+        if mask_radius is not None:
+            ny, nx = data.shape
+            cy, cx = ny // 2, nx // 2
+            yy, xx = np.ogrid[:ny, :nx]
+            dist = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+            data[dist > mask_radius] = np.nan
+
+        # Compute vmin/vmax if robust
+        if robust and vmin is None and vmax is None:
+            finite = data[np.isfinite(data)]
+            if finite.size > 0:
+                vmin = float(np.percentile(finite, 2))
+                vmax = float(np.percentile(finite, 98))
+
+        # Set up colormap with bad values as black
+        cmap_obj = plt.get_cmap(cmap).copy()
+        cmap_obj.set_bad(facecolor, 1.0)
+
+        # Create figure with WCS projection
+        fig = plt.figure(figsize=figsize, facecolor=facecolor)
+        ax = fig.add_subplot(111, projection=wcs, facecolor=facecolor)
+
+        # Plot image
+        im = ax.imshow(
+            data,
+            origin="lower",
+            cmap=cmap_obj,
+            vmin=vmin,
+            vmax=vmax,
+            **kwargs,
+        )
+
+        # Configure axes
+        ax.set_xlabel("RA", color=label_color, fontsize=12)
+        ax.set_ylabel("Dec", color=label_color, fontsize=12)
+
+        # Check if RA needs to be inverted (increases to left in sky)
+        try:
+            cdelt1 = float(wcs.wcs.cdelt[0])
+            if np.isfinite(cdelt1) and cdelt1 > 0:
+                ax.invert_xaxis()
+        except (AttributeError, IndexError):
+            pass
+
+        # Add coordinate grid
+        overlay = ax.get_coords_overlay("fk5")
+        overlay.grid(color=grid_color, ls=grid_linestyle, lw=1.0, alpha=grid_alpha)
+
+        # Configure tick labels
+        for coord in overlay:
+            coord.set_ticklabel_visible(True)
+            coord.set_ticklabel(color=label_color, size=10)
+            coord.tick_params(width=1, color=label_color)
+
+        # Add colorbar
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label("Jy/beam", color=label_color, fontsize=11)
+            cbar.ax.tick_params(color=label_color, labelcolor=label_color)
+            cbar.outline.set_edgecolor(label_color)
+
+        # Add title
+        freq_hz = float(self._obj.coords["frequency"].values[fi])
+        time_val = self._obj.coords["time"].values[time_idx]
+        try:
+            time_str = f"{float(time_val):.6f}"
+        except (TypeError, ValueError):
+            time_str = str(time_val)
+
+        ax.set_title(
+            f"{var} at t={time_str} MJD, f={freq_hz/1e6:.2f} MHz, pol={pol}",
+            color=label_color,
+            fontsize=12,
+            pad=10,
+        )
+
+        return fig
