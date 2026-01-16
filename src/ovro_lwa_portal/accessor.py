@@ -2646,3 +2646,594 @@ class RadportAccessor:
         )
 
         return fig
+
+    # =========================================================================
+    # Phase F: Animation & Export Methods
+    # =========================================================================
+
+    def animate_time(
+        self,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        output_file: str | None = None,
+        fps: int = 5,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        dpi: int = 100,
+        **kwargs: Any,
+    ) -> Any:
+        """Create an animation showing time evolution at a fixed frequency.
+
+        Parameters
+        ----------
+        freq_idx : int, optional
+            Frequency index to animate. Defaults to 0 if neither freq_idx
+            nor freq_mhz is provided.
+        freq_mhz : float, optional
+            Select frequency by value in MHz. Overrides freq_idx if provided.
+        var : str, default "SKY"
+            Data variable to animate ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        output_file : str, optional
+            Path to save the animation. Supported formats: .mp4, .gif.
+            If None, returns the animation object for display in notebooks.
+        fps : int, default 5
+            Frames per second for the animation.
+        cmap : str, default "inferno"
+            Matplotlib colormap name.
+        vmin : float, optional
+            Minimum value for color scaling. If None and robust=True,
+            uses 2nd percentile across all frames.
+        vmax : float, optional
+            Maximum value for color scaling. If None and robust=True,
+            uses 98th percentile across all frames.
+        robust : bool, default True
+            Use percentile-based color scaling across all frames.
+        mask_radius : int, optional
+            Apply circular mask with this radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        dpi : int, default 100
+            Resolution for saved animation.
+        **kwargs
+            Additional arguments passed to FuncAnimation.
+
+        Returns
+        -------
+        matplotlib.animation.FuncAnimation
+            Animation object. Can be displayed in notebooks with HTML(anim.to_jshtml())
+            or saved to file.
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Create animation and save to file
+        >>> anim = ds.radport.animate_time(freq_mhz=50.0, output_file="time_evolution.mp4")
+        >>>
+        >>> # Display in Jupyter notebook
+        >>> from IPython.display import HTML
+        >>> anim = ds.radport.animate_time(freq_mhz=50.0)
+        >>> HTML(anim.to_jshtml())
+        """
+        from matplotlib.animation import FuncAnimation
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve frequency index
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = freq_idx
+        else:
+            fi = 0
+
+        # Get data for all time steps
+        data = self._obj[var].isel(frequency=fi, polarization=pol)
+        n_times = len(self._obj.coords["time"])
+
+        # Compute global color scale from all frames
+        if vmin is None or vmax is None:
+            all_values = data.values.ravel()
+            finite_values = all_values[np.isfinite(all_values)]
+            if len(finite_values) > 0:
+                if robust:
+                    computed_vmin = np.percentile(finite_values, 2)
+                    computed_vmax = np.percentile(finite_values, 98)
+                else:
+                    computed_vmin = np.nanmin(finite_values)
+                    computed_vmax = np.nanmax(finite_values)
+            else:
+                computed_vmin, computed_vmax = 0, 1
+
+            if vmin is None:
+                vmin = computed_vmin
+            if vmax is None:
+                vmax = computed_vmax
+
+        # Create mask if requested
+        mask = None
+        if mask_radius is not None:
+            nl = len(self._obj.coords["l"])
+            nm = len(self._obj.coords["m"])
+            center_l, center_m = nl // 2, nm // 2
+            l_idx, m_idx = np.ogrid[:nl, :nm]
+            dist = np.sqrt((l_idx - center_l) ** 2 + (m_idx - center_m) ** 2)
+            mask = dist > mask_radius
+
+        # Create figure and initial plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        frame_data = data.isel(time=0).values.copy()
+        if mask is not None:
+            frame_data[mask] = np.nan
+
+        im = ax.imshow(
+            frame_data.T,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="equal",
+        )
+
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Jy/beam", fontsize=11)
+
+        # Labels
+        ax.set_xlabel("l index", fontsize=11)
+        ax.set_ylabel("m index", fontsize=11)
+
+        freq_hz = float(self._obj.coords["frequency"].values[fi])
+
+        def update(frame: int) -> tuple:
+            """Update function for animation."""
+            frame_data = data.isel(time=frame).values.copy()
+            if mask is not None:
+                frame_data[mask] = np.nan
+            im.set_array(frame_data.T)
+
+            time_val = self._obj.coords["time"].values[frame]
+            try:
+                time_str = f"{float(time_val):.6f}"
+            except (TypeError, ValueError):
+                time_str = str(time_val)
+
+            ax.set_title(
+                f"{var} at f={freq_hz/1e6:.2f} MHz, pol={pol}\n"
+                f"Time: {time_str} MJD (frame {frame + 1}/{n_times})",
+                fontsize=11,
+            )
+            return (im,)
+
+        # Create animation
+        anim = FuncAnimation(
+            fig,
+            update,
+            frames=n_times,
+            interval=1000 // fps,
+            blit=True,
+            **kwargs,
+        )
+
+        # Save if output file specified
+        if output_file is not None:
+            if output_file.endswith(".gif"):
+                anim.save(output_file, writer="pillow", fps=fps, dpi=dpi)
+            else:
+                anim.save(output_file, writer="ffmpeg", fps=fps, dpi=dpi)
+            plt.close(fig)
+
+        return anim
+
+    def animate_frequency(
+        self,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        var: str = "SKY",
+        pol: int = 0,
+        output_file: str | None = None,
+        fps: int = 5,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        dpi: int = 100,
+        **kwargs: Any,
+    ) -> Any:
+        """Create an animation showing frequency sweep at a fixed time.
+
+        Parameters
+        ----------
+        time_idx : int, optional
+            Time index to animate. Defaults to 0 if neither time_idx
+            nor time_mjd is provided.
+        time_mjd : float, optional
+            Select time by MJD value. Overrides time_idx if provided.
+        var : str, default "SKY"
+            Data variable to animate ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        output_file : str, optional
+            Path to save the animation. Supported formats: .mp4, .gif.
+            If None, returns the animation object for display in notebooks.
+        fps : int, default 5
+            Frames per second for the animation.
+        cmap : str, default "inferno"
+            Matplotlib colormap name.
+        vmin : float, optional
+            Minimum value for color scaling. If None and robust=True,
+            uses 2nd percentile across all frames.
+        vmax : float, optional
+            Maximum value for color scaling. If None and robust=True,
+            uses 98th percentile across all frames.
+        robust : bool, default True
+            Use percentile-based color scaling across all frames.
+        mask_radius : int, optional
+            Apply circular mask with this radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        dpi : int, default 100
+            Resolution for saved animation.
+        **kwargs
+            Additional arguments passed to FuncAnimation.
+
+        Returns
+        -------
+        matplotlib.animation.FuncAnimation
+            Animation object. Can be displayed in notebooks with HTML(anim.to_jshtml())
+            or saved to file.
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Create animation and save to file
+        >>> anim = ds.radport.animate_frequency(time_idx=0, output_file="freq_sweep.gif")
+        >>>
+        >>> # Display in Jupyter notebook
+        >>> from IPython.display import HTML
+        >>> anim = ds.radport.animate_frequency(time_idx=0)
+        >>> HTML(anim.to_jshtml())
+        """
+        from matplotlib.animation import FuncAnimation
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Resolve time index
+        if time_mjd is not None:
+            ti = self.nearest_time_idx(time_mjd)
+        elif time_idx is not None:
+            ti = time_idx
+        else:
+            ti = 0
+
+        # Get data for all frequencies
+        data = self._obj[var].isel(time=ti, polarization=pol)
+        n_freqs = len(self._obj.coords["frequency"])
+        freqs_hz = self._obj.coords["frequency"].values
+
+        # Compute global color scale from all frames
+        if vmin is None or vmax is None:
+            all_values = data.values.ravel()
+            finite_values = all_values[np.isfinite(all_values)]
+            if len(finite_values) > 0:
+                if robust:
+                    computed_vmin = np.percentile(finite_values, 2)
+                    computed_vmax = np.percentile(finite_values, 98)
+                else:
+                    computed_vmin = np.nanmin(finite_values)
+                    computed_vmax = np.nanmax(finite_values)
+            else:
+                computed_vmin, computed_vmax = 0, 1
+
+            if vmin is None:
+                vmin = computed_vmin
+            if vmax is None:
+                vmax = computed_vmax
+
+        # Create mask if requested
+        mask = None
+        if mask_radius is not None:
+            nl = len(self._obj.coords["l"])
+            nm = len(self._obj.coords["m"])
+            center_l, center_m = nl // 2, nm // 2
+            l_idx, m_idx = np.ogrid[:nl, :nm]
+            dist = np.sqrt((l_idx - center_l) ** 2 + (m_idx - center_m) ** 2)
+            mask = dist > mask_radius
+
+        # Create figure and initial plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        frame_data = data.isel(frequency=0).values.copy()
+        if mask is not None:
+            frame_data[mask] = np.nan
+
+        im = ax.imshow(
+            frame_data.T,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            aspect="equal",
+        )
+
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Jy/beam", fontsize=11)
+
+        # Labels
+        ax.set_xlabel("l index", fontsize=11)
+        ax.set_ylabel("m index", fontsize=11)
+
+        time_val = self._obj.coords["time"].values[ti]
+        try:
+            time_str = f"{float(time_val):.6f}"
+        except (TypeError, ValueError):
+            time_str = str(time_val)
+
+        def update(frame: int) -> tuple:
+            """Update function for animation."""
+            frame_data = data.isel(frequency=frame).values.copy()
+            if mask is not None:
+                frame_data[mask] = np.nan
+            im.set_array(frame_data.T)
+
+            freq_hz = float(freqs_hz[frame])
+            ax.set_title(
+                f"{var} at t={time_str} MJD, pol={pol}\n"
+                f"Frequency: {freq_hz/1e6:.2f} MHz (channel {frame + 1}/{n_freqs})",
+                fontsize=11,
+            )
+            return (im,)
+
+        # Create animation
+        anim = FuncAnimation(
+            fig,
+            update,
+            frames=n_freqs,
+            interval=1000 // fps,
+            blit=True,
+            **kwargs,
+        )
+
+        # Save if output file specified
+        if output_file is not None:
+            if output_file.endswith(".gif"):
+                anim.save(output_file, writer="pillow", fps=fps, dpi=dpi)
+            else:
+                anim.save(output_file, writer="ffmpeg", fps=fps, dpi=dpi)
+            plt.close(fig)
+
+        return anim
+
+    def export_frames(
+        self,
+        output_dir: str,
+        var: str = "SKY",
+        pol: int = 0,
+        time_indices: list[int] | None = None,
+        freq_indices: list[int] | None = None,
+        format: str = "png",
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        mask_radius: int | None = None,
+        figsize: tuple[float, float] = (8, 6),
+        dpi: int = 150,
+        filename_template: str = "{var}_t{time_idx:04d}_f{freq_idx:04d}.{format}",
+    ) -> list[str]:
+        """Export all (time, freq) frames as individual image files.
+
+        Parameters
+        ----------
+        output_dir : str
+            Directory to save the image files. Will be created if it doesn't exist.
+        var : str, default "SKY"
+            Data variable to export ("SKY" or "BEAM").
+        pol : int, default 0
+            Polarization index.
+        time_indices : list of int, optional
+            Time indices to export. If None, exports all times.
+        freq_indices : list of int, optional
+            Frequency indices to export. If None, exports all frequencies.
+        format : str, default "png"
+            Image format (e.g., "png", "jpg", "pdf").
+        cmap : str, default "inferno"
+            Matplotlib colormap name.
+        vmin : float, optional
+            Minimum value for color scaling. If None and robust=True,
+            uses 2nd percentile across all exported frames.
+        vmax : float, optional
+            Maximum value for color scaling. If None and robust=True,
+            uses 98th percentile across all exported frames.
+        robust : bool, default True
+            Use percentile-based color scaling across all exported frames.
+        mask_radius : int, optional
+            Apply circular mask with this radius in pixels.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        dpi : int, default 150
+            Resolution for saved images.
+        filename_template : str, default "{var}_t{time_idx:04d}_f{freq_idx:04d}.{format}"
+            Template for filenames. Available placeholders: {var}, {time_idx},
+            {freq_idx}, {time_mjd}, {freq_mhz}, {format}.
+
+        Returns
+        -------
+        list of str
+            List of paths to the saved image files.
+
+        Raises
+        ------
+        ValueError
+            If the specified variable doesn't exist in the dataset.
+
+        Example
+        -------
+        >>> # Export all frames
+        >>> files = ds.radport.export_frames("./frames")
+        >>> print(f"Exported {len(files)} frames")
+        >>>
+        >>> # Export specific time/frequency combinations
+        >>> files = ds.radport.export_frames(
+        ...     "./frames",
+        ...     time_indices=[0, 1, 2],
+        ...     freq_indices=[0, 5, 10],
+        ... )
+        """
+        import os
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            raise ValueError(
+                f"Variable '{var}' not found in dataset. "
+                f"Available variables: {list(self._obj.data_vars)}."
+            )
+
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Get indices to export
+        if time_indices is None:
+            time_indices = list(range(len(self._obj.coords["time"])))
+        if freq_indices is None:
+            freq_indices = list(range(len(self._obj.coords["frequency"])))
+
+        # Get coordinate values for labels
+        time_values = self._obj.coords["time"].values
+        freq_values = self._obj.coords["frequency"].values
+
+        # Compute global color scale from all frames to export
+        if vmin is None or vmax is None:
+            all_values = []
+            for ti in time_indices:
+                for fi in freq_indices:
+                    frame_data = self._obj[var].isel(
+                        time=ti, frequency=fi, polarization=pol
+                    ).values
+                    all_values.extend(frame_data.ravel())
+
+            all_values = np.array(all_values)
+            finite_values = all_values[np.isfinite(all_values)]
+            if len(finite_values) > 0:
+                if robust:
+                    computed_vmin = np.percentile(finite_values, 2)
+                    computed_vmax = np.percentile(finite_values, 98)
+                else:
+                    computed_vmin = np.nanmin(finite_values)
+                    computed_vmax = np.nanmax(finite_values)
+            else:
+                computed_vmin, computed_vmax = 0, 1
+
+            if vmin is None:
+                vmin = computed_vmin
+            if vmax is None:
+                vmax = computed_vmax
+
+        # Create mask if requested
+        mask = None
+        if mask_radius is not None:
+            nl = len(self._obj.coords["l"])
+            nm = len(self._obj.coords["m"])
+            center_l, center_m = nl // 2, nm // 2
+            l_idx, m_idx = np.ogrid[:nl, :nm]
+            dist = np.sqrt((l_idx - center_l) ** 2 + (m_idx - center_m) ** 2)
+            mask = dist > mask_radius
+
+        # Export frames
+        exported_files = []
+
+        for ti in time_indices:
+            for fi in freq_indices:
+                # Get frame data
+                frame_data = self._obj[var].isel(
+                    time=ti, frequency=fi, polarization=pol
+                ).values.copy()
+
+                if mask is not None:
+                    frame_data[mask] = np.nan
+
+                # Create figure
+                fig, ax = plt.subplots(figsize=figsize)
+
+                im = ax.imshow(
+                    frame_data.T,
+                    origin="lower",
+                    cmap=cmap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    aspect="equal",
+                )
+
+                # Add colorbar
+                cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                cbar.set_label("Jy/beam", fontsize=11)
+
+                # Labels
+                ax.set_xlabel("l index", fontsize=11)
+                ax.set_ylabel("m index", fontsize=11)
+
+                # Title
+                time_val = time_values[ti]
+                freq_hz = float(freq_values[fi])
+                try:
+                    time_str = f"{float(time_val):.6f}"
+                except (TypeError, ValueError):
+                    time_str = str(time_val)
+
+                ax.set_title(
+                    f"{var} at t={time_str} MJD, f={freq_hz/1e6:.2f} MHz, pol={pol}",
+                    fontsize=11,
+                )
+
+                # Generate filename
+                try:
+                    time_mjd = float(time_val)
+                except (TypeError, ValueError):
+                    time_mjd = 0.0
+
+                filename = filename_template.format(
+                    var=var,
+                    time_idx=ti,
+                    freq_idx=fi,
+                    time_mjd=time_mjd,
+                    freq_mhz=freq_hz / 1e6,
+                    format=format,
+                )
+                filepath = os.path.join(output_dir, filename)
+
+                # Save figure
+                fig.savefig(filepath, dpi=dpi, bbox_inches="tight")
+                plt.close(fig)
+
+                exported_files.append(filepath)
+
+        return exported_files
