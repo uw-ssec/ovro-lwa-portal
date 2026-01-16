@@ -1393,3 +1393,194 @@ class TestRadportPlotFrequencyAverage:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Phase E: WCS & Coordinate Methods Tests
+# =============================================================================
+
+
+class TestRadportHasWcs:
+    """Tests for has_wcs property."""
+
+    def test_has_wcs_false_without_wcs(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """has_wcs returns False when no WCS header is present."""
+        assert valid_ovro_dataset.radport.has_wcs is False
+
+    def test_has_wcs_true_with_wcs(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """has_wcs returns True when WCS header is present."""
+        assert valid_ovro_dataset_with_wcs.radport.has_wcs is True
+
+
+class TestRadportPixelToCoords:
+    """Tests for pixel_to_coords() method."""
+
+    def test_pixel_to_coords_returns_tuple(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() returns tuple of (ra, dec)."""
+        result = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 25)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_pixel_to_coords_center_pixel(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() returns expected coords for center pixel."""
+        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 25)
+        # WCS is centered at RA=180, Dec=45 with CRPIX at (25, 25)
+        # Allow 2 degree tolerance due to SIN projection effects
+        assert abs(ra - 180.0) < 2.0
+        assert abs(dec - 45.0) < 2.0
+
+    def test_pixel_to_coords_ra_range(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() returns RA in [0, 360) range."""
+        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(0, 0)
+        assert 0 <= ra < 360
+
+    def test_pixel_to_coords_out_of_bounds_l_raises(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() raises for l_idx out of bounds."""
+        with pytest.raises(ValueError, match="l_idx=100 out of bounds"):
+            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(100, 25)
+
+    def test_pixel_to_coords_out_of_bounds_m_raises(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() raises for m_idx out of bounds."""
+        with pytest.raises(ValueError, match="m_idx=100 out of bounds"):
+            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 100)
+
+    def test_pixel_to_coords_no_wcs_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """pixel_to_coords() raises when no WCS is available."""
+        with pytest.raises(ValueError, match="No WCS header found"):
+            valid_ovro_dataset.radport.pixel_to_coords(25, 25)
+
+
+class TestRadportCoordsToPixel:
+    """Tests for coords_to_pixel() method."""
+
+    def test_coords_to_pixel_returns_tuple(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """coords_to_pixel() returns tuple of (l_idx, m_idx)."""
+        result = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_coords_to_pixel_returns_integers(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """coords_to_pixel() returns integer indices."""
+        l_idx, m_idx = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
+        assert isinstance(l_idx, int)
+        assert isinstance(m_idx, int)
+
+    def test_coords_to_pixel_center_coords(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """coords_to_pixel() returns center pixel for center coords."""
+        l_idx, m_idx = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
+        # Should be near the reference pixel (25, 25)
+        assert abs(l_idx - 25) <= 1
+        assert abs(m_idx - 25) <= 1
+
+    def test_coords_to_pixel_roundtrip(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords and coords_to_pixel are approximate inverses."""
+        # Start with pixel
+        l_orig, m_orig = 30, 30
+        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(l_orig, m_orig)
+        l_back, m_back = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(ra, dec)
+        # Should round-trip approximately
+        assert abs(l_back - l_orig) <= 1
+        assert abs(m_back - m_orig) <= 1
+
+    def test_coords_to_pixel_no_wcs_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """coords_to_pixel() raises when no WCS is available."""
+        with pytest.raises(ValueError, match="No WCS header found"):
+            valid_ovro_dataset.radport.coords_to_pixel(180.0, 45.0)
+
+
+class TestRadportPlotWcs:
+    """Tests for plot_wcs() method."""
+
+    def test_plot_wcs_returns_figure(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() returns matplotlib Figure."""
+        fig = valid_ovro_dataset_with_wcs.radport.plot_wcs()
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_wcs_with_freq_mhz(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() accepts freq_mhz parameter."""
+        fig = valid_ovro_dataset_with_wcs.radport.plot_wcs(freq_mhz=50.0)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_wcs_with_mask_radius(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() accepts mask_radius parameter."""
+        fig = valid_ovro_dataset_with_wcs.radport.plot_wcs(mask_radius=20)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_wcs_custom_colors(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() accepts color customization parameters."""
+        fig = valid_ovro_dataset_with_wcs.radport.plot_wcs(
+            grid_color="yellow",
+            label_color="cyan",
+            facecolor="navy",
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_wcs_no_colorbar(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() accepts add_colorbar=False."""
+        fig = valid_ovro_dataset_with_wcs.radport.plot_wcs(add_colorbar=False)
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_wcs_no_wcs_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_wcs() raises when no WCS is available."""
+        with pytest.raises(ValueError, match="No WCS header found"):
+            valid_ovro_dataset.radport.plot_wcs()
+
+    def test_plot_wcs_invalid_var_raises(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """plot_wcs() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset_with_wcs.radport.plot_wcs(var="INVALID")
