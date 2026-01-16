@@ -364,6 +364,171 @@ print(result)
 client.close()
 ```
 
+## Using the `radport` Accessor
+
+After loading a dataset, you can access OVRO-LWA-specific visualization and
+analysis features through the `radport` xarray accessor.
+
+### Basic Usage
+
+```python
+import ovro_lwa_portal
+
+# Load data
+ds = ovro_lwa_portal.open_dataset("observation.zarr")
+
+# Create a default visualization
+fig = ds.radport.plot()
+```
+
+The accessor is automatically registered when you import `ovro_lwa_portal`, so
+it's available on any xarray Dataset that has the required OVRO-LWA structure.
+
+### Plotting Options
+
+The `plot()` method supports various customization options:
+
+```python
+# Plot a specific time, frequency, and polarization
+fig = ds.radport.plot(
+    time_idx=5,      # Time index
+    freq_idx=10,     # Frequency index
+    pol=0,           # Polarization index
+)
+
+# Customize the colormap and scale
+fig = ds.radport.plot(
+    cmap="viridis",  # Matplotlib colormap
+    vmin=-1.0,       # Minimum value for color scale
+    vmax=16.0,       # Maximum value for color scale
+)
+
+# Use robust scaling for data with outliers
+fig = ds.radport.plot(robust=True)
+
+# Customize figure size
+fig = ds.radport.plot(figsize=(12, 10))
+
+# Plot without colorbar
+fig = ds.radport.plot(add_colorbar=False)
+```
+
+### Plot Method Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `var` | str | `"SKY"` | Variable to plot (`"SKY"` or `"BEAM"`) |
+| `time_idx` | int | `0` | Time index for the snapshot |
+| `freq_idx` | int | `0` | Frequency index for the snapshot |
+| `pol` | int | `0` | Polarization index |
+| `freq_mhz` | float | `None` | Select frequency by MHz (overrides `freq_idx`) |
+| `time_mjd` | float | `None` | Select time by MJD (overrides `time_idx`) |
+| `cmap` | str | `"inferno"` | Matplotlib colormap name |
+| `vmin` | float | `None` | Minimum value for color scale |
+| `vmax` | float | `None` | Maximum value for color scale |
+| `robust` | bool | `False` | Use 2nd/98th percentile for scaling |
+| `mask_radius` | int | `None` | Circular mask radius in pixels |
+| `figsize` | tuple | `(8, 6)` | Figure size in inches |
+| `add_colorbar` | bool | `True` | Whether to add a colorbar |
+
+### Selecting by Value (MHz, MJD)
+
+Instead of using indices, you can select by physical values:
+
+```python
+# Select frequency by MHz (more intuitive than index)
+fig = ds.radport.plot(freq_mhz=50.0)
+
+# Select time by MJD value
+fig = ds.radport.plot(time_mjd=60000.5)
+
+# Combine both
+fig = ds.radport.plot(freq_mhz=50.0, time_mjd=60000.5)
+```
+
+### Selection Helper Methods
+
+The accessor provides helper methods for finding indices:
+
+```python
+# Find index for a specific frequency in MHz
+freq_idx = ds.radport.nearest_freq_idx(50.0)  # Returns index nearest to 50 MHz
+
+# Find index for a specific time in MJD
+time_idx = ds.radport.nearest_time_idx(60000.5)  # Returns index nearest to MJD
+
+# Find indices for specific (l, m) coordinates
+l_idx, m_idx = ds.radport.nearest_lm_idx(0.0, 0.0)  # Returns indices for center
+```
+
+### Circular Masking
+
+For all-sky images, edge pixels may be invalid. Use `mask_radius` to apply a
+circular mask:
+
+```python
+# Mask pixels outside radius of 1800 pixels from center
+fig = ds.radport.plot(mask_radius=1800)
+```
+
+### Plotting BEAM Data
+
+If your dataset contains BEAM data, you can plot it by specifying the variable:
+
+```python
+# Check if BEAM data is available
+if ds.radport.has_beam:
+    fig = ds.radport.plot(var="BEAM")
+```
+
+### Dataset Validation
+
+The accessor automatically validates that the dataset has the required structure
+for OVRO-LWA data when you access it. If validation fails, you'll get an
+informative error message:
+
+```python
+import xarray as xr
+
+# This will raise a ValueError with details about what's missing
+invalid_ds = xr.Dataset({"other_var": (["x", "y"], [[1, 2], [3, 4]])})
+try:
+    invalid_ds.radport.plot()
+except ValueError as e:
+    print(f"Validation error: {e}")
+```
+
+Required dataset structure:
+- **Dimensions**: `time`, `frequency`, `polarization`, `l`, `m`
+- **Variables**: `SKY` (required), `BEAM` (optional)
+
+### Complete Example
+
+```python
+import ovro_lwa_portal
+
+# Load data from DOI
+ds = ovro_lwa_portal.open_dataset("doi:10.22002/example")
+
+# Print dataset info
+print(f"Time steps: {len(ds.time)}")
+print(f"Frequencies: {len(ds.frequency)}")
+print(f"Has BEAM data: {ds.radport.has_beam}")
+
+# Create visualization at specific frequency (by value in MHz)
+fig = ds.radport.plot(
+    freq_mhz=50.0,      # Select 50 MHz directly
+    time_idx=0,
+    cmap="inferno",
+    robust=True,
+    mask_radius=1800,   # Apply circular mask
+    figsize=(10, 8),
+)
+
+# Save the figure
+fig.savefig("observation_snapshot.png", dpi=150, bbox_inches="tight")
+```
+
 ## API Reference
 
 For complete API documentation, see:
