@@ -65,10 +65,7 @@ def _normalize_doi(source: str) -> str:
 
 
 def _resolve_doi(doi: str) -> str:
-    """Resolve DOI to zarr store URL using DataCite Media API.
-
-    Uses the approach from caltechdata_api to query the DataCite Media API
-    and retrieve the zarr store URL associated with the DOI.
+    """Resolve DOI to zarr URL using caltechdata_api.
 
     Parameters
     ----------
@@ -84,61 +81,40 @@ def _resolve_doi(doi: str) -> str:
     ------
     DataSourceError
         If DOI cannot be resolved or zarr URL not found.
+    ImportError
+        If caltechdata_api is not installed.
     """
     try:
-        import requests
+        from caltechdata_api import download_url
     except ImportError as e:
         msg = (
-            "requests library is required for DOI resolution. "
-            "Install with: pip install requests"
+            "caltechdata_api is required for DOI resolution. "
+            "Install with: pip install 'ovro_lwa_portal[remote]'"
         )
         raise ImportError(msg) from e
 
-    # Use DataCite Media API to get the zarr store URL
-    # Based on: https://github.com/caltechlibrary/caltechdata_api/blob/main/caltechdata_api/download_file.py
-    api_url = f"https://api.datacite.org/dois/{doi}/media"
-    logger.info(f"Querying DataCite Media API: {api_url}")
+    logger.info(f"Resolving DOI via caltechdata_api: {doi}")
 
     try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        # Try to get zarr media type first
+        result = download_url(doi, media_type="application/zarr")
+        if result:
+            # Handle case where caltechdata_api returns dict instead of string
+            url = result.get("url") if isinstance(result, dict) else result
+            if url:
+                logger.info(f"Resolved DOI to zarr URL: {url}")
+                return url
 
-        if "data" not in data or not data["data"]:
-            msg = f"No media files found for DOI: {doi}"
-            raise DataSourceError(msg)
+        # Fallback to first available URL if no zarr media type
+        url = download_url(doi)
+        if url:
+            logger.warning(f"No zarr media type found, using first URL: {url}")
+            return url
 
-        # Look for zarr store in media types
-        # Prefer application/zarr or application/zip+zarr media types
-        zarr_url = None
-        for media in data["data"]:
-            attrs = media.get("attributes", {})
-            media_type = attrs.get("mediaType", "")
-            url = attrs.get("url", "")
-
-            # Check if this is a zarr store
-            if "zarr" in media_type.lower() or url.endswith(".zarr") or ".zarr/" in url:
-                zarr_url = url
-                logger.info(f"Found zarr store with media type '{media_type}': {url}")
-                break
-
-        # If no explicit zarr media type, use the first URL
-        if zarr_url is None and data["data"]:
-            zarr_url = data["data"][0]["attributes"]["url"]
-            logger.warning(f"No zarr media type found, using first URL: {zarr_url}")
-
-        if zarr_url is None:
-            msg = f"No zarr store URL found for DOI: {doi}"
-            raise DataSourceError(msg)
-
-        logger.info(f"Resolved DOI to zarr URL: {zarr_url}")
-        return zarr_url
-
-    except requests.RequestException as e:
-        msg = f"Failed to query DataCite Media API for DOI {doi}: {e}"
-        raise DataSourceError(msg) from e
-    except (KeyError, IndexError) as e:
-        msg = f"Unexpected response format from DataCite Media API for DOI {doi}: {e}"
+        msg = f"No download URL found for DOI: {doi}"
+        raise DataSourceError(msg)
+    except Exception as e:
+        msg = f"Failed to resolve DOI {doi}: {e}"
         raise DataSourceError(msg) from e
 
 
@@ -179,11 +155,6 @@ def _validate_dataset(ds: xr.Dataset) -> None:
     ----------
     ds : xr.Dataset
         Dataset to validate.
-
-    Raises
-    ------
-    DataSourceError
-        If dataset doesn't conform to expected structure.
     """
     # Check for required dimensions (at least some of these should exist)
     expected_dims = {"time", "frequency", "l", "m"}
@@ -328,7 +299,7 @@ def open_dataset(
                 raise FileNotFoundError(f"Local path does not exist: {store_path}")
 
             # Build a Zarr store (fsspec mapper) from the UPath
-            fs = store_path.fs          # fsspec filesystem
+            fs = store_path.fs
             store = fs.get_mapper(store_path.path)
 
             # Check if we need cloud storage backends for remote paths
@@ -340,7 +311,7 @@ def open_dataset(
                     except ImportError as e:
                         msg = (
                             "s3fs is required for S3 access. "
-                            "Install with: pip install s3fs"
+                            "Install with: pip install 'ovro_lwa_portal[remote]'"
                         )
                         raise ImportError(msg) from e
                 elif parsed.scheme in ("gs", "gcs"):
@@ -349,12 +320,11 @@ def open_dataset(
                     except ImportError as e:
                         msg = (
                             "gcsfs is required for Google Cloud Storage access. "
-                            "Install with: pip install gcsfs"
+                            "Install with: pip install 'ovro_lwa_portal[remote]'"
                         )
                         raise ImportError(msg) from e
 
-            # Open the zarr store using the UPath
-            # xr.open_zarr can handle fsspec mappers directly”
+            # Open the zarr store using the fsspec mapper
             with warnings.catch_warnings():
                 warnings.simplefilter("default")
                 ds = xr.open_zarr(store, chunks=chunks, **kwargs)
