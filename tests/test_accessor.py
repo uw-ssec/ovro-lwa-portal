@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import matplotlib
+
+# Set non-interactive backend before importing pyplot
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import xarray as xr
 
-# Set non-interactive backend before importing accessor
-matplotlib.use("Agg")
-
-# Import to register the accessor
-import ovro_lwa_portal  # noqa: F401
+# Import to register the accessor side effects
+import ovro_lwa_portal
 from ovro_lwa_portal.accessor import RadportAccessor
 
 
@@ -1441,7 +1442,7 @@ class TestRadportPixelToCoords:
         self, valid_ovro_dataset_with_wcs: xr.Dataset
     ) -> None:
         """pixel_to_coords() returns RA in [0, 360) range."""
-        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(0, 0)
+        ra, _dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(0, 0)
         assert 0 <= ra < 360
 
     def test_pixel_to_coords_out_of_bounds_l_raises(
@@ -2601,3 +2602,497 @@ class TestRadportPlotDynamicSpectrumDedispersed:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Sliding Window Time-Frequency Analysis Tests
+# =============================================================================
+
+
+class TestSlidingWindowStacks:
+    """Tests for RadportAccessor.sliding_window_stacks() method."""
+
+    def test_sliding_window_stacks_returns_dataset(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() returns an xr.Dataset."""
+        result = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        assert isinstance(result, xr.Dataset)
+
+    def test_sliding_window_stacks_dimensions(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() output has correct dimensions."""
+        result = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        # With 10 time steps and window=3, step=1: 10-3+1 = 8 kernels
+        # With 8 freq channels and window=2, step=1: 8-2+1 = 7 kernels
+        assert "kernel_time" in result.dims
+        assert "kernel_freq" in result.dims
+        assert result.sizes["kernel_time"] == 8
+        assert result.sizes["kernel_freq"] == 7
+
+    def test_sliding_window_stacks_with_step(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() with step > 1 reduces output dimensions."""
+        result = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+            time_step=2,
+            freq_step=2,
+        )
+        # With step=2: kernel_time = len(range(0, 10-3+1, 2)) = len([0,2,4,6]) = 4
+        # freq: len(range(0, 8-2+1, 2)) = len([0,2,4,6]) = 4
+        assert result.sizes["kernel_time"] == 4
+        assert result.sizes["kernel_freq"] == 4
+
+    def test_sliding_window_stacks_contains_expected_variables(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() output contains expected variables."""
+        result = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        assert "stack" in result
+        assert "rms" in result
+        assert "peak_flux" in result
+        assert "peak_l" in result
+        assert "peak_m" in result
+        assert "n_valid" in result
+
+    def test_sliding_window_stacks_window_exceeds_time_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() raises ValueError if window > time extent."""
+        with pytest.raises(ValueError, match="time_window.*exceeds"):
+            valid_ovro_dataset.radport.sliding_window_stacks(
+                l_center=0.0,
+                m_center=0.0,
+                cutout_size=0.5,
+                time_window=100,  # Dataset has only 2 time steps
+                freq_window=2,
+            )
+
+    def test_sliding_window_stacks_window_exceeds_freq_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() raises ValueError if window > freq extent."""
+        with pytest.raises(ValueError, match="freq_window.*exceeds"):
+            valid_ovro_dataset.radport.sliding_window_stacks(
+                l_center=0.0,
+                m_center=0.0,
+                cutout_size=0.5,
+                time_window=2,
+                freq_window=100,  # Dataset has only 3 freq channels
+            )
+
+    def test_sliding_window_stacks_empty_cutout_raises(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() raises ValueError for empty cutout."""
+        with pytest.raises(ValueError, match="Cutout region is empty"):
+            sliding_window_dataset.radport.sliding_window_stacks(
+                l_center=10.0,  # Outside data range
+                m_center=10.0,
+                cutout_size=0.1,
+                time_window=3,
+                freq_window=2,
+            )
+
+    def test_sliding_window_stacks_invalid_variable_raises(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="not found"):
+            sliding_window_dataset.radport.sliding_window_stacks(
+                l_center=0.0,
+                m_center=0.0,
+                cutout_size=0.5,
+                time_window=3,
+                freq_window=2,
+                var="NONEXISTENT",
+            )
+
+    def test_sliding_window_stacks_has_metadata(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() output has expected metadata attributes."""
+        result = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        assert result.attrs["time_window"] == 3
+        assert result.attrs["freq_window"] == 2
+        assert result.attrs["l_center"] == 0.0
+        assert result.attrs["m_center"] == 0.0
+
+    def test_sliding_window_stacks_nan_handling(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """sliding_window_stacks() handles NaN values gracefully."""
+        # Inject some NaN values
+        ds = sliding_window_dataset.copy(deep=True)
+        ds["SKY"].values[0, 0, 0, :5, :5] = np.nan
+
+        result = ds.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        # Should complete without error
+        assert isinstance(result, xr.Dataset)
+
+
+class TestVariabilityIndex:
+    """Tests for RadportAccessor.variability_index() method."""
+
+    def test_variability_index_returns_dataarray(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() returns an xr.DataArray."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0, m_center=0.0, cutout_size=0.3
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_variability_index_dimensions(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() returns 2D array with l, m dimensions."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0, m_center=0.0, cutout_size=0.3
+        )
+        assert result.dims == ("l", "m")
+
+    def test_variability_index_modulation_index_metric(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() computes modulation index correctly."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.3,
+            metric="modulation_index",
+        )
+        # Variable source at center should have non-zero variability
+        # Find center pixel index
+        l_idx = np.argmin(np.abs(result.coords["l"].values))
+        m_idx = np.argmin(np.abs(result.coords["m"].values))
+        center_variability = float(result.values[l_idx, m_idx])
+        assert center_variability > 0
+
+    def test_variability_index_chi_squared_metric(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() computes chi_squared metric correctly."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.3,
+            metric="chi_squared",
+        )
+        assert isinstance(result, xr.DataArray)
+        assert result.attrs["metric"] == "chi_squared"
+
+    def test_variability_index_peak_to_mean_metric(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() computes peak_to_mean metric correctly."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.3,
+            metric="peak_to_mean",
+        )
+        assert isinstance(result, xr.DataArray)
+        assert result.attrs["metric"] == "peak_to_mean"
+        # peak_to_mean should be >= 1 for valid data
+        valid_values = result.values[np.isfinite(result.values)]
+        assert np.all(valid_values >= 1.0)
+
+    def test_variability_index_invalid_metric_raises(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() raises ValueError for invalid metric."""
+        with pytest.raises(ValueError, match="metric must be one of"):
+            variable_source_dataset.radport.variability_index(
+                l_center=0.0,
+                m_center=0.0,
+                cutout_size=0.3,
+                metric="invalid_metric",
+            )
+
+    def test_variability_index_empty_cutout_raises(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() raises ValueError for empty cutout."""
+        with pytest.raises(ValueError, match="Cutout region is empty"):
+            variable_source_dataset.radport.variability_index(
+                l_center=10.0, m_center=10.0, cutout_size=0.1
+            )
+
+    def test_variability_index_has_metadata(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """variability_index() output has expected metadata."""
+        result = variable_source_dataset.radport.variability_index(
+            l_center=0.0, m_center=0.0, cutout_size=0.3
+        )
+        assert result.attrs["metric"] == "modulation_index"
+        assert result.attrs["l_center"] == 0.0
+        assert result.attrs["m_center"] == 0.0
+
+
+class TestFindVariableSources:
+    """Tests for RadportAccessor.find_variable_sources() method."""
+
+    def test_find_variable_sources_returns_dataset(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() returns an xr.Dataset."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=2.0,
+            variability_threshold=0.1,
+        )
+        assert isinstance(result, xr.Dataset)
+
+    def test_find_variable_sources_detects_injected_source(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() detects the injected variable source."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=2.0,
+            variability_threshold=0.1,
+        )
+        # Should find at least one candidate
+        assert result.sizes["candidate"] > 0
+
+        # Check that one candidate is near the center (l=0, m=0)
+        # The algorithm uses local maxima detection so exact position may vary
+        candidates_l = result["l"].values
+        candidates_m = result["m"].values
+        distances = np.sqrt(candidates_l**2 + candidates_m**2)
+        # At least one candidate should be within 0.4 of center
+        # (allowing for local maxima clustering effects)
+        assert np.any(distances < 0.4)
+
+    def test_find_variable_sources_excludes_horizon(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() with exclude_horizon=True filters horizon pixels."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=2.0,
+            variability_threshold=0.1,
+            exclude_horizon=True,
+        )
+        if result.sizes["candidate"] > 0:
+            candidates_l = result["l"].values
+            candidates_m = result["m"].values
+            # All candidates should be within horizon (l^2 + m^2 < 0.9)
+            assert np.all(candidates_l**2 + candidates_m**2 <= 0.9)
+
+    def test_find_variable_sources_output_variables(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() output contains expected variables."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=2.0,
+            variability_threshold=0.1,
+        )
+        expected_vars = [
+            "l", "m", "snr", "variability", "peak_time_idx",
+            "peak_freq_idx", "peak_flux", "mean_flux", "light_curve"
+        ]
+        for var in expected_vars:
+            assert var in result, f"Missing variable: {var}"
+
+    def test_find_variable_sources_max_candidates(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() respects max_candidates limit."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=1.0,  # Low threshold to get many candidates
+            variability_threshold=0.01,
+            max_candidates=5,
+        )
+        assert result.sizes["candidate"] <= 5
+
+    def test_find_variable_sources_no_candidates(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() returns empty dataset when no candidates found."""
+        # Use very high thresholds to ensure no candidates
+        result = valid_ovro_dataset.radport.find_variable_sources(
+            time_window=2,
+            freq_window=2,
+            snr_threshold=1000.0,
+            variability_threshold=100.0,
+        )
+        assert result.sizes["candidate"] == 0
+        # Should still have the coordinate
+        assert "time" in result.coords
+
+    def test_find_variable_sources_light_curve_shape(
+        self, variable_source_dataset: xr.Dataset
+    ) -> None:
+        """find_variable_sources() light_curve has correct shape."""
+        result = variable_source_dataset.radport.find_variable_sources(
+            time_window=3,
+            freq_window=2,
+            snr_threshold=2.0,
+            variability_threshold=0.1,
+        )
+        if result.sizes["candidate"] > 0:
+            n_times = variable_source_dataset.sizes["time"]
+            assert result["light_curve"].shape[1] == n_times
+
+
+class TestAnimateSlidingWindow:
+    """Tests for RadportAccessor.animate_sliding_window() method."""
+
+    def test_animate_sliding_window_returns_animation(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() returns a FuncAnimation object."""
+        from matplotlib.animation import FuncAnimation
+
+        stacks = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        anim = sliding_window_dataset.radport.animate_sliding_window(stacks)
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_sliding_window_time_dimension(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() works with dimension='time'."""
+        from matplotlib.animation import FuncAnimation
+
+        stacks = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        anim = sliding_window_dataset.radport.animate_sliding_window(
+            stacks, dimension="time"
+        )
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_sliding_window_frequency_dimension(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() works with dimension='frequency'."""
+        from matplotlib.animation import FuncAnimation
+
+        stacks = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        anim = sliding_window_dataset.radport.animate_sliding_window(
+            stacks, dimension="frequency"
+        )
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
+
+    def test_animate_sliding_window_invalid_dimension_raises(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() raises ValueError for invalid dimension."""
+        stacks = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        with pytest.raises(ValueError, match="dimension must be"):
+            sliding_window_dataset.radport.animate_sliding_window(
+                stacks, dimension="invalid"
+            )
+        plt.close("all")
+
+    def test_animate_sliding_window_invalid_stacks_raises(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() raises ValueError for invalid stacks input."""
+        # Create a dataset without 'stack' variable
+        invalid_stacks = xr.Dataset({"other": (["x"], [1, 2, 3])})
+        with pytest.raises(ValueError, match="must contain 'stack' variable"):
+            sliding_window_dataset.radport.animate_sliding_window(invalid_stacks)
+        plt.close("all")
+
+    def test_animate_sliding_window_custom_parameters(
+        self, sliding_window_dataset: xr.Dataset
+    ) -> None:
+        """animate_sliding_window() accepts custom visualization parameters."""
+        from matplotlib.animation import FuncAnimation
+
+        stacks = sliding_window_dataset.radport.sliding_window_stacks(
+            l_center=0.0,
+            m_center=0.0,
+            cutout_size=0.5,
+            time_window=3,
+            freq_window=2,
+        )
+        anim = sliding_window_dataset.radport.animate_sliding_window(
+            stacks,
+            cmap="viridis",
+            fps=10,
+            figsize=(10, 8),
+            robust=False,
+        )
+        try:
+            assert isinstance(anim, FuncAnimation)
+        finally:
+            plt.close("all")
