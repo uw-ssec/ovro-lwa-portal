@@ -850,7 +850,7 @@ The accessor looks for WCS information in the following locations (in order):
 
 WCS headers should be in FITS format and typically include:
 
-```
+```text
 CTYPE1  = 'RA---SIN'
 CTYPE2  = 'DEC--SIN'
 CRPIX1  =                 2048.0
@@ -963,6 +963,159 @@ files = ds.radport.export_frames(
 
 - **MP4 animations**: Require `ffmpeg` to be installed on the system
 - **GIF animations**: Use `pillow` (included with matplotlib)
+
+## Sliding Window Time-Frequency Analysis
+
+Analyze data using sliding windows across time and frequency dimensions to
+detect variable and transient radio sources.
+
+### Sliding Window Stacks
+
+Create averaged image stacks using a sliding kernel that moves across both time
+and frequency dimensions:
+
+```python
+# Create sliding window stacks
+stacks = ds.radport.sliding_window_stacks(
+    l_center=0.0,      # Center l coordinate of cutout
+    m_center=0.0,      # Center m coordinate of cutout
+    cutout_size=0.1,   # Half-width of cutout region
+    time_window=5,     # Number of time steps per window
+    freq_window=3,     # Number of frequency channels per window
+)
+
+# Access the averaged images
+stacks.stack.isel(kernel_time=0, kernel_freq=0).plot()
+
+# Access RMS per kernel
+stacks.rms.isel(kernel_time=0, kernel_freq=0).plot()
+
+# Use stepping to reduce computation
+stacks = ds.radport.sliding_window_stacks(
+    l_center=0.0, m_center=0.0, cutout_size=0.1,
+    time_window=5, freq_window=3,
+    time_step=2, freq_step=2,  # Slide by 2 steps
+)
+```
+
+The output dataset contains:
+
+- `stack`: (kernel_time, kernel_freq, l, m) - averaged images
+- `rms`: (kernel_time, kernel_freq, l, m) - RMS per kernel
+- `peak_flux`: (kernel_time, kernel_freq) - peak flux per kernel
+- `peak_l`, `peak_m`: (kernel_time, kernel_freq) - peak positions
+- `n_valid`: (kernel_time, kernel_freq) - count of valid pixels
+
+### Variability Index
+
+Compute variability metrics for each pixel across time and frequency:
+
+```python
+# Modulation index (default): std(flux) / mean(flux)
+var_idx = ds.radport.variability_index(
+    l_center=0.0, m_center=0.0, cutout_size=0.2
+)
+var_idx.plot()
+
+# Chi-squared metric for detecting transients
+chi2 = ds.radport.variability_index(
+    l_center=0.0, m_center=0.0, cutout_size=0.2,
+    metric='chi_squared'
+)
+
+# Peak-to-mean ratio
+peak_ratio = ds.radport.variability_index(
+    l_center=0.0, m_center=0.0, cutout_size=0.2,
+    metric='peak_to_mean'
+)
+```
+
+Available metrics:
+
+- `modulation_index`: Fractional variability (std/mean). Values ~0 indicate
+  steady sources, >0.3 indicates significant variability.
+- `chi_squared`: Deviation from constant flux (normalized).
+- `peak_to_mean`: Ratio of maximum to average flux. Values ~1 indicate steady
+  sources, >2 indicates transients.
+
+### Finding Variable Sources
+
+Search for variable sources across the full field of view:
+
+```python
+# Find variable sources with default thresholds
+candidates = ds.radport.find_variable_sources(
+    time_window=5,
+    freq_window=3,
+    snr_threshold=5.0,          # Minimum SNR
+    variability_threshold=0.3,   # Minimum modulation index
+)
+
+print(f"Found {candidates.sizes['candidate']} variable sources")
+
+# Access candidate properties
+if candidates.sizes['candidate'] > 0:
+    print(f"Most variable source: l={candidates.l.values[0]:.3f}, "
+          f"m={candidates.m.values[0]:.3f}")
+
+    # Plot light curve of most variable source
+    candidates.light_curve.isel(candidate=0).plot()
+```
+
+The output dataset contains for each candidate:
+
+- `l`, `m`: Source position in direction cosines
+- `snr`: Peak signal-to-noise ratio
+- `variability`: Modulation index
+- `peak_time_idx`, `peak_freq_idx`: Indices of peak flux
+- `peak_flux`, `mean_flux`: Flux statistics
+- `light_curve`: Flux vs time at peak frequency
+
+### Animate Sliding Window Stacks
+
+Create animations showing how the averaged image changes as the kernel slides:
+
+```python
+# Create stacks first
+stacks = ds.radport.sliding_window_stacks(
+    l_center=0.0, m_center=0.0, cutout_size=0.1,
+    time_window=5, freq_window=3
+)
+
+# Animate through time dimension
+anim = ds.radport.animate_sliding_window(stacks, dimension='time')
+
+# Display in Jupyter notebook
+from IPython.display import HTML
+HTML(anim.to_jshtml())
+
+# Save to file
+anim = ds.radport.animate_sliding_window(
+    stacks,
+    dimension='frequency',
+    output_file='sliding_window.mp4',
+    fps=10
+)
+```
+
+### Sliding Window Parameters
+
+| Parameter               | Type  | Default | Description                               |
+| ----------------------- | ----- | ------- | ----------------------------------------- |
+| `l_center`              | float | req.    | Center l coordinate of cutout             |
+| `m_center`              | float | req.    | Center m coordinate of cutout             |
+| `cutout_size`           | float | req.    | Half-width of cutout in l/m               |
+| `time_window`           | int   | req.    | Number of time steps per window           |
+| `freq_window`           | int   | req.    | Number of frequency channels per window   |
+| `time_step`             | int   | `1`     | Step size for sliding time window         |
+| `freq_step`             | int   | `1`     | Step size for sliding frequency window    |
+| `var`                   | str   | `"SKY"` | Variable to analyze                       |
+| `pol`                   | int   | `0`     | Polarization index                        |
+| `min_valid_fraction`    | float | `0.5`   | Minimum valid pixel fraction per kernel   |
+| `snr_threshold`         | float | `5.0`   | Minimum SNR for variable source detection |
+| `variability_threshold` | float | `0.3`   | Minimum modulation index for detection    |
+| `exclude_horizon`       | bool  | `True`  | Exclude pixels near horizon (l²+m² > 0.9) |
+| `max_candidates`        | int   | `100`   | Maximum candidates to return              |
 
 ## Source Detection Methods
 
