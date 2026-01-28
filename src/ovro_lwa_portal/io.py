@@ -273,6 +273,8 @@ def open_dataset(
         try:
             normalized_source = _resolve_doi(normalized_source)
             source_type = "remote"  # After resolution, treat as remote URL
+        except ImportError:
+            raise
         except Exception as e:
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
             raise DataSourceError(msg) from e
