@@ -2022,6 +2022,662 @@ class RadportAccessor:
 
         return avg
 
+    # =========================================================================
+    # Sliding Window Time-Frequency Analysis
+    # =========================================================================
+
+    def sliding_window_stacks(
+        self,
+        l_center: float,
+        m_center: float,
+        cutout_size: float,
+        time_window: int,
+        freq_window: int,
+        time_step: int = 1,
+        freq_step: int = 1,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        min_valid_fraction: float = 0.5,
+    ) -> xr.Dataset:
+        """Compute sliding window averages over time and frequency.
+
+        Creates averaged image stacks using a sliding kernel that moves across
+        both time and frequency dimensions. This is useful for detecting variable
+        and transient radio sources that may appear/disappear across different
+        time and frequency ranges.
+
+        Parameters
+        ----------
+        l_center : float
+            Center l coordinate of the cutout region.
+        m_center : float
+            Center m coordinate of the cutout region.
+        cutout_size : float
+            Half-width of the cutout in both l and m directions.
+            The cutout spans [center - size, center + size].
+        time_window : int
+            Number of time steps to include in each window.
+        freq_window : int
+            Number of frequency channels to include in each window.
+        time_step : int, default 1
+            Step size for sliding the time window. Larger values
+            reduce the number of output time kernels.
+        freq_step : int, default 1
+            Step size for sliding the frequency window. Larger values
+            reduce the number of output frequency kernels.
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to analyze.
+        pol : int, default 0
+            Polarization index.
+        min_valid_fraction : float, default 0.5
+            Minimum fraction of valid (non-NaN) pixels required
+            for a kernel to be included. Kernels with fewer valid
+            pixels are set to NaN.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with the following variables:
+            - stack : (kernel_time, kernel_freq, l, m) - averaged images
+            - rms : (kernel_time, kernel_freq, l, m) - RMS per kernel
+            - peak_flux : (kernel_time, kernel_freq) - peak flux per kernel
+            - peak_l : (kernel_time, kernel_freq) - l position of peak
+            - peak_m : (kernel_time, kernel_freq) - m position of peak
+            - n_valid : (kernel_time, kernel_freq) - count of valid pixels
+
+        Raises
+        ------
+        ValueError
+            If window size exceeds data extent or cutout region is empty.
+
+        Examples
+        --------
+        >>> # Analyze a region with 5-time, 3-frequency sliding windows
+        >>> stacks = ds.radport.sliding_window_stacks(
+        ...     l_center=0.0, m_center=0.0, cutout_size=0.1,
+        ...     time_window=5, freq_window=3
+        ... )
+        >>> # Plot the first kernel stack
+        >>> stacks.stack.isel(kernel_time=0, kernel_freq=0).plot()
+
+        >>> # Use larger steps to reduce computation
+        >>> stacks = ds.radport.sliding_window_stacks(
+        ...     l_center=0.0, m_center=0.0, cutout_size=0.1,
+        ...     time_window=5, freq_window=3,
+        ...     time_step=2, freq_step=2
+        ... )
+        """
+        # Validate variable
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        # Get data dimensions
+        n_times = self._obj.sizes["time"]
+        n_freqs = self._obj.sizes["frequency"]
+
+        # Validate window sizes
+        if time_window > n_times:
+            raise ValueError(
+                f"time_window ({time_window}) exceeds number of time steps ({n_times})"
+            )
+        if freq_window > n_freqs:
+            raise ValueError(
+                f"freq_window ({freq_window}) exceeds number of frequency "
+                f"channels ({n_freqs})"
+            )
+
+        # Extract the cutout region across all time and frequency
+        da = self._obj[var].isel(polarization=pol)
+
+        # Compute l/m bounds
+        l_min, l_max = l_center - cutout_size, l_center + cutout_size
+        m_min, m_max = m_center - cutout_size, m_center + cutout_size
+
+        # Handle coordinate ordering
+        l_coords = da.coords["l"]
+        m_coords = da.coords["m"]
+
+        if float(l_coords[0]) <= float(l_coords[-1]):
+            l_slice = slice(l_min, l_max)
+        else:
+            l_slice = slice(l_max, l_min)
+
+        if float(m_coords[0]) <= float(m_coords[-1]):
+            m_slice = slice(m_min, m_max)
+        else:
+            m_slice = slice(m_max, m_min)
+
+        cutout = da.sel(l=l_slice, m=m_slice)
+
+        if cutout.size == 0:
+            raise ValueError(
+                f"Cutout region is empty. Requested l=[{l_min:.3f}, {l_max:.3f}], "
+                f"m=[{m_min:.3f}, {m_max:.3f}]."
+            )
+
+        # Compute kernel positions
+        time_starts = list(range(0, n_times - time_window + 1, time_step))
+        freq_starts = list(range(0, n_freqs - freq_window + 1, freq_step))
+
+        n_time_kernels = len(time_starts)
+        n_freq_kernels = len(freq_starts)
+
+        # Get spatial dimensions
+        n_l = cutout.sizes["l"]
+        n_m = cutout.sizes["m"]
+
+        # Initialize output arrays
+        stack_data = np.full((n_time_kernels, n_freq_kernels, n_l, n_m), np.nan)
+        rms_data = np.full((n_time_kernels, n_freq_kernels, n_l, n_m), np.nan)
+        peak_flux = np.full((n_time_kernels, n_freq_kernels), np.nan)
+        peak_l = np.full((n_time_kernels, n_freq_kernels), np.nan)
+        peak_m = np.full((n_time_kernels, n_freq_kernels), np.nan)
+        n_valid = np.zeros((n_time_kernels, n_freq_kernels), dtype=int)
+
+        # Compute cutout values once
+        cutout_values = cutout.values  # Shape: (time, freq, l, m)
+
+        # Slide the window
+        for ti, t_start in enumerate(time_starts):
+            t_end = t_start + time_window
+            for fi, f_start in enumerate(freq_starts):
+                f_end = f_start + freq_window
+
+                # Extract window
+                window = cutout_values[t_start:t_end, f_start:f_end, :, :]
+
+                # Compute mean and std over time/freq dimensions
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    mean_img = np.nanmean(window, axis=(0, 1))
+                    std_img = np.nanstd(window, axis=(0, 1))
+
+                # Count valid pixels
+                valid_count = np.sum(np.isfinite(window), axis=(0, 1))
+                total_window_size = time_window * freq_window
+                valid_fraction = valid_count / total_window_size
+
+                # Apply validity threshold
+                invalid_mask = valid_fraction < min_valid_fraction
+                mean_img[invalid_mask] = np.nan
+                std_img[invalid_mask] = np.nan
+
+                stack_data[ti, fi] = mean_img
+                rms_data[ti, fi] = std_img
+
+                # Find peak position and value
+                finite_mask = np.isfinite(mean_img)
+                n_valid[ti, fi] = np.sum(finite_mask)
+
+                if np.any(finite_mask):
+                    peak_idx = np.nanargmax(mean_img)
+                    peak_l_idx, peak_m_idx = np.unravel_index(peak_idx, mean_img.shape)
+                    peak_flux[ti, fi] = mean_img[peak_l_idx, peak_m_idx]
+                    peak_l[ti, fi] = float(cutout.coords["l"].values[peak_l_idx])
+                    peak_m[ti, fi] = float(cutout.coords["m"].values[peak_m_idx])
+
+        # Compute kernel center times and frequencies
+        time_vals = self._obj.coords["time"].values
+        freq_vals = self._obj.coords["frequency"].values
+
+        kernel_times = np.array([
+            (time_vals[t_start] + time_vals[t_start + time_window - 1]) / 2
+            for t_start in time_starts
+        ])
+        kernel_freqs = np.array([
+            (freq_vals[f_start] + freq_vals[f_start + freq_window - 1]) / 2
+            for f_start in freq_starts
+        ])
+
+        # Build output dataset
+        result = xr.Dataset(
+            {
+                "stack": (
+                    ["kernel_time", "kernel_freq", "l", "m"],
+                    stack_data,
+                ),
+                "rms": (
+                    ["kernel_time", "kernel_freq", "l", "m"],
+                    rms_data,
+                ),
+                "peak_flux": (
+                    ["kernel_time", "kernel_freq"],
+                    peak_flux,
+                ),
+                "peak_l": (
+                    ["kernel_time", "kernel_freq"],
+                    peak_l,
+                ),
+                "peak_m": (
+                    ["kernel_time", "kernel_freq"],
+                    peak_m,
+                ),
+                "n_valid": (
+                    ["kernel_time", "kernel_freq"],
+                    n_valid,
+                ),
+            },
+            coords={
+                "kernel_time": kernel_times,
+                "kernel_freq": kernel_freqs,
+                "l": cutout.coords["l"].values,
+                "m": cutout.coords["m"].values,
+            },
+        )
+
+        # Add metadata
+        result.attrs["variable"] = var
+        result.attrs["pol"] = pol
+        result.attrs["l_center"] = l_center
+        result.attrs["m_center"] = m_center
+        result.attrs["cutout_size"] = cutout_size
+        result.attrs["time_window"] = time_window
+        result.attrs["freq_window"] = freq_window
+        result.attrs["time_step"] = time_step
+        result.attrs["freq_step"] = freq_step
+        result.attrs["min_valid_fraction"] = min_valid_fraction
+
+        return result
+
+    def variability_index(
+        self,
+        l_center: float,
+        m_center: float,
+        cutout_size: float,
+        metric: Literal[
+            "modulation_index", "chi_squared", "peak_to_mean"
+        ] = "modulation_index",
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+    ) -> xr.DataArray:
+        """Compute variability index for each pixel across time and frequency.
+
+        Calculates how much each pixel's flux varies across the time and
+        frequency dimensions, useful for identifying variable radio sources.
+
+        Parameters
+        ----------
+        l_center : float
+            Center l coordinate of the cutout region.
+        m_center : float
+            Center m coordinate of the cutout region.
+        cutout_size : float
+            Half-width of the cutout in both l and m directions.
+        metric : {'modulation_index', 'chi_squared', 'peak_to_mean'}, default 'modulation_index'
+            Variability metric to compute:
+            - 'modulation_index': std(flux) / mean(flux), measures fractional
+              variability. Values ~0 indicate steady sources, >0.3 indicates
+              significant variability.
+            - 'chi_squared': Sum of (flux - mean)² / variance, measures
+              deviation from constant flux. Higher values indicate more
+              variability.
+            - 'peak_to_mean': max(flux) / mean(flux), ratio of peak to average
+              flux. Values ~1 indicate steady sources, >2 indicates transients.
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to analyze.
+        pol : int, default 0
+            Polarization index.
+
+        Returns
+        -------
+        xr.DataArray
+            2D array with dimensions (l, m) containing the variability index
+            for each pixel. Higher values indicate more variable sources.
+
+        Examples
+        --------
+        >>> # Compute modulation index for a region
+        >>> var_idx = ds.radport.variability_index(
+        ...     l_center=0.0, m_center=0.0, cutout_size=0.2
+        ... )
+        >>> var_idx.plot()
+
+        >>> # Use chi-squared metric for detecting transients
+        >>> chi2 = ds.radport.variability_index(
+        ...     l_center=0.0, m_center=0.0, cutout_size=0.2,
+        ...     metric='chi_squared'
+        ... )
+        """
+        # Validate inputs
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        valid_metrics = ["modulation_index", "chi_squared", "peak_to_mean"]
+        if metric not in valid_metrics:
+            raise ValueError(f"metric must be one of {valid_metrics}, got '{metric}'")
+
+        # Extract cutout across all time and frequency
+        da = self._obj[var].isel(polarization=pol)
+
+        # Compute l/m bounds
+        l_min, l_max = l_center - cutout_size, l_center + cutout_size
+        m_min, m_max = m_center - cutout_size, m_center + cutout_size
+
+        # Handle coordinate ordering
+        l_coords = da.coords["l"]
+        m_coords = da.coords["m"]
+
+        if float(l_coords[0]) <= float(l_coords[-1]):
+            l_slice = slice(l_min, l_max)
+        else:
+            l_slice = slice(l_max, l_min)
+
+        if float(m_coords[0]) <= float(m_coords[-1]):
+            m_slice = slice(m_min, m_max)
+        else:
+            m_slice = slice(m_max, m_min)
+
+        cutout = da.sel(l=l_slice, m=m_slice)
+
+        if cutout.size == 0:
+            raise ValueError(
+                f"Cutout region is empty. Requested l=[{l_min:.3f}, {l_max:.3f}], "
+                f"m=[{m_min:.3f}, {m_max:.3f}]."
+            )
+
+        # Compute statistics over time and frequency
+        data = cutout.values  # Shape: (time, freq, l, m)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+
+            if metric == "modulation_index":
+                # std / mean
+                mean_flux = np.nanmean(data, axis=(0, 1))
+                std_flux = np.nanstd(data, axis=(0, 1))
+                result_data = std_flux / np.abs(mean_flux)
+                # Handle negative or zero mean
+                result_data[mean_flux <= 0] = np.nan
+
+            elif metric == "chi_squared":
+                # Sum of (flux - mean)² / variance
+                mean_flux = np.nanmean(data, axis=(0, 1), keepdims=True)
+                var_flux = np.nanvar(data, axis=(0, 1), keepdims=True)
+                # Avoid division by zero
+                var_flux[var_flux == 0] = np.nan
+                chi2 = np.nansum((data - mean_flux) ** 2 / var_flux, axis=(0, 1))
+                # Normalize by degrees of freedom
+                n_obs = np.sum(np.isfinite(data), axis=(0, 1))
+                result_data = chi2 / np.maximum(n_obs - 1, 1)
+
+            elif metric == "peak_to_mean":
+                # max / mean
+                peak_flux = np.nanmax(data, axis=(0, 1))
+                mean_flux = np.nanmean(data, axis=(0, 1))
+                result_data = peak_flux / np.abs(mean_flux)
+                # Handle negative or zero mean
+                result_data[mean_flux <= 0] = np.nan
+
+        # Build output DataArray
+        result = xr.DataArray(
+            result_data,
+            dims=["l", "m"],
+            coords={
+                "l": cutout.coords["l"].values,
+                "m": cutout.coords["m"].values,
+            },
+            attrs={
+                "variable": var,
+                "pol": pol,
+                "metric": metric,
+                "l_center": l_center,
+                "m_center": m_center,
+                "cutout_size": cutout_size,
+            },
+        )
+
+        return result
+
+    def find_variable_sources(
+        self,
+        time_window: int,
+        freq_window: int,
+        snr_threshold: float = 5.0,
+        variability_threshold: float = 0.3,
+        grid_step: float | None = None,
+        exclude_horizon: bool = True,
+        max_candidates: int = 100,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+    ) -> xr.Dataset:
+        """Search for variable sources across the full field of view.
+
+        Systematically scans the image to find pixels that show both
+        significant SNR and variability above specified thresholds.
+        Useful for blind searches for transient and variable radio sources.
+
+        Parameters
+        ----------
+        time_window : int
+            Number of time steps for computing variability statistics.
+        freq_window : int
+            Number of frequency channels for computing variability statistics.
+        snr_threshold : float, default 5.0
+            Minimum signal-to-noise ratio for a candidate source.
+            SNR is computed relative to local RMS.
+        variability_threshold : float, default 0.3
+            Minimum modulation index for a candidate to be considered
+            variable. Values of 0.3 indicate 30% fractional variability.
+        grid_step : float, optional
+            Step size for grid search in l/m coordinates. If None, defaults
+            to 1/20 of the l coordinate range.
+        exclude_horizon : bool, default True
+            If True, exclude pixels near the horizon (l² + m² > 0.9).
+        max_candidates : int, default 100
+            Maximum number of candidate sources to return, sorted by
+            variability index.
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to analyze.
+        pol : int, default 0
+            Polarization index.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset containing variable source candidates with:
+            - l, m : (candidate,) - source positions
+            - snr : (candidate,) - peak signal-to-noise ratio
+            - variability : (candidate,) - modulation index
+            - peak_time_idx : (candidate,) - time index of peak flux
+            - peak_freq_idx : (candidate,) - frequency index of peak flux
+            - peak_flux : (candidate,) - maximum flux value
+            - mean_flux : (candidate,) - mean flux value
+            - light_curve : (candidate, time) - flux vs time at peak freq
+            If no candidates found, returns empty dataset.
+
+        Examples
+        --------
+        >>> # Search for variable sources
+        >>> candidates = ds.radport.find_variable_sources(
+        ...     time_window=5, freq_window=3,
+        ...     snr_threshold=5.0, variability_threshold=0.3
+        ... )
+        >>> print(f"Found {candidates.sizes['candidate']} variable sources")
+
+        >>> # Plot light curve of most variable source
+        >>> if candidates.sizes['candidate'] > 0:
+        ...     candidates.light_curve.isel(candidate=0).plot()
+        """
+        from scipy.ndimage import maximum_filter, uniform_filter
+
+        # Validate variable
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(f"Variable '{var}' not found. Available: {available}")
+
+        # Get data
+        da = self._obj[var].isel(polarization=pol)
+        data = da.values  # Shape: (time, freq, l, m)
+
+        n_times = data.shape[0]
+        n_freqs = data.shape[1]
+
+        # Get coordinates
+        l_vals = da.coords["l"].values
+        m_vals = da.coords["m"].values
+
+        # Default grid step
+        if grid_step is None:
+            l_range = float(l_vals.max() - l_vals.min())
+            grid_step = l_range / 20.0
+
+        # Compute time-averaged image for SNR calculation
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            mean_image = np.nanmean(data, axis=(0, 1))
+            std_image = np.nanstd(data, axis=(0, 1))
+
+        # Compute local RMS using sliding box
+        box_size = max(5, int(len(l_vals) / 20))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            # Compute local mean and RMS
+            local_mean = uniform_filter(mean_image, size=box_size, mode="constant")
+            local_sq_mean = uniform_filter(
+                mean_image**2, size=box_size, mode="constant"
+            )
+            local_rms = np.sqrt(np.maximum(local_sq_mean - local_mean**2, 0))
+            local_rms[local_rms == 0] = np.nan
+
+        # Compute SNR map
+        snr_map = mean_image / local_rms
+
+        # Compute variability index (modulation index)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            variability_map = std_image / np.abs(mean_image)
+            variability_map[mean_image <= 0] = np.nan
+
+        # Create horizon mask
+        ll, mm = np.meshgrid(l_vals, m_vals, indexing="ij")
+        horizon_mask = ll**2 + mm**2 > 0.9
+
+        # Apply thresholds and masks
+        candidate_mask = (
+            (snr_map >= snr_threshold)
+            & (variability_map >= variability_threshold)
+            & np.isfinite(snr_map)
+            & np.isfinite(variability_map)
+        )
+
+        if exclude_horizon:
+            candidate_mask &= ~horizon_mask
+
+        # Find local maxima in variability map to avoid duplicate detections
+        # from the same source
+        max_filter_size = max(3, int(len(l_vals) / 50))
+        variability_maxima = variability_map == maximum_filter(
+            variability_map, size=max_filter_size, mode="constant"
+        )
+        candidate_mask &= variability_maxima
+
+        # Get candidate positions
+        candidate_indices = np.where(candidate_mask)
+        n_raw_candidates = len(candidate_indices[0])
+
+        if n_raw_candidates == 0:
+            # Return empty dataset
+            return xr.Dataset(
+                {
+                    "l": ("candidate", np.array([])),
+                    "m": ("candidate", np.array([])),
+                    "snr": ("candidate", np.array([])),
+                    "variability": ("candidate", np.array([])),
+                    "peak_time_idx": ("candidate", np.array([], dtype=int)),
+                    "peak_freq_idx": ("candidate", np.array([], dtype=int)),
+                    "peak_flux": ("candidate", np.array([])),
+                    "mean_flux": ("candidate", np.array([])),
+                    "light_curve": (
+                        ("candidate", "time"),
+                        np.empty((0, n_times)),
+                    ),
+                },
+                coords={
+                    "time": self._obj.coords["time"].values,
+                },
+                attrs={
+                    "variable": var,
+                    "pol": pol,
+                    "snr_threshold": snr_threshold,
+                    "variability_threshold": variability_threshold,
+                },
+            )
+
+        # Collect candidate data
+        candidates_l = l_vals[candidate_indices[0]]
+        candidates_m = m_vals[candidate_indices[1]]
+        candidates_snr = snr_map[candidate_indices]
+        candidates_var = variability_map[candidate_indices]
+        candidates_mean = mean_image[candidate_indices]
+
+        # Sort by variability (descending) and limit
+        sort_idx = np.argsort(-candidates_var)[:max_candidates]
+
+        candidates_l = candidates_l[sort_idx]
+        candidates_m = candidates_m[sort_idx]
+        candidates_snr = candidates_snr[sort_idx]
+        candidates_var = candidates_var[sort_idx]
+        candidates_mean = candidates_mean[sort_idx]
+        candidate_l_idx = candidate_indices[0][sort_idx]
+        candidate_m_idx = candidate_indices[1][sort_idx]
+
+        n_candidates = len(candidates_l)
+
+        # Extract light curves and find peak times/frequencies
+        light_curves = np.zeros((n_candidates, n_times))
+        peak_time_idx = np.zeros(n_candidates, dtype=int)
+        peak_freq_idx = np.zeros(n_candidates, dtype=int)
+        peak_flux = np.zeros(n_candidates)
+
+        for i in range(n_candidates):
+            li, mi = candidate_l_idx[i], candidate_m_idx[i]
+            pixel_data = data[:, :, li, mi]  # Shape: (time, freq)
+
+            # Light curve: average over frequency
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                light_curves[i] = np.nanmean(pixel_data, axis=1)
+
+            # Find peak
+            if np.any(np.isfinite(pixel_data)):
+                peak_idx = np.nanargmax(pixel_data)
+                peak_time_idx[i], peak_freq_idx[i] = np.unravel_index(
+                    peak_idx, pixel_data.shape
+                )
+                peak_flux[i] = pixel_data[peak_time_idx[i], peak_freq_idx[i]]
+
+        # Build output dataset
+        result = xr.Dataset(
+            {
+                "l": ("candidate", candidates_l),
+                "m": ("candidate", candidates_m),
+                "snr": ("candidate", candidates_snr),
+                "variability": ("candidate", candidates_var),
+                "peak_time_idx": ("candidate", peak_time_idx),
+                "peak_freq_idx": ("candidate", peak_freq_idx),
+                "peak_flux": ("candidate", peak_flux),
+                "mean_flux": ("candidate", candidates_mean),
+                "light_curve": (("candidate", "time"), light_curves),
+            },
+            coords={
+                "time": self._obj.coords["time"].values,
+            },
+            attrs={
+                "variable": var,
+                "pol": pol,
+                "snr_threshold": snr_threshold,
+                "variability_threshold": variability_threshold,
+                "time_window": time_window,
+                "freq_window": freq_window,
+                "exclude_horizon": exclude_horizon,
+            },
+        )
+
+        return result
+
     def plot_time_average(
         self,
         freq_idx: int | None = None,
@@ -3020,6 +3676,223 @@ class RadportAccessor:
             fig,
             update,
             frames=n_freqs,
+            interval=1000 // fps,
+            blit=True,
+            **kwargs,
+        )
+
+        # Save if output file specified
+        if output_file is not None:
+            if output_file.endswith(".gif"):
+                anim.save(output_file, writer="pillow", fps=fps, dpi=dpi)
+            else:
+                anim.save(output_file, writer="ffmpeg", fps=fps, dpi=dpi)
+            plt.close(fig)
+
+        return anim
+
+    def animate_sliding_window(
+        self,
+        stacks: xr.Dataset,
+        output_file: str | None = None,
+        dimension: Literal["time", "frequency"] = "time",
+        fps: int = 5,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        figsize: tuple[float, float] = (8, 6),
+        dpi: int = 100,
+        **kwargs: Any,
+    ) -> Any:
+        """Create an animation from sliding window stacks.
+
+        Animates through the kernel positions along either the time or
+        frequency dimension, showing how the averaged image changes as
+        the kernel slides through the data.
+
+        Parameters
+        ----------
+        stacks : xr.Dataset
+            Dataset returned by `sliding_window_stacks()`.
+        output_file : str, optional
+            Path to save the animation. Supported formats: .mp4, .gif.
+            If None, returns the animation object for display in notebooks.
+        dimension : {'time', 'frequency'}, default 'time'
+            Dimension to animate along:
+            - 'time': Animate through kernel_time, fixing kernel_freq to first
+            - 'frequency': Animate through kernel_freq, fixing kernel_time to first
+        fps : int, default 5
+            Frames per second for the animation.
+        cmap : str, default 'inferno'
+            Matplotlib colormap name.
+        vmin : float, optional
+            Minimum value for color scaling. If None and robust=True,
+            uses 2nd percentile across all frames.
+        vmax : float, optional
+            Maximum value for color scaling. If None and robust=True,
+            uses 98th percentile across all frames.
+        robust : bool, default True
+            Use percentile-based color scaling across all frames.
+        figsize : tuple, default (8, 6)
+            Figure size in inches.
+        dpi : int, default 100
+            Resolution for saved animation.
+        **kwargs
+            Additional arguments passed to FuncAnimation.
+
+        Returns
+        -------
+        matplotlib.animation.FuncAnimation
+            Animation object. Can be displayed in notebooks with
+            HTML(anim.to_jshtml()) or saved to file.
+
+        Raises
+        ------
+        ValueError
+            If the stacks dataset doesn't have required variables.
+
+        Examples
+        --------
+        >>> # Create sliding window stacks
+        >>> stacks = ds.radport.sliding_window_stacks(
+        ...     l_center=0.0, m_center=0.0, cutout_size=0.1,
+        ...     time_window=5, freq_window=3
+        ... )
+        >>> # Animate through time
+        >>> anim = ds.radport.animate_sliding_window(stacks, dimension='time')
+        >>> # Display in notebook
+        >>> from IPython.display import HTML
+        >>> HTML(anim.to_jshtml())
+
+        >>> # Save animation to file
+        >>> anim = ds.radport.animate_sliding_window(
+        ...     stacks, output_file='sliding_window.mp4', fps=10
+        ... )
+        """
+        from matplotlib.animation import FuncAnimation
+
+        # Validate input
+        if "stack" not in stacks:
+            raise ValueError(
+                "stacks dataset must contain 'stack' variable. "
+                "Use sliding_window_stacks() to create the input."
+            )
+
+        if dimension not in ["time", "frequency"]:
+            raise ValueError(f"dimension must be 'time' or 'frequency', got '{dimension}'")
+
+        # Get stack data
+        stack_data = stacks["stack"]
+
+        if dimension == "time":
+            n_frames = stack_data.sizes["kernel_time"]
+            fixed_idx = 0
+            frame_dim = "kernel_time"
+            fixed_dim = "kernel_freq"
+            kernel_values = stacks.coords["kernel_time"].values
+            fixed_value = float(stacks.coords["kernel_freq"].values[fixed_idx])
+        else:
+            n_frames = stack_data.sizes["kernel_freq"]
+            fixed_idx = 0
+            frame_dim = "kernel_freq"
+            fixed_dim = "kernel_time"
+            kernel_values = stacks.coords["kernel_freq"].values
+            fixed_value = float(stacks.coords["kernel_time"].values[fixed_idx])
+
+        # Get data to animate
+        if dimension == "time":
+            data = stack_data.isel(kernel_freq=fixed_idx)  # Shape: (kernel_time, l, m)
+        else:
+            data = stack_data.isel(kernel_time=fixed_idx)  # Shape: (kernel_freq, l, m)
+
+        # Compute global color scale from all frames
+        if vmin is None or vmax is None:
+            all_values = data.values.ravel()
+            finite_values = all_values[np.isfinite(all_values)]
+            if len(finite_values) > 0:
+                if robust:
+                    computed_vmin = np.percentile(finite_values, 2)
+                    computed_vmax = np.percentile(finite_values, 98)
+                else:
+                    computed_vmin = np.nanmin(finite_values)
+                    computed_vmax = np.nanmax(finite_values)
+            else:
+                computed_vmin, computed_vmax = 0, 1
+
+            if vmin is None:
+                vmin = computed_vmin
+            if vmax is None:
+                vmax = computed_vmax
+
+        # Create figure and initial plot
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Get coordinate extents
+        l_vals = stacks.coords["l"].values
+        m_vals = stacks.coords["m"].values
+        extent = [
+            float(l_vals.min()), float(l_vals.max()),
+            float(m_vals.min()), float(m_vals.max()),
+        ]
+
+        # Initial frame
+        if dimension == "time":
+            frame_data = data.isel(kernel_time=0).values
+        else:
+            frame_data = data.isel(kernel_freq=0).values
+
+        im = ax.imshow(
+            frame_data,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            aspect="equal",
+        )
+
+        # Add colorbar
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label("Jy/beam", fontsize=11)
+
+        # Labels
+        ax.set_xlabel("l (direction cosine)", fontsize=11)
+        ax.set_ylabel("m (direction cosine)", fontsize=11)
+
+        # Get metadata
+        var = stacks.attrs.get("variable", "SKY")
+        time_window = stacks.attrs.get("time_window", "?")
+        freq_window = stacks.attrs.get("freq_window", "?")
+
+        def update(frame: int) -> tuple:
+            """Update function for animation."""
+            if dimension == "time":
+                frame_data = data.isel(kernel_time=frame).values
+                kernel_val = kernel_values[frame]
+                title = (
+                    f"{var} Sliding Window Stack\n"
+                    f"Kernel time: {kernel_val:.6f} MJD (frame {frame + 1}/{n_frames})\n"
+                    f"Window: {time_window}t × {freq_window}f, fixed freq={fixed_value/1e6:.2f} MHz"
+                )
+            else:
+                frame_data = data.isel(kernel_freq=frame).values
+                kernel_val = kernel_values[frame]
+                title = (
+                    f"{var} Sliding Window Stack\n"
+                    f"Kernel freq: {kernel_val/1e6:.2f} MHz (frame {frame + 1}/{n_frames})\n"
+                    f"Window: {time_window}t × {freq_window}f, fixed time={fixed_value:.6f} MJD"
+                )
+
+            im.set_array(frame_data)
+            ax.set_title(title, fontsize=10)
+            return (im,)
+
+        # Create animation
+        anim = FuncAnimation(
+            fig,
+            update,
+            frames=n_frames,
             interval=1000 // fps,
             blit=True,
             **kwargs,
