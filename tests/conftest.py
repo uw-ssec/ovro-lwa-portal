@@ -156,3 +156,111 @@ EQUINOX =               2000.0"""
     ds["SKY"].attrs["fits_wcs_header"] = wcs_header
 
     return ds
+
+
+@pytest.fixture
+def variable_source_dataset() -> xr.Dataset:
+    """Create a dataset with a synthetic variable source for testing.
+
+    This fixture creates a dataset with:
+    - 10 time steps
+    - 5 frequency channels
+    - 50x50 spatial grid
+    - A sinusoidally varying source at the center
+    - Background noise
+
+    Returns
+    -------
+    xr.Dataset
+        A dataset with a synthetic variable source injected at the center.
+    """
+    np.random.seed(42)
+
+    n_times = 10
+    n_freqs = 5
+    n_pols = 2
+    n_l = 50
+    n_m = 50
+
+    # Create base noise
+    data = np.random.rand(n_times, n_freqs, n_pols, n_l, n_m) * 0.5
+
+    # Create coordinate grids
+    l_vals = np.linspace(-1, 1, n_l)
+    m_vals = np.linspace(-1, 1, n_m)
+    ll, mm = np.meshgrid(l_vals, m_vals, indexing="ij")
+
+    # Inject a variable source at center (l=0, m=0)
+    # Gaussian spatial profile
+    source_l, source_m = 0.0, 0.0
+    sigma = 0.1
+    spatial_profile = np.exp(-((ll - source_l) ** 2 + (mm - source_m) ** 2) / (2 * sigma**2))
+
+    # Time-varying amplitude (sinusoidal)
+    time_vals = np.linspace(60000.0, 60000.9, n_times)
+    time_amplitude = 5.0 + 3.0 * np.sin(2 * np.pi * np.arange(n_times) / n_times)
+
+    # Frequency dependence (slight power law)
+    freq_vals = np.array([46e6, 48e6, 50e6, 52e6, 54e6])
+    freq_factor = (freq_vals / 50e6) ** (-0.7)
+
+    # Inject source into data
+    for t in range(n_times):
+        for f in range(n_freqs):
+            for p in range(n_pols):
+                data[t, f, p, :, :] += time_amplitude[t] * freq_factor[f] * spatial_profile
+
+    return xr.Dataset(
+        data_vars={
+            "SKY": (
+                ["time", "frequency", "polarization", "l", "m"],
+                data,
+            ),
+        },
+        coords={
+            "time": time_vals,
+            "frequency": freq_vals,
+            "polarization": [0, 1],
+            "l": l_vals,
+            "m": m_vals,
+        },
+    )
+
+
+@pytest.fixture
+def sliding_window_dataset() -> xr.Dataset:
+    """Create a dataset suitable for sliding window analysis testing.
+
+    This fixture creates a dataset with sufficient dimensions for
+    sliding window operations (more time steps and frequencies).
+
+    Returns
+    -------
+    xr.Dataset
+        A dataset with 10 time steps, 8 frequencies, and 30x30 spatial grid.
+    """
+    np.random.seed(42)
+
+    n_times = 10
+    n_freqs = 8
+    n_pols = 2
+    n_l = 30
+    n_m = 30
+
+    data = np.random.rand(n_times, n_freqs, n_pols, n_l, n_m) * 10
+
+    return xr.Dataset(
+        data_vars={
+            "SKY": (
+                ["time", "frequency", "polarization", "l", "m"],
+                data,
+            ),
+        },
+        coords={
+            "time": np.linspace(60000.0, 60000.9, n_times),
+            "frequency": np.linspace(46e6, 54e6, n_freqs),
+            "polarization": [0, 1],
+            "l": np.linspace(-1, 1, n_l),
+            "m": np.linspace(-1, 1, n_m),
+        },
+    )
