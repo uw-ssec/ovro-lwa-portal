@@ -12,10 +12,14 @@ import pytest
 import xarray as xr
 
 from ovro_lwa_portal.io import (
+    DATACITE_API_PRODUCTION,
+    DATACITE_API_TEST,
     DataSourceError,
     _detect_source_type,
     _is_doi,
     _normalize_doi,
+    _resolve_doi,
+    _resolve_doi_from_metadata,
     open_dataset,
 )
 
@@ -223,8 +227,31 @@ class TestOpenDataset:
         doi = "doi:10.5281/zenodo.1234567"
         loaded_ds = open_dataset(doi)
 
-        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567")
+        mock_resolve_doi.assert_called_once_with(
+            "10.5281/zenodo.1234567", production=True
+        )
         mock_open_zarr.assert_called_once()
+        assert isinstance(loaded_ds, xr.Dataset)
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_open_doi_test_api(
+        self, mock_open_zarr: Mock, mock_resolve_doi: Mock
+    ) -> None:
+        """Test opening a dataset via DOI using the test DataCite API."""
+        mock_resolve_doi.return_value = "https://example.com/data.zarr"
+        mock_ds = xr.Dataset(
+            {
+                "SKY": (["time", "frequency"], np.random.rand(2, 3)),
+            }
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        loaded_ds = open_dataset("10.33569/9wsys-h7b71", production=False)
+
+        mock_resolve_doi.assert_called_once_with(
+            "10.33569/9wsys-h7b71", production=False
+        )
         assert isinstance(loaded_ds, xr.Dataset)
 
     @patch("ovro_lwa_portal.io._resolve_doi")
@@ -249,6 +276,59 @@ class TestOpenDataset:
             open_dataset(zarr_path)
 
 
+class TestStorageOptions:
+    """Tests for storage_options handling."""
+
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    @patch("upath.UPath")
+    def test_storage_options_passed_to_upath(
+        self, mock_upath_cls: Mock, mock_open_zarr: Mock
+    ) -> None:
+        """Test that storage_options are passed to UPath constructor."""
+        mock_ds = xr.Dataset(
+            {"SKY": (["time", "frequency"], np.random.rand(2, 3))}
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        mock_path = MagicMock()
+        mock_path.protocol = "s3"
+        mock_path.fs = MagicMock()
+        mock_path.fs.get_mapper.return_value = MagicMock(spec=FSMap)
+        mock_path.path = "bucket/data.zarr"
+        mock_upath_cls.return_value = mock_path
+
+        open_dataset(
+            "s3://bucket/data.zarr",
+            storage_options={"key": "AK", "secret": "SK"},
+        )
+
+        mock_upath_cls.assert_called_once_with(
+            "s3://bucket/data.zarr", key="AK", secret="SK"
+        )
+
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    @patch("upath.UPath")
+    def test_no_storage_options(
+        self, mock_upath_cls: Mock, mock_open_zarr: Mock
+    ) -> None:
+        """Test that UPath is called without extras when no storage_options."""
+        mock_ds = xr.Dataset(
+            {"SKY": (["time", "frequency"], np.random.rand(2, 3))}
+        )
+        mock_open_zarr.return_value = mock_ds
+
+        mock_path = MagicMock()
+        mock_path.protocol = "https"
+        mock_path.fs = MagicMock()
+        mock_path.fs.get_mapper.return_value = MagicMock(spec=FSMap)
+        mock_path.path = "example.com/data.zarr"
+        mock_upath_cls.return_value = mock_path
+
+        open_dataset("https://example.com/data.zarr")
+
+        mock_upath_cls.assert_called_once_with("https://example.com/data.zarr")
+
+
 class TestDOIResolution:
     """Tests for DOI resolution functionality."""
 
@@ -261,3 +341,98 @@ class TestDOIResolution:
 
         # Verify normalization
         assert _normalize_doi("doi:10.5281/zenodo.1234567") == "10.5281/zenodo.1234567"
+
+    @patch("requests.get")
+    def test_resolve_doi_production(self, mock_get: Mock) -> None:
+        """Test DOI resolution uses production API by default."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/zarr",
+                        "url": "https://store.example.com/data.zarr",
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        url = _resolve_doi("10.5281/zenodo.1234567", production=True)
+
+        mock_get.assert_called_once_with(
+            f"{DATACITE_API_PRODUCTION}/10.5281/zenodo.1234567/media", timeout=30
+        )
+        assert url == "https://store.example.com/data.zarr"
+
+    @patch("requests.get")
+    def test_resolve_doi_test_api(self, mock_get: Mock) -> None:
+        """Test DOI resolution uses test API when production=False."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/zarr",
+                        "url": "https://store.example.com/data.zarr",
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        url = _resolve_doi("10.33569/9wsys-h7b71", production=False)
+
+        mock_get.assert_called_once_with(
+            f"{DATACITE_API_TEST}/10.33569/9wsys-h7b71/media", timeout=30
+        )
+        assert url == "https://store.example.com/data.zarr"
+
+    @patch("requests.get")
+    def test_resolve_doi_404_falls_back_to_metadata(self, mock_get: Mock) -> None:
+        """Test that a 404 on the media endpoint falls back to DOI metadata."""
+        import requests as real_requests
+
+        # First call (media endpoint) returns 404
+        mock_404 = Mock()
+        mock_404.status_code = 404
+        mock_404.raise_for_status.side_effect = real_requests.exceptions.HTTPError(
+            response=mock_404
+        )
+
+        # Second call (metadata endpoint) returns a URL
+        mock_metadata = Mock()
+        mock_metadata.raise_for_status.return_value = None
+        mock_metadata.json.return_value = {
+            "data": {
+                "attributes": {
+                    "url": "https://store.example.com/fallback.zarr",
+                }
+            }
+        }
+
+        mock_get.side_effect = [mock_404, mock_metadata]
+
+        url = _resolve_doi("10.33569/test-doi", production=False)
+
+        assert url == "https://store.example.com/fallback.zarr"
+        assert mock_get.call_count == 2
+        mock_get.assert_any_call(
+            f"{DATACITE_API_TEST}/10.33569/test-doi/media", timeout=30
+        )
+        mock_get.assert_any_call(
+            f"{DATACITE_API_TEST}/10.33569/test-doi", timeout=30
+        )
+
+    @patch("requests.get")
+    def test_resolve_doi_from_metadata_no_url(self, mock_get: Mock) -> None:
+        """Test that metadata fallback raises when no URL found."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": {"attributes": {}}}
+        mock_get.return_value = mock_response
+
+        with pytest.raises(DataSourceError, match="No download URL found"):
+            _resolve_doi_from_metadata("10.33569/no-url", DATACITE_API_TEST)
