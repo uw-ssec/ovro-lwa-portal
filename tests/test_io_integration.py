@@ -156,9 +156,11 @@ class TestOpenDatasetIntegration:
         ds = open_dataset(sample_zarr_store)
 
         # Select subset
+        # Note: xarray's label-based slicing includes both endpoints for integer coordinates
+        # slice(0, 5) gives [0, 1, 2, 3, 4, 5] = 6 elements
         subset = ds.sel(time=slice(0, 5), frequency=slice(40e6, 60e6))
 
-        assert len(subset.time) <= 5
+        assert len(subset.time) == 6  # Includes both 0 and 5
         assert subset.frequency.min() >= 40e6
         assert subset.frequency.max() <= 60e6
 

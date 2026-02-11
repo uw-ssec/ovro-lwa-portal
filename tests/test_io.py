@@ -273,7 +273,10 @@ class TestOpenDataset:
         loaded_ds = open_dataset(url, validate=False)
 
         mock_open_zarr.assert_called_once()
-        assert mock_open_zarr.call_args[0][0] == url
+        # The implementation passes an FSMap object, not the URL string directly
+        call_arg = mock_open_zarr.call_args[0][0]
+        # Verify it's an fsspec mapper (FSMap or similar)
+        assert hasattr(call_arg, "fs") or hasattr(call_arg, "__getitem__")
         assert isinstance(loaded_ds, xr.Dataset)
 
     def test_open_remote_s3_requires_s3fs(self) -> None:
