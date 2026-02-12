@@ -1,22 +1,24 @@
 # Implementation Roadmap: Issue #71 - xarray Accessor for OVRO-LWA Portal
 
-**Issue**: https://github.com/uw-ssec/ovro-lwa-portal/issues/71
-**Branch**: `cdcore09/feat/xarray-accessor`
-**Status**: In Progress
+**Issue**: https://github.com/uw-ssec/ovro-lwa-portal/issues/71 **Branch**:
+`cdcore09/feat/xarray-accessor` **Status**: In Progress
 
 ---
 
 ## Overview
 
-Implement a custom xarray accessor called `radport` to streamline access to plotting and visualization features in the `ovro_lwa_portal` package.
+Implement a custom xarray accessor called `radport` to streamline access to
+plotting and visualization features in the `ovro_lwa_portal` package.
 
 ---
 
 ## Current Status
 
-**IMPLEMENTATION COMPLETE** - All acceptance criteria met plus enhanced features. Ready for final review and PR preparation.
+**IMPLEMENTATION COMPLETE** - All acceptance criteria met plus enhanced
+features. Ready for final review and PR preparation.
 
 The `radport` xarray accessor has been fully implemented with:
+
 - Accessor registration and auto-import
 - Dataset validation with informative error messages
 - `plot()` method with full customization options
@@ -25,7 +27,8 @@ The `radport` xarray accessor has been fully implemented with:
 - Advanced visualization: cutouts, dynamic spectra, difference maps
 - Data quality methods: `find_valid_frame()`, `finite_fraction()`
 - Grid plots: `plot_grid()`, `plot_frequency_grid()`, `plot_time_grid()`
-- 1D analysis: `light_curve()`, `spectrum()`, `time_average()`, `frequency_average()`
+- 1D analysis: `light_curve()`, `spectrum()`, `time_average()`,
+  `frequency_average()`
 - WCS coordinate support: `pixel_to_coords()`, `coords_to_pixel()`, `plot_wcs()`
 - Animation & export: `animate_time()`, `animate_frequency()`, `export_frames()`
 - Source detection: `rms_map()`, `snr_map()`, `find_peaks()`, `peak_flux_map()`
@@ -36,7 +39,8 @@ The `radport` xarray accessor has been fully implemented with:
 
 ## Acceptance Criteria (from Issue #71)
 
-- [x] Accessor `radport` is registered and available on xarray Datasets after importing
+- [x] Accessor `radport` is registered and available on xarray Datasets after
+      importing
 - [x] `ds.radport.plot()` successfully creates and displays a plot
 - [x] Documentation with usage examples
 - [x] Unit test coverage for registration and basic functionality
@@ -56,7 +60,8 @@ The `radport` xarray accessor has been fully implemented with:
 
 - [x] Create `src/ovro_lwa_portal/accessor.py` with `RadportAccessor` class
 - [x] Register with `@xr.register_dataset_accessor("radport")`
-- [x] Update `src/ovro_lwa_portal/__init__.py` to auto-register accessor on import
+- [x] Update `src/ovro_lwa_portal/__init__.py` to auto-register accessor on
+      import
 
 #### Implementation Details
 
@@ -87,18 +92,22 @@ class RadportAccessor:
 Based on the existing data model:
 
 **Required Dimensions**:
+
 - `time` - Observation timestamps
 - `frequency` - Frequency channels (Hz)
 - `polarization` - Polarization indices
 - `l`, `m` - Direction cosines (spatial)
 
 **Required Data Variables**:
+
 - `SKY` - 5D array `[time, frequency, polarization, l, m]`
 
 **Optional Variables**:
+
 - `BEAM` - 5D array (same shape as SKY)
 
 **Required Coordinates**:
+
 - `right_ascension` - 2D `[m, l]`
 - `declination` - 2D `[m, l]`
 - `fits_wcs_header` - WCS metadata string
@@ -232,10 +241,11 @@ class TestRadportPlot:
 
 #### Documentation Example
 
-```markdown
+````markdown
 ## Using the radport Accessor
 
-After loading a dataset, access plotting and analysis features via the `radport` accessor:
+After loading a dataset, access plotting and analysis features via the `radport`
+accessor:
 
 ```python
 import ovro_lwa_portal
@@ -249,7 +259,9 @@ ds.radport.plot()
 # Customize plot options
 ds.radport.plot(time_idx=5, freq_idx=100, cmap='viridis')
 ```
-```
+````
+
+````
 
 ---
 
@@ -296,18 +308,21 @@ def nearest_time_idx(self, mjd: float) -> int:
 
 def nearest_lm_idx(self, l: float, m: float) -> tuple[int, int]:
     """Find the indices of the (l, m) pixel nearest to the given coordinates."""
-```
+````
 
 ### Enhanced plot() Parameters
 
 New parameters added to `plot()`:
-- `freq_mhz: float | None` - Select frequency by value in MHz (overrides `freq_idx`)
+
+- `freq_mhz: float | None` - Select frequency by value in MHz (overrides
+  `freq_idx`)
 - `time_mjd: float | None` - Select time by MJD value (overrides `time_idx`)
 - `mask_radius: int | None` - Apply circular mask to hide invalid edge pixels
 
 ### Tests Added
 
 16 new tests added for Phase A functionality:
+
 - 9 tests for selection helpers (`TestRadportSelectionHelpers`)
 - 4 tests for frequency/time selection (`TestRadportPlotFrequencySelection`)
 - 3 tests for circular masking (`TestRadportPlotMasking`)
@@ -316,13 +331,15 @@ New parameters added to `plot()`:
 
 ## Phase B: Advanced Visualization Methods
 
-**Goal**: Add cutout, dynamic spectrum, and difference map capabilities identified from notebook analysis.
+**Goal**: Add cutout, dynamic spectrum, and difference map capabilities
+identified from notebook analysis.
 
 **Status**: COMPLETE
 
 ### New Methods
 
 #### Spatial Cutouts
+
 ```python
 def cutout(self, l_center, m_center, dl, dm, ...) -> xr.DataArray:
     """Extract a spatial cutout (rectangular region) from the data."""
@@ -332,6 +349,7 @@ def plot_cutout(self, l_center, m_center, dl, dm, ...) -> Figure:
 ```
 
 #### Dynamic Spectrum
+
 ```python
 def dynamic_spectrum(self, l, m, ...) -> xr.DataArray:
     """Extract a dynamic spectrum (time vs frequency) for a single pixel."""
@@ -341,6 +359,7 @@ def plot_dynamic_spectrum(self, l, m, ...) -> Figure:
 ```
 
 #### Difference Maps
+
 ```python
 def diff(self, mode='time', ...) -> xr.DataArray:
     """Compute a difference map between adjacent time or frequency slices."""
@@ -352,6 +371,7 @@ def plot_diff(self, mode='time', ...) -> Figure:
 ### Tests Added
 
 31 new tests added for Phase B functionality:
+
 - 7 tests for cutout() (`TestRadportCutout`)
 - 3 tests for plot_cutout() (`TestRadportPlotCutout`)
 - 5 tests for dynamic_spectrum() (`TestRadportDynamicSpectrum`)
@@ -370,6 +390,7 @@ def plot_diff(self, mode='time', ...) -> Figure:
 ### New Methods
 
 #### Data Quality Assessment
+
 ```python
 def find_valid_frame(self, var="SKY", pol=0, min_finite_fraction=0.1) -> tuple[int, int]:
     """Find the first (time, freq) frame with sufficient finite data."""
@@ -379,6 +400,7 @@ def finite_fraction(self, var="SKY", pol=0) -> xr.DataArray:
 ```
 
 #### Grid Plot Methods
+
 ```python
 def plot_grid(self, time_indices=None, freq_indices=None, freq_mhz_list=None,
               var="SKY", pol=0, ncols=4, ...) -> Figure:
@@ -394,6 +416,7 @@ def plot_time_grid(self, freq_idx=None, freq_mhz=None, time_indices=None, ...) -
 ### Tests Added
 
 24 new tests added for Phase C functionality:
+
 - 4 tests for find_valid_frame() (`TestRadportFindValidFrame`)
 - 5 tests for finite_fraction() (`TestRadportFiniteFraction`)
 - 8 tests for plot_grid() (`TestRadportPlotGrid`)
@@ -404,13 +427,15 @@ def plot_time_grid(self, freq_idx=None, freq_mhz=None, time_indices=None, ...) -
 
 ## Phase D: 1D Analysis Methods
 
-**Goal**: Add light curves, spectra, and averaging methods for time/frequency analysis.
+**Goal**: Add light curves, spectra, and averaging methods for time/frequency
+analysis.
 
 **Status**: COMPLETE
 
 ### New Methods
 
 #### Light Curves (Time Series)
+
 ```python
 def light_curve(self, l, m, freq_idx=None, freq_mhz=None, var="SKY", pol=0) -> xr.DataArray:
     """Extract a light curve (time series) at a specific spatial location."""
@@ -420,6 +445,7 @@ def plot_light_curve(self, l, m, freq_idx=None, freq_mhz=None, ...) -> Figure:
 ```
 
 #### Frequency Spectra
+
 ```python
 def spectrum(self, l, m, time_idx=None, time_mjd=None, var="SKY", pol=0) -> xr.DataArray:
     """Extract a frequency spectrum at a specific spatial location and time."""
@@ -429,6 +455,7 @@ def plot_spectrum(self, l, m, time_idx=None, time_mjd=None, freq_unit="MHz", ...
 ```
 
 #### Averaging Methods
+
 ```python
 def time_average(self, var="SKY", pol=0, time_indices=None) -> xr.DataArray:
     """Compute the time-averaged image."""
@@ -448,6 +475,7 @@ def plot_frequency_average(self, time_idx=None, time_mjd=None,
 ### Tests Added
 
 42 new tests added for Phase D functionality:
+
 - 7 tests for light_curve() (`TestRadportLightCurve`)
 - 3 tests for plot_light_curve() (`TestRadportPlotLightCurve`)
 - 6 tests for spectrum() (`TestRadportSpectrum`)
@@ -461,7 +489,8 @@ def plot_frequency_average(self, time_idx=None, time_mjd=None,
 
 ## Additional Phases
 
-The following phases extend the core accessor functionality with advanced features.
+The following phases extend the core accessor functionality with advanced
+features.
 
 ---
 
@@ -495,6 +524,7 @@ def plot_wcs(self, var="SKY", time_idx=0, freq_idx=0, freq_mhz=None, pol=0,
 #### WCS Header Sources
 
 The accessor looks for WCS information in the following locations (in order):
+
 1. Variable attributes: `ds["SKY"].attrs["fits_wcs_header"]`
 2. Dataset attributes: `ds.attrs["fits_wcs_header"]`
 3. Dedicated variable: `ds["wcs_header_str"]`
@@ -502,12 +532,14 @@ The accessor looks for WCS information in the following locations (in order):
 #### Tests Added
 
 20 new tests added for Phase E functionality:
+
 - 2 tests for has_wcs property (`TestRadportHasWcs`)
 - 6 tests for pixel_to_coords() (`TestRadportPixelToCoords`)
 - 5 tests for coords_to_pixel() (`TestRadportCoordsToPixel`)
 - 7 tests for plot_wcs() (`TestRadportPlotWcs`)
 
 #### Dependencies
+
 - Uses existing `astropy>=7.1.0,<8` dependency for WCS handling
 - Uses `fits_wcs_header` attribute from dataset variables or attributes
 
@@ -547,18 +579,21 @@ def export_frames(self, output_dir, var="SKY", pol=0, time_indices=None,
 - **Frequency animations**: Animate across all frequencies at a fixed time
 - **Multiple output formats**: Support for MP4 (via ffmpeg) and GIF (via pillow)
 - **Frame export**: Export individual frames as PNG, JPG, or PDF
-- **Customizable filenames**: Template-based filename generation with placeholders
+- **Customizable filenames**: Template-based filename generation with
+  placeholders
 - **Global color scaling**: Consistent color scale across all frames
 - **Circular masking**: Optional mask for all-sky images
 
 #### Tests Added
 
 19 new tests added for Phase F functionality:
+
 - 6 tests for animate_time() (`TestRadportAnimateTime`)
 - 5 tests for animate_frequency() (`TestRadportAnimateFrequency`)
 - 8 tests for export_frames() (`TestRadportExportFrames`)
 
 #### Dependencies
+
 - Uses `matplotlib.animation.FuncAnimation` (included with matplotlib)
 - MP4 export requires `ffmpeg` installed on the system
 - GIF export uses `pillow` writer (no additional dependencies)
@@ -601,13 +636,15 @@ def plot_snr_map(self, time_idx=0, freq_idx=None, freq_mhz=None, var="SKY",
 
 - **Local RMS computation**: Sliding box approach with NaN handling
 - **SNR maps**: Signal divided by local RMS noise
-- **Peak detection**: Local maximum finding with SNR threshold and minimum separation
+- **Peak detection**: Local maximum finding with SNR threshold and minimum
+  separation
 - **Peak flux maps**: Maximum across time dimension
 - **SNR plotting**: Diverging colormap with symmetric scaling
 
 #### Tests Added
 
 26 new tests added for Phase G functionality:
+
 - 6 tests for rms_map() (`TestRadportRmsMap`)
 - 5 tests for snr_map() (`TestRadportSnrMap`)
 - 6 tests for find_peaks() (`TestRadportFindPeaks`)
@@ -615,6 +652,7 @@ def plot_snr_map(self, time_idx=0, freq_idx=None, freq_mhz=None, var="SKY",
 - 4 tests for plot_snr_map() (`TestRadportPlotSnrMap`)
 
 #### Dependencies
+
 - Uses `scipy.ndimage.uniform_filter` for efficient local statistics
 - Uses `scipy.ndimage.maximum_filter` for local maximum detection
 
@@ -622,7 +660,8 @@ def plot_snr_map(self, time_idx=0, freq_idx=None, freq_mhz=None, var="SKY",
 
 ## Future Phases (Not Yet Implemented)
 
-The following phases are potential future enhancements. They are **not required** for the initial PR but could be added later.
+The following phases are potential future enhancements. They are **not
+required** for the initial PR but could be added later.
 
 ---
 
@@ -634,38 +673,46 @@ The following phases are potential future enhancements. They are **not required*
 
 #### Implemented Methods
 
-1. **`spectral_index(l, m, ...)`** - Compute spectral index (power-law slope) at a location
+1. **`spectral_index(l, m, ...)`** - Compute spectral index (power-law slope) at
+   a location
    - Returns α where S ∝ ν^α, computed as log(S₂/S₁) / log(ν₂/ν₁)
    - Supports frequency selection via MHz or index
 
-2. **`spectral_index_map(...)`** - Compute spectral index map across the full image
+2. **`spectral_index_map(...)`** - Compute spectral index map across the full
+   image
    - Returns DataArray with dims (l, m)
    - Includes frequency metadata in attrs
 
-3. **`integrated_flux(l, m, ...)`** - Compute integrated flux density over frequency band
+3. **`integrated_flux(l, m, ...)`** - Compute integrated flux density over
+   frequency band
    - Uses trapezoidal integration (numpy.trapezoid)
    - Returns flux in Jy·Hz
 
-4. **`plot_spectral_index_map(...)`** - Plot spectral index map with diverging colormap
+4. **`plot_spectral_index_map(...)`** - Plot spectral index map with diverging
+   colormap
    - RdBu_r colormap centered on 0
    - Optional horizon masking support
 
 #### Tests (19 new tests)
+
 - `TestRadportSpectralIndex` - 5 tests
 - `TestRadportSpectralIndexMap` - 5 tests
 - `TestRadportIntegratedFlux` - 5 tests
 - `TestRadportPlotSpectralIndexMap` - 4 tests
 
 #### Notes
+
 - Non-positive flux values result in NaN spectral indices
 - At least two frequency channels required
-- Typical spectral index values: ~-0.7 (synchrotron), ~+2 (thermal), ~-0.1 (free-free)
+- Typical spectral index values: ~-0.7 (synchrotron), ~+2 (thermal), ~-0.1
+  (free-free)
 
 ---
 
 ## Progress Tracking
 
 ### Completed
+
 - [x] Analyze current codebase state
 - [x] Create implementation roadmap
 - [x] Phase 1: Accessor Foundation
@@ -683,12 +730,15 @@ The following phases are potential future enhancements. They are **not required*
 - [x] Phase H: Spectral Analysis (225 tests total, all passing)
 
 ### In Progress
+
 (none)
 
 ### Planned (Future Enhancements)
+
 (none - all phases complete)
 
 ### Ready for PR
+
 - [x] Final review complete - all checks pass
 - [x] All Issue #71 acceptance criteria met
 - [x] 225 unit tests passing
