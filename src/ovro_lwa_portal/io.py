@@ -6,7 +6,6 @@ multiple sources including local paths, remote URLs, and DOI identifiers.
 
 from __future__ import annotations
 
-import logging
 import re
 import warnings
 from pathlib import Path
@@ -17,10 +16,12 @@ import xarray as xr
 
 __all__ = ["open_dataset", "DataSourceError"]
 
-logger = logging.getLogger(__name__)
-
 # DOI pattern: matches both "doi:10.xxxx/xxxxx" and "10.xxxx/xxxxx"
-DOI_PATTERN = re.compile(r"^(?:doi:)?(10\.\d{4,}(?:\.\d+)*\/\S+)$", re.IGNORECASE)
+DOI_PATTERN = re.compile(r"^(?:doi:)?(10\.\S+)$", re.IGNORECASE)
+
+# DataCite API base URLs
+DATACITE_API_PRODUCTION = "https://api.datacite.org/dois"
+DATACITE_API_TEST = "https://api.test.datacite.org/dois"
 
 
 class DataSourceError(Exception):
@@ -64,81 +65,102 @@ def _normalize_doi(source: str) -> str:
     return source
 
 
-def _resolve_doi(doi: str) -> str:
-    """Resolve DOI to zarr store URL using DataCite Media API.
-
-    Uses the approach from caltechdata_api to query the DataCite Media API
-    and retrieve the zarr store URL associated with the DOI.
+def _resolve_doi(doi: str, production: bool = True) -> str:
+    """Resolve DOI to zarr URL using DataCite Media API.
 
     Parameters
     ----------
     doi : str
-        DOI identifier to resolve.
+        DOI identifier (e.g., "10.33569/9wsys-h7b71").
+    production : bool, default True
+        If True, use production DataCite API (api.datacite.org).
+        If False, use test DataCite API (api.test.datacite.org).
 
     Returns
     -------
     str
-        URL to the zarr store.
+        Resolved zarr URL.
 
     Raises
     ------
     DataSourceError
-        If DOI cannot be resolved or zarr URL not found.
+        If DOI resolution fails.
     """
     try:
         import requests
     except ImportError as e:
-        msg = (
-            "requests library is required for DOI resolution. "
-            "Install with: pip install requests"
-        )
+        msg = "requests is required for DOI resolution. Install with: pip install requests"
         raise ImportError(msg) from e
 
-    # Use DataCite Media API to get the zarr store URL
-    # Based on: https://github.com/caltechlibrary/caltechdata_api/blob/main/caltechdata_api/download_file.py
-    api_url = f"https://api.datacite.org/dois/{doi}/media"
-    logger.info(f"Querying DataCite Media API: {api_url}")
+    api_base = DATACITE_API_PRODUCTION if production else DATACITE_API_TEST
+    media_url = f"{api_base}/{doi}/media"
 
     try:
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        r = requests.get(media_url, timeout=30)
+        r.raise_for_status()
+        data = r.json()["data"]
 
-        if "data" not in data or not data["data"]:
-            msg = f"No media files found for DOI: {doi}"
-            raise DataSourceError(msg)
+        # Prefer zarr media type, fallback to first URL
+        for media in data:
+            if media["attributes"]["mediaType"] == "application/zarr":
+                return media["attributes"]["url"]
 
-        # Look for zarr store in media types
-        # Prefer application/zarr or application/zip+zarr media types
-        zarr_url = None
-        for media in data["data"]:
-            attrs = media.get("attributes", {})
-            media_type = attrs.get("mediaType", "")
-            url = attrs.get("url", "")
-
-            # Check if this is a zarr store
-            if "zarr" in media_type.lower() or url.endswith(".zarr") or ".zarr/" in url:
-                zarr_url = url
-                logger.info(f"Found zarr store with media type '{media_type}': {url}")
-                break
-
-        # If no explicit zarr media type, use the first URL
-        if zarr_url is None and data["data"]:
-            zarr_url = data["data"][0]["attributes"]["url"]
-            logger.warning(f"No zarr media type found, using first URL: {zarr_url}")
-
-        if zarr_url is None:
-            msg = f"No zarr store URL found for DOI: {doi}"
-            raise DataSourceError(msg)
-
-        logger.info(f"Resolved DOI to zarr URL: {zarr_url}")
-        return zarr_url
-
-    except requests.RequestException as e:
-        msg = f"Failed to query DataCite Media API for DOI {doi}: {e}"
+        if data:
+            return data[0]["attributes"]["url"]
+    except requests.exceptions.HTTPError as e:
+        # If media endpoint returns 404, fall back to DOI metadata
+        if e.response.status_code == 404:
+            return _resolve_doi_from_metadata(doi, api_base)
+        msg = f"Failed to resolve DOI {doi}: {e}"
         raise DataSourceError(msg) from e
-    except (KeyError, IndexError) as e:
-        msg = f"Unexpected response format from DataCite Media API for DOI {doi}: {e}"
+    except Exception as e:
+        msg = f"Failed to resolve DOI {doi}: {e}"
+        raise DataSourceError(msg) from e
+
+    # No media entries found, fall back to DOI metadata
+    return _resolve_doi_from_metadata(doi, api_base)
+
+
+def _resolve_doi_from_metadata(doi: str, api_base: str) -> str:
+    """Resolve DOI to URL from DOI metadata attributes.
+
+    This is a fallback when the DataCite Media API endpoint returns no results
+    or a 404. It queries the DOI metadata directly for a URL.
+
+    Parameters
+    ----------
+    doi : str
+        DOI identifier.
+    api_base : str
+        DataCite API base URL.
+
+    Returns
+    -------
+    str
+        Resolved URL.
+
+    Raises
+    ------
+    DataSourceError
+        If resolution fails.
+    """
+    import requests
+
+    doi_url = f"{api_base}/{doi}"
+
+    try:
+        r = requests.get(doi_url, timeout=30)
+        r.raise_for_status()
+        doi_data = r.json()
+
+        url = doi_data.get("data", {}).get("attributes", {}).get("url")
+        if url:
+            return url
+
+        msg = f"No download URL found in metadata for DOI: {doi}"
+        raise DataSourceError(msg)
+    except requests.exceptions.RequestException as e:
+        msg = f"Failed to resolve DOI {doi} from metadata: {e}"
         raise DataSourceError(msg) from e
 
 
@@ -190,9 +212,11 @@ def _validate_dataset(ds: xr.Dataset) -> None:
     found_dims = set(ds.sizes.keys())
 
     if not found_dims.intersection(expected_dims):
-        logger.warning(
+        warnings.warn(
             f"Dataset may not be OVRO-LWA format. "
-            f"Expected dimensions like {expected_dims}, found {found_dims}"
+            f"Expected dimensions like {expected_dims}, found {found_dims}",
+            UserWarning,
+            stacklevel=2,
         )
 
     # Check for common OVRO-LWA data variables
@@ -200,18 +224,19 @@ def _validate_dataset(ds: xr.Dataset) -> None:
     found_vars = set(ds.data_vars.keys())
 
     if not found_vars.intersection(common_vars):
-        logger.warning(
+        warnings.warn(
             f"Dataset may not be OVRO-LWA format. "
-            f"Expected variables like {common_vars}, found {found_vars}"
+            f"Expected variables like {common_vars}, found {found_vars}",
+            UserWarning,
+            stacklevel=2,
         )
-
-    logger.info(f"Dataset loaded with dimensions: {dict(ds.sizes)}")
-    logger.info(f"Dataset variables: {list(ds.data_vars.keys())}")
 
 
 def open_dataset(
     source: str | Path,
     chunks: dict[str, int] | str | None = "auto",
+    production: bool = True,
+    storage_options: dict[str, Any] | None = None,
     engine: str = "zarr",
     validate: bool = True,
     **kwargs: Any,
@@ -233,6 +258,13 @@ def open_dataset(
         - dict: Explicit chunk sizes per dimension, e.g., {"time": 100, "frequency": 50}
         - "auto": Let xarray/dask determine optimal chunks
         - None: Load entire dataset into memory (not recommended for large data)
+    production : bool, default True
+        Which DataCite API to use when resolving DOI identifiers:
+        - True: production API (api.datacite.org)
+        - False: test API (api.test.datacite.org)
+    storage_options : dict, optional
+        Options passed to the filesystem backend (e.g., S3 credentials).
+        Example: storage_options={"key": "ACCESS_KEY", "secret": "SECRET_KEY"}
     engine : str, default "zarr"
         Backend engine for loading data. Currently supports "zarr".
     validate : bool, default True
@@ -274,6 +306,14 @@ def open_dataset(
     >>> ds = ovro_lwa_portal.open_dataset("doi:10.5281/zenodo.1234567")
     >>> ds = ovro_lwa_portal.open_dataset("10.5281/zenodo.1234567")
 
+    Load from test DataCite API with S3 credentials:
+
+    >>> ds = ovro_lwa_portal.open_dataset(
+    ...     "10.33569/4q7nb-ahq31",
+    ...     production=False,
+    ...     storage_options={"key": "ACCESS_KEY", "secret": "SECRET_KEY"}
+    ... )
+
     Customize chunking:
 
     >>> ds = ovro_lwa_portal.open_dataset(
@@ -294,13 +334,11 @@ def open_dataset(
     This allows working with datasets larger than memory.
     """
     source_type, normalized_source = _detect_source_type(source)
-    logger.info(f"Detected source type: {source_type}")
 
     # Resolve DOI to actual data URL
     if source_type == "doi":
-        logger.info(f"Resolving DOI: {normalized_source}")
         try:
-            normalized_source = _resolve_doi(normalized_source)
+            normalized_source = _resolve_doi(normalized_source, production=production)
             source_type = "remote"  # After resolution, treat as remote URL
         except Exception as e:
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
@@ -320,8 +358,11 @@ def open_dataset(
                 raise ImportError(msg) from e
 
             # Create UPath object - works for both local and remote paths
-            store_path = UPath(normalized_source)
-            logger.info(f"Loading zarr store from: {store_path}")
+            # Pass storage_options so credentials reach the filesystem backend
+            if storage_options:
+                store_path = UPath(normalized_source, **storage_options)
+            else:
+                store_path = UPath(normalized_source)
 
             # Explicit local existence check
             if store_path.protocol in ("", "file") and not store_path.exists():
