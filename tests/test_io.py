@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -99,7 +100,7 @@ class TestSourceTypeDetection:
 class TestDatasetValidation:
     """Tests for dataset validation."""
 
-    def test_validate_valid_ovro_dataset(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_valid_ovro_dataset(self) -> None:
         """Test validation of a valid OVRO-LWA dataset."""
         ds = xr.Dataset(
             {
@@ -113,13 +114,12 @@ class TestDatasetValidation:
             },
         )
 
-        # Should not raise
-        _validate_dataset(ds)
+        # Should not raise or warn
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # Turn warnings into errors
+            _validate_dataset(ds)  # Should not raise
 
-        # Should log info about dimensions and variables
-        assert "dimensions" in caplog.text.lower()
-
-    def test_validate_missing_dimensions(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_missing_dimensions(self) -> None:
         """Test validation warns about missing expected dimensions."""
         ds = xr.Dataset(
             {
@@ -132,10 +132,10 @@ class TestDatasetValidation:
         )
 
         # Should not raise but should warn
-        _validate_dataset(ds)
-        assert "may not be OVRO-LWA format" in caplog.text
+        with pytest.warns(UserWarning, match="may not be OVRO-LWA format"):
+            _validate_dataset(ds)
 
-    def test_validate_missing_variables(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_validate_missing_variables(self) -> None:
         """Test validation warns about missing expected variables."""
         ds = xr.Dataset(
             {
@@ -148,8 +148,8 @@ class TestDatasetValidation:
         )
 
         # Should not raise but should warn
-        _validate_dataset(ds)
-        assert "may not be OVRO-LWA format" in caplog.text
+        with pytest.warns(UserWarning, match="may not be OVRO-LWA format"):
+            _validate_dataset(ds)
 
 
 class TestOpenDataset:
@@ -302,7 +302,7 @@ class TestOpenDataset:
         doi = "doi:10.5281/zenodo.1234567"
         loaded_ds = open_dataset(doi, validate=False)
 
-        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567")
+        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567", production=True)
         mock_open_zarr.assert_called_once()
         assert isinstance(loaded_ds, xr.Dataset)
 
