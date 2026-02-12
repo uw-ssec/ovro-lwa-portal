@@ -164,6 +164,43 @@ def _resolve_doi_from_metadata(doi: str, api_base: str) -> str:
         raise DataSourceError(msg) from e
 
 
+def _convert_osn_https_to_s3(url: str, storage_options: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Convert OSN HTTPS URL to S3 URL when credentials are provided.
+
+    OSN (Open Storage Network) provides both HTTPS and S3 access to the same data.
+    When S3 credentials are provided, we need to use the S3 endpoint.
+
+    Parameters
+    ----------
+    url : str
+        HTTPS URL (e.g., https://caltech1.osn.mghpcc.org/path/to/data.zarr)
+    storage_options : dict
+        Storage options containing S3 credentials
+
+    Returns
+    -------
+    tuple[str, dict]
+        (s3_url, updated_storage_options) - S3 URL and storage options with endpoint
+    """
+    parsed = urlparse(url)
+    if parsed.scheme == "https" and ".osn.mghpcc.org" in parsed.netloc:
+        # Convert https://bucket.osn.mghpcc.org/path -> s3://bucket/path
+        bucket = parsed.netloc.split(".")[0]
+        path = parsed.path.lstrip("/")
+        s3_url = f"s3://{bucket}/{path}"
+
+        # Add OSN S3 endpoint to storage_options
+        # Use virtual-host style endpoint (bucket in subdomain)
+        updated_options = storage_options.copy()
+        if "client_kwargs" not in updated_options:
+            updated_options["client_kwargs"] = {}
+        updated_options["client_kwargs"]["endpoint_url"] = f"https://{bucket}.osn.mghpcc.org"
+
+        return (s3_url, updated_options)
+
+    return (url, storage_options)
+
+
 def _detect_source_type(source: str | Path) -> tuple[str, str]:
     """Detect the type of data source.
 
@@ -344,6 +381,12 @@ def open_dataset(
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
             raise DataSourceError(msg) from e
 
+    # Convert OSN HTTPS URLs to S3 when credentials are provided
+    if source_type == "remote" and storage_options:
+        normalized_source, storage_options = _convert_osn_https_to_s3(
+            normalized_source, storage_options
+        )
+
     # Load data based on engine
     try:
         if engine == "zarr":
@@ -357,20 +400,50 @@ def open_dataset(
                 )
                 raise ImportError(msg) from e
 
-            # Create UPath object - works for both local and remote paths
-            # Pass storage_options so credentials reach the filesystem backend
+            # Create filesystem and mapper based on whether storage_options are provided
             if storage_options:
-                store_path = UPath(normalized_source, **storage_options)
+                # When storage options are provided, create filesystem directly
+                # This ensures credentials are passed correctly to the backend
+                try:
+                    import fsspec
+                except ImportError as e:
+                    msg = (
+                        "fsspec is required for remote storage access. "
+                        "Install with: pip install fsspec"
+                    )
+                    raise ImportError(msg) from e
+
+                # Parse the URL to get protocol and path
+                parsed = urlparse(normalized_source)
+                protocol = parsed.scheme if parsed.scheme else "file"
+
+                # Create filesystem with storage options
+                fs = fsspec.filesystem(protocol, **storage_options)
+
+                # Get the path without the protocol
+                if protocol in ("s3", "gs", "gcs"):
+                    # For cloud storage: s3://bucket/path -> bucket/path
+                    path = f"{parsed.netloc}/{parsed.path.lstrip('/')}"
+                else:
+                    path = normalized_source
+
+                # Check local existence
+                if protocol in ("", "file") and not Path(path).exists():
+                    raise FileNotFoundError(f"Local path does not exist: {path}")
+
+                # Create the mapper
+                store = fs.get_mapper(path)
             else:
+                # Without storage options, use UPath as before
                 store_path = UPath(normalized_source)
 
-            # Explicit local existence check
-            if store_path.protocol in ("", "file") and not store_path.exists():
-                raise FileNotFoundError(f"Local path does not exist: {store_path}")
+                # Explicit local existence check
+                if store_path.protocol in ("", "file") and not store_path.exists():
+                    raise FileNotFoundError(f"Local path does not exist: {store_path}")
 
-            # Build a Zarr store (fsspec mapper) from the UPath
-            fs = store_path.fs          # fsspec filesystem
-            store = fs.get_mapper(store_path.path)
+                # Build a Zarr store (fsspec mapper) from the UPath
+                fs = store_path.fs
+                store = fs.get_mapper(store_path.path)
 
             # Check if we need cloud storage backends for remote paths
             if source_type == "remote":
