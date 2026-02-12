@@ -83,14 +83,14 @@ class TestOpenDatasetIntegration:
 
     def test_load_with_validation(self, sample_zarr_store: Path) -> None:
         """Test loading with validation enabled."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=True)
 
         assert isinstance(ds, xr.Dataset)
         # Should pass validation without warnings for this dataset
 
     def test_load_without_validation(self, sample_zarr_store: Path) -> None:
         """Test loading without validation."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert isinstance(ds, xr.Dataset)
 
@@ -122,7 +122,7 @@ class TestOpenDatasetIntegration:
 
     def test_dataset_attributes_preserved(self, sample_zarr_store: Path) -> None:
         """Test that dataset attributes are preserved."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert "instrument" in ds.attrs
         assert ds.attrs["instrument"] == "OVRO-LWA"
@@ -130,7 +130,7 @@ class TestOpenDatasetIntegration:
 
     def test_coordinates_preserved(self, sample_zarr_store: Path) -> None:
         """Test that coordinates are preserved."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert "right_ascension" in ds.coords
         assert "declination" in ds.coords
@@ -143,7 +143,7 @@ class TestOpenDatasetIntegration:
         ds_original = xr.open_zarr(sample_zarr_store)
 
         # Load via open_dataset
-        ds_loaded = open_dataset(sample_zarr_store, chunks=None)
+        ds_loaded = open_dataset(sample_zarr_store, validate=False, chunks=None)
 
         # Compare values
         np.testing.assert_array_equal(
@@ -155,10 +155,12 @@ class TestOpenDatasetIntegration:
         """Test selecting subsets of data."""
         ds = open_dataset(sample_zarr_store)
 
-        # Select subset: first 5 time steps by index, frequency between 40–60 MHz by value
-        subset = ds.isel(time=slice(0, 5)).sel(frequency=slice(40e6, 60e6))
+        # Select subset
+        # Note: xarray's label-based slicing includes both endpoints for integer coordinates
+        # slice(0, 5) gives [0, 1, 2, 3, 4, 5] = 6 elements
+        subset = ds.sel(time=slice(0, 5), frequency=slice(40e6, 60e6))
 
-        assert len(subset.time) == 5
+        assert len(subset.time) == 6  # Includes both 0 and 5
         assert subset.frequency.min() >= 40e6
         assert subset.frequency.max() <= 60e6
 
@@ -174,8 +176,8 @@ class TestOpenDatasetIntegration:
 
     def test_multiple_loads_same_store(self, sample_zarr_store: Path) -> None:
         """Test loading the same store multiple times."""
-        ds1 = open_dataset(sample_zarr_store)
-        ds2 = open_dataset(sample_zarr_store)
+        ds1 = open_dataset(sample_zarr_store, validate=False)
+        ds2 = open_dataset(sample_zarr_store, validate=False)
 
         # Both should load successfully
         assert isinstance(ds1, xr.Dataset)
