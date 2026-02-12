@@ -173,7 +173,9 @@ def _convert_osn_https_to_s3(url: str, storage_options: dict[str, Any]) -> tuple
     Parameters
     ----------
     url : str
-        HTTPS URL (e.g., https://caltech1.osn.mghpcc.org/path/to/data.zarr)
+        HTTPS URL in one of these formats:
+        - https://subdomain.osn.mghpcc.org/bucket/path (path-style)
+        - https://bucket.osn.mghpcc.org/path (virtual-host-style)
     storage_options : dict
         Storage options containing S3 credentials
 
@@ -184,17 +186,37 @@ def _convert_osn_https_to_s3(url: str, storage_options: dict[str, Any]) -> tuple
     """
     parsed = urlparse(url)
     if parsed.scheme == "https" and ".osn.mghpcc.org" in parsed.netloc:
-        # Convert https://bucket.osn.mghpcc.org/path -> s3://bucket/path
-        bucket = parsed.netloc.split(".")[0]
-        path = parsed.path.lstrip("/")
-        s3_url = f"s3://{bucket}/{path}"
+        # Check if this is virtual-host style (bucket.osn.mghpcc.org)
+        # or path-style (subdomain.osn.mghpcc.org/bucket/path)
+        subdomain = parsed.netloc.split(".osn.mghpcc.org")[0]
+
+        # Common endpoint subdomains for OSN (not bucket names)
+        endpoint_subdomains = {"uma1", "uma2", "ncsa1", "ncsa2", "mghpcc1"}
+
+        if subdomain not in endpoint_subdomains:
+            # Virtual-host style: bucket is in subdomain
+            bucket = subdomain
+            path = parsed.path.lstrip("/")
+            endpoint = f"https://{parsed.netloc}"
+        else:
+            # Path-style: bucket is first part of path
+            path_parts = parsed.path.lstrip("/").split("/", 1)
+            if len(path_parts) >= 1:
+                bucket = path_parts[0]
+                path = path_parts[1] if len(path_parts) > 1 else ""
+                endpoint = f"https://{parsed.netloc}"
+            else:
+                # Can't determine bucket, return unchanged
+                return (url, storage_options)
+
+        # Construct S3 URL
+        s3_url = f"s3://{bucket}/{path}" if path else f"s3://{bucket}"
 
         # Add OSN S3 endpoint to storage_options
-        # Use virtual-host style endpoint (bucket in subdomain)
         updated_options = storage_options.copy()
         if "client_kwargs" not in updated_options:
             updated_options["client_kwargs"] = {}
-        updated_options["client_kwargs"]["endpoint_url"] = f"https://{bucket}.osn.mghpcc.org"
+        updated_options["client_kwargs"]["endpoint_url"] = endpoint
 
         return (s3_url, updated_options)
 
@@ -381,6 +403,13 @@ def open_dataset(
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
             raise DataSourceError(msg) from e
 
+    # Convert OSN HTTPS URLs to S3 when credentials are provided
+    # OSN provides both HTTPS and S3 access to the same data
+    if source_type == "remote" and storage_options:
+        normalized_source, storage_options = _convert_osn_https_to_s3(
+            normalized_source, storage_options
+        )
+
     # Load data based on engine
     try:
         if engine == "zarr":
@@ -394,22 +423,39 @@ def open_dataset(
                 )
                 raise ImportError(msg) from e
 
-            # Create UPath object - works for both local and remote paths
-            # Pass storage_options so credentials reach the filesystem backend
-            # NOTE: storage_options only work for S3/cloud protocols, not HTTP/HTTPS
+            # Create filesystem and mapper
+            # When storage_options are provided, use fsspec directly for cloud storage
             parsed_url = urlparse(normalized_source)
-            if storage_options and parsed_url.scheme in ("s3", "gs", "gcs", "abfs", "az"):
-                store_path = UPath(normalized_source, **storage_options)
+            protocol = parsed_url.scheme if parsed_url.scheme else "file"
+
+            if storage_options and protocol in ("s3", "gs", "gcs", "abfs", "az"):
+                # Use fsspec directly for cloud storage with credentials
+                try:
+                    import fsspec
+                except ImportError as e:
+                    msg = (
+                        "fsspec is required for remote storage access. "
+                        "Install with: pip install fsspec"
+                    )
+                    raise ImportError(msg) from e
+
+                # Create filesystem with storage options
+                fs = fsspec.filesystem(protocol, **storage_options)
+
+                # Get path without protocol (e.g., s3://bucket/path -> bucket/path)
+                path = f"{parsed_url.netloc}/{parsed_url.path.lstrip('/')}"
+                store = fs.get_mapper(path)
             else:
+                # For local files or HTTPS, use UPath without storage_options
                 store_path = UPath(normalized_source)
 
-            # Explicit local existence check
-            if store_path.protocol in ("", "file") and not store_path.exists():
-                raise FileNotFoundError(f"Local path does not exist: {store_path}")
+                # Explicit local existence check
+                if store_path.protocol in ("", "file") and not store_path.exists():
+                    raise FileNotFoundError(f"Local path does not exist: {store_path}")
 
-            # Build a Zarr store (fsspec mapper) from the UPath
-            fs = store_path.fs
-            store = fs.get_mapper(store_path.path)
+                # Build a Zarr store (fsspec mapper) from the UPath
+                fs = store_path.fs
+                store = fs.get_mapper(store_path.path)
 
             # Check if we need cloud storage backends for remote paths
             if source_type == "remote":
