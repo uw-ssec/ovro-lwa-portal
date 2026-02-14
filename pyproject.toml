@@ -55,6 +55,15 @@ remote = [
     "gcsfs>=2024.6.0",
     "fsspec>=2024.6.0",
 ]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.25.0",
+    "mkdocs-jupyter>=0.25.0",
+    "mkdocs-gen-files>=0.5.0",
+    "mkdocs-literate-nav>=0.6.0",
+    "mkdocs-section-index>=0.3.0",
+]
 all = ["ovro_lwa_portal[dev]"]
 
 [project.license]
@@ -151,6 +160,13 @@ platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.dependencies]
 python-casacore = ">=3.7.1,<4"
+mkdocs = ">=1.6.1,<2"
+mkdocs-material = ">=9.7.1,<10"
+mkdocstrings-python = ">=2.0.2,<3"
+mkdocs-jupyter = ">=0.25.1,<0.26"
+mkdocs-gen-files = ">=0.6.0,<0.7"
+mkdocs-literate-nav = ">=0.6.2,<0.7"
+mkdocs-section-index = ">=0.3.10,<0.4"
 
 [tool.pixi.pypi-dependencies]
 # Dependency to the local package in editable mode
