@@ -101,8 +101,9 @@ def _resolve_doi(doi: str, production: bool = True) -> str:
         data = r.json()["data"]
 
         # Prefer zarr media type, fallback to first URL
+        zarr_media_types = {"application/zarr", "application/x-zarr"}
         for media in data:
-            if media["attributes"]["mediaType"] == "application/zarr":
+            if media["attributes"]["mediaType"] in zarr_media_types:
                 return media["attributes"]["url"]
 
         if data:
@@ -173,9 +174,8 @@ def _convert_osn_https_to_s3(url: str, storage_options: dict[str, Any]) -> tuple
     Parameters
     ----------
     url : str
-        HTTPS URL in one of these formats:
-        - https://subdomain.osn.mghpcc.org/bucket/path (path-style)
-        - https://bucket.osn.mghpcc.org/path (virtual-host-style)
+        HTTPS URL in path-style format:
+        https://{endpoint}.osn.mghpcc.org/{bucket}/{path}
     storage_options : dict
         Storage options containing S3 credentials
 
@@ -186,35 +186,25 @@ def _convert_osn_https_to_s3(url: str, storage_options: dict[str, Any]) -> tuple
     """
     parsed = urlparse(url)
     if parsed.scheme == "https" and ".osn.mghpcc.org" in parsed.netloc:
-        # Check if this is virtual-host style (bucket.osn.mghpcc.org)
-        # or path-style (subdomain.osn.mghpcc.org/bucket/path)
-        subdomain = parsed.netloc.split(".osn.mghpcc.org")[0]
-
-        # Common endpoint subdomains for OSN (not bucket names)
-        endpoint_subdomains = {"uma1", "uma2", "ncsa1", "ncsa2", "mghpcc1"}
-
-        if subdomain not in endpoint_subdomains:
-            # Virtual-host style: bucket is in subdomain
-            bucket = subdomain
-            path = parsed.path.lstrip("/")
+        # OSN always uses path-style: https://{endpoint}.osn.mghpcc.org/{bucket}/{path}
+        # The subdomain is the endpoint name (e.g., uma1, caltech1), not a bucket.
+        path_parts = parsed.path.lstrip("/").split("/", 1)
+        if len(path_parts) >= 1 and path_parts[0]:
+            bucket = path_parts[0]
+            path = path_parts[1] if len(path_parts) > 1 else ""
             endpoint = f"https://{parsed.netloc}"
         else:
-            # Path-style: bucket is first part of path
-            path_parts = parsed.path.lstrip("/").split("/", 1)
-            if len(path_parts) >= 1:
-                bucket = path_parts[0]
-                path = path_parts[1] if len(path_parts) > 1 else ""
-                endpoint = f"https://{parsed.netloc}"
-            else:
-                # Can't determine bucket, return unchanged
-                return (url, storage_options)
+            # Can't determine bucket, return unchanged
+            return (url, storage_options)
 
         # Construct S3 URL
         s3_url = f"s3://{bucket}/{path}" if path else f"s3://{bucket}"
 
-        # Add OSN S3 endpoint to storage_options
+        # Add OSN S3 endpoint to storage_options (deep copy nested dicts)
         updated_options = storage_options.copy()
-        if "client_kwargs" not in updated_options:
+        if "client_kwargs" in updated_options:
+            updated_options["client_kwargs"] = updated_options["client_kwargs"].copy()
+        else:
             updated_options["client_kwargs"] = {}
         updated_options["client_kwargs"]["endpoint_url"] = endpoint
 

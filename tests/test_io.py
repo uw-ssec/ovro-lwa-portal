@@ -13,9 +13,12 @@ import xarray as xr
 
 from ovro_lwa_portal.io import (
     DataSourceError,
+    _convert_osn_https_to_s3,
     _detect_source_type,
     _is_doi,
     _normalize_doi,
+    _resolve_doi,
+    _resolve_doi_from_metadata,
     _validate_dataset,
     open_dataset,
 )
@@ -349,3 +352,259 @@ class TestDOIResolution:
 
         # Verify normalization
         assert _normalize_doi("doi:10.5281/zenodo.1234567") == "10.5281/zenodo.1234567"
+
+    @patch("requests.get")
+    def test_resolve_doi_application_zarr(self, mock_get: Mock) -> None:
+        """Test that application/zarr media type is matched."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/zarr",
+                        "url": "https://example.com/data.zarr",
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        result = _resolve_doi("10.5281/test", production=True)
+        assert result == "https://example.com/data.zarr"
+
+    @patch("requests.get")
+    def test_resolve_doi_application_x_zarr(self, mock_get: Mock) -> None:
+        """Test that application/x-zarr media type is matched."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/x-zarr",
+                        "url": "https://uma1.osn.mghpcc.org/bucket/data.zarr",
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        result = _resolve_doi("10.33569/test", production=False)
+        assert result == "https://uma1.osn.mghpcc.org/bucket/data.zarr"
+
+    @patch("requests.get")
+    def test_resolve_doi_unknown_media_type_uses_first(self, mock_get: Mock) -> None:
+        """Test that unknown media type falls back to first entry."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/octet-stream",
+                        "url": "https://example.com/first.zarr",
+                    }
+                },
+                {
+                    "attributes": {
+                        "mediaType": "text/plain",
+                        "url": "https://example.com/second.txt",
+                    }
+                },
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        result = _resolve_doi("10.5281/test", production=True)
+        assert result == "https://example.com/first.zarr"
+
+    @patch("ovro_lwa_portal.io._resolve_doi_from_metadata")
+    @patch("requests.get")
+    def test_resolve_doi_empty_media_falls_back_to_metadata(
+        self, mock_get: Mock, mock_metadata: Mock
+    ) -> None:
+        """Test that empty media list triggers metadata fallback."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": []}
+        mock_get.return_value = mock_response
+        mock_metadata.return_value = "https://example.com/fallback.zarr"
+
+        result = _resolve_doi("10.5281/test", production=True)
+        assert result == "https://example.com/fallback.zarr"
+        mock_metadata.assert_called_once()
+
+    @patch("ovro_lwa_portal.io._resolve_doi_from_metadata")
+    @patch("requests.get")
+    def test_resolve_doi_404_falls_back_to_metadata(
+        self, mock_get: Mock, mock_metadata: Mock
+    ) -> None:
+        """Test that 404 from media endpoint triggers metadata fallback."""
+        import requests
+
+        mock_response = Mock()
+        mock_response.status_code = 404
+        http_error = requests.exceptions.HTTPError(response=mock_response)
+        mock_get.return_value.raise_for_status.side_effect = http_error
+        mock_metadata.return_value = "https://example.com/fallback.zarr"
+
+        result = _resolve_doi("10.5281/test", production=True)
+        assert result == "https://example.com/fallback.zarr"
+        mock_metadata.assert_called_once()
+
+    @patch("requests.get")
+    def test_resolve_doi_uses_test_api(self, mock_get: Mock) -> None:
+        """Test that production=False uses the test DataCite API."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "attributes": {
+                        "mediaType": "application/x-zarr",
+                        "url": "https://example.com/data.zarr",
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_response
+
+        _resolve_doi("10.33569/test", production=False)
+        call_url = mock_get.call_args[0][0]
+        assert "api.test.datacite.org" in call_url
+        assert "api.datacite.org/dois" not in call_url
+
+
+class TestDOIMetadataFallback:
+    """Tests for _resolve_doi_from_metadata fallback."""
+
+    @patch("requests.get")
+    def test_resolve_from_metadata_success(self, mock_get: Mock) -> None:
+        """Test successful URL extraction from DOI metadata."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": {
+                "attributes": {
+                    "url": "https://example.com/metadata-url.zarr",
+                }
+            }
+        }
+        mock_get.return_value = mock_response
+
+        result = _resolve_doi_from_metadata(
+            "10.5281/test", "https://api.datacite.org/dois"
+        )
+        assert result == "https://example.com/metadata-url.zarr"
+
+    @patch("requests.get")
+    def test_resolve_from_metadata_no_url(self, mock_get: Mock) -> None:
+        """Test that missing URL in metadata raises DataSourceError."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "data": {"attributes": {"url": None}}
+        }
+        mock_get.return_value = mock_response
+
+        with pytest.raises(DataSourceError, match="No download URL found"):
+            _resolve_doi_from_metadata(
+                "10.5281/test", "https://api.datacite.org/dois"
+            )
+
+    @patch("requests.get")
+    def test_resolve_from_metadata_request_error(self, mock_get: Mock) -> None:
+        """Test that request failure raises DataSourceError."""
+        import requests
+
+        mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
+
+        with pytest.raises(DataSourceError, match="Failed to resolve DOI"):
+            _resolve_doi_from_metadata(
+                "10.5281/test", "https://api.datacite.org/dois"
+            )
+
+
+class TestOSNConversion:
+    """Tests for _convert_osn_https_to_s3 URL conversion."""
+
+    def test_convert_uma1_endpoint(self) -> None:
+        """Test conversion of uma1 OSN path-style URL."""
+        url = "https://uma1.osn.mghpcc.org/caltech-drill-core-temp/ovro-temp/test.zarr"
+        opts = {"key": "ACCESS_KEY", "secret": "SECRET_KEY"}
+
+        s3_url, updated_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert s3_url == "s3://caltech-drill-core-temp/ovro-temp/test.zarr"
+        assert updated_opts["client_kwargs"]["endpoint_url"] == "https://uma1.osn.mghpcc.org"
+        assert updated_opts["key"] == "ACCESS_KEY"
+        assert updated_opts["secret"] == "SECRET_KEY"
+
+    def test_convert_caltech1_endpoint(self) -> None:
+        """Test conversion of caltech1 OSN URL (the bug from issue #88)."""
+        url = "https://caltech1.osn.mghpcc.org/10.25800/all_subbands_2024-05-24_first10.zarr"
+        opts = {"key": "ACCESS_KEY", "secret": "SECRET_KEY"}
+
+        s3_url, updated_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert s3_url == "s3://10.25800/all_subbands_2024-05-24_first10.zarr"
+        assert updated_opts["client_kwargs"]["endpoint_url"] == "https://caltech1.osn.mghpcc.org"
+
+    def test_convert_unknown_endpoint(self) -> None:
+        """Test that any *.osn.mghpcc.org URL converts correctly (path-style)."""
+        url = "https://newsite99.osn.mghpcc.org/mybucket/path/to/data.zarr"
+        opts = {"key": "K", "secret": "S"}
+
+        s3_url, updated_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert s3_url == "s3://mybucket/path/to/data.zarr"
+        assert updated_opts["client_kwargs"]["endpoint_url"] == "https://newsite99.osn.mghpcc.org"
+
+    def test_non_osn_url_unchanged(self) -> None:
+        """Test that non-OSN HTTPS URLs are returned unchanged."""
+        url = "https://example.com/data.zarr"
+        opts = {"key": "K", "secret": "S"}
+
+        result_url, result_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert result_url == url
+        assert result_opts is opts  # Same object, not modified
+
+    def test_s3_url_unchanged(self) -> None:
+        """Test that S3 URLs are returned unchanged."""
+        url = "s3://bucket/data.zarr"
+        opts = {"key": "K", "secret": "S"}
+
+        result_url, result_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert result_url == url
+        assert result_opts is opts
+
+    def test_storage_options_preserved(self) -> None:
+        """Test that existing storage_options keys are preserved."""
+        url = "https://uma1.osn.mghpcc.org/bucket/data.zarr"
+        opts = {
+            "key": "ACCESS_KEY",
+            "secret": "SECRET_KEY",
+            "client_kwargs": {"region_name": "us-east-1"},
+        }
+
+        _, updated_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert updated_opts["key"] == "ACCESS_KEY"
+        assert updated_opts["secret"] == "SECRET_KEY"
+        assert updated_opts["client_kwargs"]["region_name"] == "us-east-1"
+        assert updated_opts["client_kwargs"]["endpoint_url"] == "https://uma1.osn.mghpcc.org"
+        # Original should not be mutated
+        assert "endpoint_url" not in opts.get("client_kwargs", {})
+
+    def test_bucket_only_no_path(self) -> None:
+        """Test conversion when URL has only a bucket, no further path."""
+        url = "https://uma1.osn.mghpcc.org/bucket"
+        opts = {"key": "K", "secret": "S"}
+
+        s3_url, updated_opts = _convert_osn_https_to_s3(url, opts)
+
+        assert s3_url == "s3://bucket"
+        assert updated_opts["client_kwargs"]["endpoint_url"] == "https://uma1.osn.mghpcc.org"
