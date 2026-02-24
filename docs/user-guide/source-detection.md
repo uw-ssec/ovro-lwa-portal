@@ -1,6 +1,7 @@
 # Source Detection
 
-The `radport` accessor provides methods for detecting and analyzing radio sources in OVRO-LWA data.
+The `radport` accessor provides methods for detecting and analyzing radio
+sources in OVRO-LWA data.
 
 ## Signal-to-Noise Maps
 
@@ -353,7 +354,8 @@ print(f"Filtered: {len(peaks)} → {len(filtered_peaks)} sources")
 
 4. **Validation**: Visually inspect detections
 
-5. **Multi-Frequency Confirmation**: Confirm detections across multiple frequencies
+5. **Multi-Frequency Confirmation**: Confirm detections across multiple
+   frequencies
 
 ```python
 # Multi-frequency validation

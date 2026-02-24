@@ -1,6 +1,7 @@
 # Loading Data
 
-The OVRO-LWA Portal provides the `open_dataset()` function for loading data from various sources.
+The OVRO-LWA Portal provides the `open_dataset()` function for loading data from
+various sources.
 
 ## Basic Usage
 
@@ -11,7 +12,8 @@ import ovro_lwa_portal as ovro
 ds = ovro.open_dataset("/path/to/observation.zarr")
 ```
 
-Once loaded, the dataset has a `radport` accessor providing over 40 analysis methods.
+Once loaded, the dataset has a `radport` accessor providing over 40 analysis
+methods.
 
 ## Supported Data Sources
 

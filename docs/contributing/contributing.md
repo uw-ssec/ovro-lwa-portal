@@ -1,15 +1,20 @@
 # Contributing
 
-Thank you for your interest in contributing to OVRO-LWA Portal! This guide covers
-how to set up the project locally, run tests, and submit changes.
+Thank you for your interest in contributing to OVRO-LWA Portal! This guide
+covers how to set up the project locally, run tests, and submit changes.
 
-Please review our [Code of Conduct](https://github.com/uw-ssec/code-of-conduct/blob/main/CODE_OF_CONDUCT.md) before contributing.
+Please review our
+[Code of Conduct](https://github.com/uw-ssec/code-of-conduct/blob/main/CODE_OF_CONDUCT.md)
+before contributing.
 
 ## Pull Requests
 
 - Fork the repository and create a branch for your changes
-- Follow [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md) for PR titles
-- See [this tutorial](https://www.dataschool.io/how-to-contribute-on-github/) for a general guide to open-source contributions
+- Follow
+  [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md)
+  for PR titles
+- See [this tutorial](https://www.dataschool.io/how-to-contribute-on-github/)
+  for a general guide to open-source contributions
 
 ## Setting Up Your Environment
 
@@ -74,8 +79,9 @@ This creates wheel and source distributions in the `dist/` directory.
 
 ## Pre-commit Hooks
 
-PRs are checked by [pre-commit](https://pre-commit.com/) for style and formatting.
-Set up your local repository so checks run automatically on every commit:
+PRs are checked by [pre-commit](https://pre-commit.com/) for style and
+formatting. Set up your local repository so checks run automatically on every
+commit:
 
 ```bash
 # Install hooks (run once)
@@ -105,8 +111,11 @@ The site will be available at `http://127.0.0.1:8000/ovro-lwa-portal/`.
 
 ## Code Style
 
-- **Docstrings**: Use [NumPy-style](https://numpydoc.readthedocs.io/en/latest/format.html) docstrings for all public functions and classes
-- **PR titles**: Follow [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md)
+- **Docstrings**: Use
+  [NumPy-style](https://numpydoc.readthedocs.io/en/latest/format.html)
+  docstrings for all public functions and classes
+- **PR titles**: Follow
+  [Conventional Commits](https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md)
 - **Formatting**: Enforced automatically by pre-commit hooks
 
 ## Working with Radio Astronomy Data
@@ -132,7 +141,8 @@ and testing. These represent typical OVRO-LWA observations.
 
 ### Image Plane Correction
 
-- The `image-plane-correction` package is an external dependency from the OVRO-LWA team
+- The `image-plane-correction` package is an external dependency from the
+  OVRO-LWA team
 - Currently using the `nikita/dev` branch
 - Report issues to the upstream repository when appropriate
 
@@ -141,7 +151,8 @@ and testing. These represent typical OVRO-LWA observations.
 For macOS ARM64 users:
 
 - A pre-compiled wheel is provided to avoid compilation issues
-- If you encounter problems, check the `pyproject.toml` configuration in the `[tool.pixi]` section
+- If you encounter problems, check the `pyproject.toml` configuration in the
+  `[tool.pixi]` section
 - Linux users should use the standard PyPI package
 
 ## ssec CLI

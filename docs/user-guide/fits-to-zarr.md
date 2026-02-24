@@ -1,6 +1,7 @@
 # FITS to Zarr Conversion
 
-The OVRO-LWA Portal provides tools for converting FITS image files to cloud-optimized Zarr format.
+The OVRO-LWA Portal provides tools for converting FITS image files to
+cloud-optimized Zarr format.
 
 ## Why Zarr?
 
@@ -40,7 +41,8 @@ ovro-ingest convert /path/to/fits /path/to/output \
 
 #### Options
 
-- `--zarr-name`: Name of the output Zarr store (default: derived from input path)
+- `--zarr-name`: Name of the output Zarr store (default: derived from input
+  path)
 - `--chunk-lm`: Chunk size for the l and m dimensions (default: 1024)
 - `--rebuild`: Remove existing Zarr store and rebuild from scratch
 
@@ -114,7 +116,8 @@ converter2.convert()
 
 ## Concurrent Write Protection
 
-The converter uses file locking to prevent data corruption when multiple processes write to the same Zarr store:
+The converter uses file locking to prevent data corruption when multiple
+processes write to the same Zarr store:
 
 ```python
 from pathlib import Path

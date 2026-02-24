@@ -1,22 +1,22 @@
 # Pulsar Dedispersion Tutorial
 
-This tutorial demonstrates how to detect and analyze pulsars in OVRO-LWA data using the
-Crab pulsar (B0531+21, DM ≈ 56.7 pc cm⁻³) as the example target. You will learn how
-to apply incoherent dedispersion, optimize the dispersion measure, and fold the data
-at the pulsar period.
+This tutorial demonstrates how to detect and analyze pulsars in OVRO-LWA data
+using the Crab pulsar (B0531+21, DM ≈ 56.7 pc cm⁻³) as the example target. You
+will learn how to apply incoherent dedispersion, optimize the dispersion
+measure, and fold the data at the pulsar period.
 
 ## Background
 
-Radio pulses traveling through the ionized interstellar medium (ISM) experience a
-frequency-dependent delay described by:
+Radio pulses traveling through the ionized interstellar medium (ISM) experience
+a frequency-dependent delay described by:
 
 $$
 \Delta t = 4.15 \times 10^{3} \, \text{ms} \times \text{DM} \times \left( f_{\text{low}}^{-2} - f_{\text{high}}^{-2} \right)
 $$
 
-where DM (dispersion measure) is the integrated electron column density in pc cm⁻³
-and *f* is frequency in MHz. Lower frequencies arrive later, causing a characteristic
-diagonal sweep in the dynamic spectrum.
+where DM (dispersion measure) is the integrated electron column density in pc
+cm⁻³ and _f_ is frequency in MHz. Lower frequencies arrive later, causing a
+characteristic diagonal sweep in the dynamic spectrum.
 
 ## Prerequisites
 
@@ -65,8 +65,8 @@ plt.title("Before Dedispersion")
 plt.show()
 ```
 
-You should see the characteristic diagonal sweep: low-frequency emission arriving
-later than high-frequency emission.
+You should see the characteristic diagonal sweep: low-frequency emission
+arriving later than high-frequency emission.
 
 ## Step 3: Incoherent Dedispersion
 
@@ -327,7 +327,10 @@ This tutorial covered:
 
 ## Next Steps
 
-- [Dispersion Measure Correction Guide](../user-guide/dispersion-measure.md) -- FRB search and advanced DM techniques
-- [Transient Analysis Tutorial](transient-analysis.md) -- Detecting transient sources
-- [Spectral Mapping Tutorial](spectral-mapping.md) -- Spectral properties of sources
+- [Dispersion Measure Correction Guide](../user-guide/dispersion-measure.md) --
+  FRB search and advanced DM techniques
+- [Transient Analysis Tutorial](transient-analysis.md) -- Detecting transient
+  sources
+- [Spectral Mapping Tutorial](spectral-mapping.md) -- Spectral properties of
+  sources
 - [API Reference](../api/radport-accessor.md) -- Full method documentation

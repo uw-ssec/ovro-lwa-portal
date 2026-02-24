@@ -1,7 +1,7 @@
 # Data Loading
 
-The `ovro_lwa_portal.io` module provides a unified interface for loading OVRO-LWA
-datasets from local paths, remote URLs, and DOI identifiers.
+The `ovro_lwa_portal.io` module provides a unified interface for loading
+OVRO-LWA datasets from local paths, remote URLs, and DOI identifiers.
 
 ## Quick Reference
 
@@ -26,19 +26,16 @@ ds = ovro_lwa_portal.open_dataset(
 
 ## Supported Protocols
 
-| Protocol | Example | Notes |
-|---|---|---|
-| Local path | `/data/obs.zarr` | Checks existence before loading |
-| S3 | `s3://bucket/data.zarr` | Via fsspec |
-| HTTPS | `https://example.com/data.zarr` | Via fsspec |
-| GCS | `gs://bucket/data.zarr` | Via fsspec |
-| Azure | `abfs://container/data.zarr` | Via fsspec |
-| DOI | `doi:10.5281/zenodo.1234567` | Resolves via DataCite API |
+| Protocol   | Example                         | Notes                           |
+| ---------- | ------------------------------- | ------------------------------- |
+| Local path | `/data/obs.zarr`                | Checks existence before loading |
+| S3         | `s3://bucket/data.zarr`         | Via fsspec                      |
+| HTTPS      | `https://example.com/data.zarr` | Via fsspec                      |
+| GCS        | `gs://bucket/data.zarr`         | Via fsspec                      |
+| Azure      | `abfs://container/data.zarr`    | Via fsspec                      |
+| DOI        | `doi:10.5281/zenodo.1234567`    | Resolves via DataCite API       |
 
 ## Full API Reference
 
-::: ovro_lwa_portal.io
-    options:
-      show_root_heading: true
-      show_root_full_path: false
-      members_order: source
+::: ovro_lwa_portal.io options: show_root_heading: true show_root_full_path:
+false members_order: source

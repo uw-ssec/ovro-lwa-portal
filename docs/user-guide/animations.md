@@ -1,6 +1,7 @@
 # Animations
 
-The `radport` accessor provides methods for creating animations of time-series and frequency data.
+The `radport` accessor provides methods for creating animations of time-series
+and frequency data.
 
 ## Time Animation
 

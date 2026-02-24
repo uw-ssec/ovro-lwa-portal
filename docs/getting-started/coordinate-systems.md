@@ -1,6 +1,7 @@
 # Coordinate Systems
 
-OVRO-LWA data uses multiple coordinate systems. Understanding them is essential for analysis.
+OVRO-LWA data uses multiple coordinate systems. Understanding them is essential
+for analysis.
 
 ## Pixel Coordinates (l, m)
 

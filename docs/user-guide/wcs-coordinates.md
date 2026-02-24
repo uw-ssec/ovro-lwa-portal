@@ -1,9 +1,9 @@
 # WCS Coordinates
 
-WCS (World Coordinate System) information is preserved during FITS-to-Zarr conversion,
-enabling celestial coordinate (RA/Dec) overlays on sky images. The `radport` accessor
-provides methods to check WCS availability, convert between pixel and sky coordinates,
-and create publication-quality WCS-projected plots.
+WCS (World Coordinate System) information is preserved during FITS-to-Zarr
+conversion, enabling celestial coordinate (RA/Dec) overlays on sky images. The
+`radport` accessor provides methods to check WCS availability, convert between
+pixel and sky coordinates, and create publication-quality WCS-projected plots.
 
 ## Checking WCS Availability
 
@@ -22,8 +22,8 @@ The WCS header is searched in three locations (in order):
 2. Dataset attributes (`fits_wcs_header` on the dataset)
 3. A `wcs_header_str` data variable in the dataset
 
-!!! note
-    WCS functionality requires [astropy](https://www.astropy.org/) to be installed.
+!!! note WCS functionality requires [astropy](https://www.astropy.org/) to be
+installed.
 
 ## Pixel-to-Sky Conversion
 
@@ -53,7 +53,8 @@ print(f"Pixel: l={l_idx}, m={m_idx}")
 
 ## Plotting with WCS Projection
 
-The `plot_wcs` method creates plots with RA/Dec coordinate axes and a grid overlay:
+The `plot_wcs` method creates plots with RA/Dec coordinate axes and a grid
+overlay:
 
 ```python
 # Basic WCS plot
@@ -79,22 +80,22 @@ fig = ds.radport.plot_wcs(
 
 ### Key Parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `var` | `"SKY"` | Data variable to plot (`"SKY"` or `"BEAM"`) |
-| `time_idx` | `0` | Time index |
-| `freq_idx` | `0` | Frequency index (ignored if `freq_mhz` is set) |
-| `freq_mhz` | `None` | Select frequency by value in MHz |
-| `cmap` | `"inferno"` | Matplotlib colormap |
-| `robust` | `True` | Use 2nd/98th percentile for color scaling |
-| `mask_radius` | `None` | Circular mask radius in pixels |
-| `grid_color` | `"white"` | Color of the RA/Dec grid lines |
-| `grid_alpha` | `0.6` | Transparency of grid lines |
-| `facecolor` | `"black"` | Plot background color |
-| `add_colorbar` | `True` | Whether to include a colorbar |
+| Parameter      | Default     | Description                                    |
+| -------------- | ----------- | ---------------------------------------------- |
+| `var`          | `"SKY"`     | Data variable to plot (`"SKY"` or `"BEAM"`)    |
+| `time_idx`     | `0`         | Time index                                     |
+| `freq_idx`     | `0`         | Frequency index (ignored if `freq_mhz` is set) |
+| `freq_mhz`     | `None`      | Select frequency by value in MHz               |
+| `cmap`         | `"inferno"` | Matplotlib colormap                            |
+| `robust`       | `True`      | Use 2nd/98th percentile for color scaling      |
+| `mask_radius`  | `None`      | Circular mask radius in pixels                 |
+| `grid_color`   | `"white"`   | Color of the RA/Dec grid lines                 |
+| `grid_alpha`   | `0.6`       | Transparency of grid lines                     |
+| `facecolor`    | `"black"`   | Plot background color                          |
+| `add_colorbar` | `True`      | Whether to include a colorbar                  |
 
-The plot automatically handles RA axis inversion (RA increases to the left on the sky)
-and uses robust percentile-based scaling by default.
+The plot automatically handles RA axis inversion (RA increases to the left on
+the sky) and uses robust percentile-based scaling by default.
 
 ## Example Workflows
 
@@ -148,16 +149,21 @@ plt.show()
 
 The WCS pipeline works as follows:
 
-1. **Original FITS files** contain standard WCS headers (CRVAL, CRPIX, CDELT, etc.)
+1. **Original FITS files** contain standard WCS headers (CRVAL, CRPIX, CDELT,
+   etc.)
 2. **Header fixing** (`fix_fits_headers`) corrects any non-standard headers
-3. **Zarr conversion** stores the complete WCS header as a string attribute (`fits_wcs_header`) on the data variable or dataset
-4. **At load time**, the `radport` accessor parses the stored header string back into an astropy `WCS` object on demand
+3. **Zarr conversion** stores the complete WCS header as a string attribute
+   (`fits_wcs_header`) on the data variable or dataset
+4. **At load time**, the `radport` accessor parses the stored header string back
+   into an astropy `WCS` object on demand
 
-This means WCS information survives the FITS-to-Zarr conversion pipeline and is available
-whenever the original FITS files contained valid WCS headers.
+This means WCS information survives the FITS-to-Zarr conversion pipeline and is
+available whenever the original FITS files contained valid WCS headers.
 
 ## See Also
 
-- [Coordinate Systems](../getting-started/coordinate-systems.md) -- Introduction to pixel (l, m) and celestial coordinate systems
+- [Coordinate Systems](../getting-started/coordinate-systems.md) -- Introduction
+  to pixel (l, m) and celestial coordinate systems
 - [Visualization](visualization.md) -- General plotting methods
-- [API Reference](../api/radport-accessor.md) -- Full method documentation for `pixel_to_coords`, `coords_to_pixel`, and `plot_wcs`
+- [API Reference](../api/radport-accessor.md) -- Full method documentation for
+  `pixel_to_coords`, `coords_to_pixel`, and `plot_wcs`

@@ -1,10 +1,12 @@
 # Dispersion Measure Correction
 
-Dispersion measure (DM) correction is essential for pulsar and fast radio burst (FRB) observations.
+Dispersion measure (DM) correction is essential for pulsar and fast radio burst
+(FRB) observations.
 
 ## What is Dispersion?
 
-Radio waves traveling through ionized plasma experience a frequency-dependent delay:
+Radio waves traveling through ionized plasma experience a frequency-dependent
+delay:
 
 $$
 \Delta t = 4.15 \times 10^{3} \, \text{ms} \times \text{DM} \times \left( f_{\text{low}}^{-2} - f_{\text{high}}^{-2} \right)
@@ -15,14 +17,16 @@ where:
 - DM is the dispersion measure in pc cm⁻³
 - f is frequency in MHz
 
-This causes pulses to arrive at different times across the frequency band, "smearing" the signal.
+This causes pulses to arrive at different times across the frequency band,
+"smearing" the signal.
 
 ## Dispersion Correction Methods
 
 ### Method 1: Coherent Dedispersion
 
-!!! note "Coming Soon"
-    Coherent dedispersion methods are planned for future releases. Track progress in [GitHub Issue #85](https://github.com/uw-ssec/ovro-lwa-portal/issues/85).
+!!! note "Coming Soon" Coherent dedispersion methods are planned for future
+releases. Track progress in
+[GitHub Issue #85](https://github.com/uw-ssec/ovro-lwa-portal/issues/85).
 
 ### Method 2: Incoherent Dedispersion
 

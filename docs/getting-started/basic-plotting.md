@@ -1,6 +1,7 @@
 # Basic Plotting
 
-The `radport` accessor provides rich visualization capabilities for OVRO-LWA data.
+The `radport` accessor provides rich visualization capabilities for OVRO-LWA
+data.
 
 ## Quick Plot
 
@@ -66,8 +67,8 @@ plt.close()
 
 ## What Else Can You Plot?
 
-The `radport` accessor supports many more visualization methods beyond basic
-sky maps. See the [Visualization](../user-guide/visualization.md) guide for:
+The `radport` accessor supports many more visualization methods beyond basic sky
+maps. See the [Visualization](../user-guide/visualization.md) guide for:
 
 - **Cutout regions** — extract and plot sub-regions of interest
 - **Dynamic spectra** — time-frequency waterfalls at a pixel or spatial region

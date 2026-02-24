@@ -1,6 +1,7 @@
 # Spectral Analysis
 
-The `radport` accessor provides methods for analyzing spectral properties of radio sources.
+The `radport` accessor provides methods for analyzing spectral properties of
+radio sources.
 
 ## Frequency Spectra
 
@@ -284,11 +285,14 @@ if fraction < 0.9:
     print(f"Warning: Only {fraction*100:.1f}% valid data")
 ```
 
-2. **Background Subtraction**: Consider subtracting background for accurate flux measurements
+2. **Background Subtraction**: Consider subtracting background for accurate flux
+   measurements
 
-3. **Beam Correction**: Account for primary beam attenuation if analyzing off-axis sources
+3. **Beam Correction**: Account for primary beam attenuation if analyzing
+   off-axis sources
 
-4. **RFI Flagging**: Identify and flag radio frequency interference before spectral analysis
+4. **RFI Flagging**: Identify and flag radio frequency interference before
+   spectral analysis
 
 ## Next Steps
 

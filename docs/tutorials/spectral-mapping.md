@@ -1,13 +1,13 @@
 # Spectral Mapping Tutorial
 
-This tutorial demonstrates how to create spectral index maps, build spectral energy
-distributions (SEDs), fit power laws, and classify radio sources by their spectral
-properties using the `radport` accessor.
+This tutorial demonstrates how to create spectral index maps, build spectral
+energy distributions (SEDs), fit power laws, and classify radio sources by their
+spectral properties using the `radport` accessor.
 
 ## Background
 
-The spectral index *α* describes how a source's flux density *S* varies with
-frequency *ν*:
+The spectral index _α_ describes how a source's flux density _S_ varies with
+frequency _ν_:
 
 $$
 S \propto \nu^{\alpha}
@@ -15,12 +15,12 @@ $$
 
 Typical spectral index values at low radio frequencies:
 
-| α | Interpretation | Examples |
-|---|---|---|
-| ≈ −0.7 | Optically-thin synchrotron | Most AGN, supernova remnants |
-| ≈ 0 | Flat spectrum | Compact quasar cores |
-| > 0 | Inverted / self-absorbed | Gigahertz-peaked sources |
-| < −1 | Ultra-steep spectrum | Aged electron populations, high-*z* radio galaxies |
+| α      | Interpretation             | Examples                                           |
+| ------ | -------------------------- | -------------------------------------------------- |
+| ≈ −0.7 | Optically-thin synchrotron | Most AGN, supernova remnants                       |
+| ≈ 0    | Flat spectrum              | Compact quasar cores                               |
+| > 0    | Inverted / self-absorbed   | Gigahertz-peaked sources                           |
+| < −1   | Ultra-steep spectrum       | Aged electron populations, high-_z_ radio galaxies |
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ plt.show()
 
 ## Step 2: Create a Spectral Index Map
 
-Compute *α* between the lowest and highest frequency channels:
+Compute _α_ between the lowest and highest frequency channels:
 
 ```python
 alpha_map = ds.radport.spectral_index_map(
@@ -76,8 +76,8 @@ plt.title(f"Spectral Index ({freqs_mhz[0]:.0f}–{freqs_mhz[-1]:.0f} MHz)")
 plt.show()
 ```
 
-Blue regions indicate steep-spectrum sources (α < 0) while red indicates
-flat or inverted spectra (α ≥ 0).
+Blue regions indicate steep-spectrum sources (α < 0) while red indicates flat or
+inverted spectra (α ≥ 0).
 
 ## Step 3: Detect Sources and Measure Spectral Indices
 
@@ -145,7 +145,7 @@ plt.show()
 
 ## Step 5: Power-Law Fitting
 
-Fit a power law *S = A (ν / ν₀)^α* to the SED:
+Fit a power law _S = A (ν / ν₀)^α_ to the SED:
 
 ```python
 from scipy.optimize import curve_fit
@@ -205,8 +205,8 @@ plt.tight_layout()
 plt.show()
 ```
 
-Differences between panels indicate spectral curvature — the spectral index
-is not constant across the band.
+Differences between panels indicate spectral curvature — the spectral index is
+not constant across the band.
 
 ## Step 7: Source Classification
 
@@ -260,7 +260,9 @@ This tutorial covered:
 
 ## Next Steps
 
-- [Spectral Analysis Guide](../user-guide/spectral-analysis.md) -- Frequency averaging, spectral variability
-- [Source Detection Guide](../user-guide/source-detection.md) -- Advanced detection methods
+- [Spectral Analysis Guide](../user-guide/spectral-analysis.md) -- Frequency
+  averaging, spectral variability
+- [Source Detection Guide](../user-guide/source-detection.md) -- Advanced
+  detection methods
 - [Transient Analysis Tutorial](transient-analysis.md) -- Time-domain analysis
 - [API Reference](../api/radport-accessor.md) -- Full method documentation

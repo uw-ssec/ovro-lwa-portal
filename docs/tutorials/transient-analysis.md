@@ -1,8 +1,9 @@
 # Transient Analysis Tutorial
 
-This tutorial walks through an end-to-end workflow for detecting and characterizing
-transient radio sources in OVRO-LWA data, covering data loading, reference image creation,
-difference imaging, source detection, and light curve analysis.
+This tutorial walks through an end-to-end workflow for detecting and
+characterizing transient radio sources in OVRO-LWA data, covering data loading,
+reference image creation, difference imaging, source detection, and light curve
+analysis.
 
 ## Prerequisites
 
@@ -41,8 +42,8 @@ print(f"Using freq_idx={freq_idx} ({freqs_mhz[freq_idx]:.1f} MHz)")
 
 ## Step 2: Create a Reference Image
 
-A time-averaged image serves as the quiescent baseline. Sources that appear only in
-individual frames (but not in the average) are transient candidates.
+A time-averaged image serves as the quiescent baseline. Sources that appear only
+in individual frames (but not in the average) are transient candidates.
 
 ```python
 # Average over all time steps
@@ -173,8 +174,9 @@ plt.title("Dynamic Spectrum of Candidate 0")
 plt.show()
 ```
 
-A broadband brightening across all frequencies suggests an astrophysical transient,
-while narrow-band features may indicate radio frequency interference (RFI).
+A broadband brightening across all frequencies suggests an astrophysical
+transient, while narrow-band features may indicate radio frequency interference
+(RFI).
 
 ## Step 8: Variability Classification
 
@@ -206,13 +208,13 @@ for v in variability[:5]:
           f"V={v['variability']:.2f}, mean={v['mean_flux']:.3e}")
 ```
 
-!!! tip
-    A variability index above ~0.5 is a strong indicator of genuine time-variable
-    emission, though the exact threshold depends on your noise level.
+!!! tip A variability index above ~0.5 is a strong indicator of genuine
+time-variable emission, though the exact threshold depends on your noise level.
 
 ## Step 9: Multi-Frequency Confirmation
 
-Confirm that candidates appear at multiple frequencies to rule out instrumental artifacts:
+Confirm that candidates appear at multiple frequencies to rule out instrumental
+artifacts:
 
 ```python
 freq_indices = list(range(ds.sizes["frequency"]))
@@ -248,7 +250,9 @@ This tutorial covered:
 
 ## Next Steps
 
-- [Pulsar Dedispersion Tutorial](pulsar-dedispersion.md) -- Analyze dispersed pulsars
+- [Pulsar Dedispersion Tutorial](pulsar-dedispersion.md) -- Analyze dispersed
+  pulsars
 - [Spectral Mapping Tutorial](spectral-mapping.md) -- Map spectral properties
-- [Source Detection Guide](../user-guide/source-detection.md) -- Detailed detection methods
+- [Source Detection Guide](../user-guide/source-detection.md) -- Detailed
+  detection methods
 - [API Reference](../api/radport-accessor.md) -- Full method documentation

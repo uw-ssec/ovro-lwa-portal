@@ -1,8 +1,10 @@
 # Visualization
 
-The `radport` accessor provides comprehensive visualization methods for OVRO-LWA data.
+The `radport` accessor provides comprehensive visualization methods for OVRO-LWA
+data.
 
-For an introduction to plotting, refer to the [Basic Plotting](../getting-started/basic-plotting.md) guide.
+For an introduction to plotting, refer to the
+[Basic Plotting](../getting-started/basic-plotting.md) guide.
 
 ## Cutout Visualization
 

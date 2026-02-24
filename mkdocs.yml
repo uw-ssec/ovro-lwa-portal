@@ -1,5 +1,7 @@
 site_name: OVRO-LWA Portal
-site_description: Python library for radio astronomy data processing and visualization for OVRO-LWA
+site_description:
+  Python library for radio astronomy data processing and visualization for
+  OVRO-LWA
 site_url: https://uw-ssec.github.io/ovro-lwa-portal/
 repo_url: https://github.com/uw-ssec/ovro-lwa-portal
 repo_name: uw-ssec/ovro-lwa-portal

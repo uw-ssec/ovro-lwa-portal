@@ -2,7 +2,9 @@
 
 ## Prerequisites
 
-This project uses [Pixi](https://pixi.sh) for dependency management and task execution. Install Pixi by following the [installation instructions](https://pixi.sh/latest/#installation).
+This project uses [Pixi](https://pixi.sh) for dependency management and task
+execution. Install Pixi by following the
+[installation instructions](https://pixi.sh/latest/#installation).
 
 ## For Users
 
@@ -49,11 +51,13 @@ Install dependencies using Pixi:
 pixi install
 ```
 
-Pixi will automatically create the environment and install all required dependencies.
+Pixi will automatically create the environment and install all required
+dependencies.
 
 ### 3. Onboarding
 
-For first-time setup, use the onboarding environment to configure your development environment:
+For first-time setup, use the onboarding environment to configure your
+development environment:
 
 ```bash
 pixi run -e onboard onboard
@@ -67,7 +71,8 @@ This will:
 
 ### 4. Available Environments
 
-- **`default`**: Standard development environment with pre-commit hooks and GitHub CLI
+- **`default`**: Standard development environment with pre-commit hooks and
+  GitHub CLI
 - **`onboard`**: Extended environment including onboarding tools
 
 Switch between environments as needed:
