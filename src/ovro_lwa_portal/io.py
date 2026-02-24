@@ -325,6 +325,15 @@ def _check_remote_access(
         parts.append(f"Storage path: {path}")
         parts.append(f"Error ({error_name}): {error_text}")
 
+        # Fatal auth mismatch: the key is not valid for this endpoint.
+        if "InvalidAccessKeyId" in error_text:
+            parts.append(
+                "Hint: The provided access key is not valid for this endpoint. "
+                "Check that your credentials match the resolved OSN endpoint."
+            )
+            msg = "\n  ".join(parts)
+            raise DataSourceError(msg) from e
+
         # Least-privilege credentials may deny list operations but still allow direct reads.
         # Don't block loading in this case; continue and let open_zarr perform the real read.
         if "AccessDenied" in error_text or "Forbidden" in error_text:

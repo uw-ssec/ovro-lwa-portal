@@ -788,6 +788,27 @@ class TestCheckRemoteAccess:
         error_msg = str(exc_info.value)
         assert "bad-endpoint.com" in error_msg
 
+    def test_invalid_access_key_id_error(self) -> None:
+        """Test InvalidAccessKeyId fails fast with auth hint."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception(
+            "An error occurred (InvalidAccessKeyId) when calling the ListObjectsV2 operation: Unknown"
+        )
+
+        with pytest.raises(DataSourceError, match="Cannot access remote storage") as exc_info:
+            _check_remote_access(
+                mock_fs,
+                "10.25800/all_subbands_2024-05-24_first10.zarr",
+                "10.33569/4q7nb-ahq31",
+                "s3://10.25800/all_subbands_2024-05-24_first10.zarr",
+                {"client_kwargs": {"endpoint_url": "https://caltech1.osn.mghpcc.org"}},
+            )
+
+        error_msg = str(exc_info.value)
+        assert "InvalidAccessKeyId" in error_msg
+        assert "not valid for this endpoint" in error_msg
+        assert "caltech1.osn.mghpcc.org" in error_msg
+
     def test_unknown_precheck_error_warns(self) -> None:
         """Test unknown pre-check errors warn and continue."""
         mock_fs = MagicMock()
