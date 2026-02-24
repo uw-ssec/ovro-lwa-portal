@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import xarray as xr
 
-__all__ = ["open_dataset", "DataSourceError"]
+__all__ = ["open_dataset", "resolve_source", "DataSourceError"]
 
 # DOI pattern: matches both "doi:10.xxxx/xxxxx" and "10.xxxx/xxxxx"
 DOI_PATTERN = re.compile(r"^(?:doi:)?(10\.\S+)$", re.IGNORECASE)
@@ -281,6 +281,182 @@ def _validate_dataset(ds: xr.Dataset) -> None:
         )
 
 
+def _check_remote_access(
+    fs: Any,
+    path: str,
+    original_source: str,
+    normalized_source: str,
+    storage_options: dict[str, Any],
+) -> None:
+    """Verify that a remote storage path is accessible before loading data.
+
+    Performs a lightweight ``fs.ls()`` check to catch errors like NoSuchBucket
+    or invalid credentials early, producing an actionable error message instead
+    of letting them cascade through zarr/xarray into opaque tracebacks.
+
+    Parameters
+    ----------
+    fs : fsspec filesystem
+        The configured filesystem instance.
+    path : str
+        The path to check (e.g., "bucket/prefix/data.zarr").
+    original_source : str
+        The source string as originally provided by the user.
+    normalized_source : str
+        The URL after DOI resolution and OSN conversion.
+    storage_options : dict
+        Storage options (used to extract endpoint for error messages).
+    """
+    try:
+        fs.ls(path, detail=False)
+    except Exception as e:
+        error_name = type(e).__name__
+        endpoint = storage_options.get("client_kwargs", {}).get("endpoint_url", "")
+
+        parts = [
+            f"Cannot access remote storage for '{original_source}'",
+        ]
+        if normalized_source != original_source:
+            parts.append(f"Resolved URL: {normalized_source}")
+        if endpoint:
+            parts.append(f"S3 endpoint: {endpoint}")
+        parts.append(f"Storage path: {path}")
+        parts.append(f"Error ({error_name}): {e}")
+
+        # Add hints for common errors
+        if "NoSuchBucket" in str(e) or "NoSuchBucket" in error_name:
+            bucket = path.split("/")[0] if "/" in path else path
+            parts.append(
+                f"Hint: The bucket '{bucket}' does not exist at this endpoint. "
+                f"Check the URL or endpoint configuration."
+            )
+        elif "AccessDenied" in str(e) or "Forbidden" in str(e):
+            parts.append(
+                "Hint: Access denied. Check your credentials in storage_options."
+            )
+        elif "EndpointConnectionError" in str(e) or "ConnectionError" in error_name:
+            parts.append(
+                f"Hint: Could not connect to endpoint '{endpoint}'. "
+                f"Check the endpoint URL and your network connection."
+            )
+
+        msg = "\n  ".join(parts)
+        raise DataSourceError(msg) from e
+
+
+def resolve_source(
+    source: str | Path,
+    production: bool = True,
+    storage_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve a data source to its final URL without loading data.
+
+    Performs DOI resolution and URL normalization, returning the full
+    resolution chain. Useful for debugging DOI→URL→S3 resolution
+    without actually loading any data.
+
+    Parameters
+    ----------
+    source : str or Path
+        Data source, can be:
+        - Local file path (e.g., "/path/to/data.zarr")
+        - Remote URL (e.g., "s3://bucket/data.zarr", "https://...")
+        - DOI string (e.g., "doi:10.xxxx/xxxxx" or "10.xxxx/xxxxx")
+    production : bool, default True
+        Which DataCite API to use when resolving DOI identifiers.
+    storage_options : dict, optional
+        Options passed to the filesystem backend (e.g., S3 credentials).
+        Used to determine if OSN HTTPS→S3 conversion should be applied.
+
+    Returns
+    -------
+    dict[str, Any]
+        Resolution details with keys:
+        - ``source_type``: "local", "remote", or "doi"
+        - ``original_source``: the source string as provided
+        - ``resolved_url``: URL after DOI resolution (or original if not a DOI)
+        - ``final_url``: final URL after OSN conversion (if applicable)
+        - ``s3_url``: S3 URL if OSN conversion was applied, else None
+        - ``endpoint``: S3 endpoint URL if applicable, else None
+        - ``bucket``: S3 bucket name if applicable, else None
+        - ``path``: path within bucket if applicable, else None
+
+    Raises
+    ------
+    DataSourceError
+        If DOI resolution fails.
+
+    Examples
+    --------
+    Resolve a DOI to see the full chain:
+
+    >>> from ovro_lwa_portal import resolve_source
+    >>> info = resolve_source("10.33569/9wsys-h7b71", production=False)
+    >>> info["source_type"]
+    'doi'
+    >>> info["resolved_url"]
+    'https://caltech1.osn.mghpcc.org/...'
+
+    Resolve with S3 credentials to see OSN conversion:
+
+    >>> info = resolve_source(
+    ...     "10.33569/9wsys-h7b71",
+    ...     production=False,
+    ...     storage_options={"key": "ACCESS_KEY", "secret": "SECRET_KEY"},
+    ... )
+    >>> info["s3_url"]
+    's3://...'
+    """
+    original_source = str(source)
+    source_type, normalized = _detect_source_type(source)
+
+    result: dict[str, Any] = {
+        "source_type": source_type,
+        "original_source": original_source,
+        "resolved_url": None,
+        "final_url": None,
+        "s3_url": None,
+        "endpoint": None,
+        "bucket": None,
+        "path": None,
+    }
+
+    # Resolve DOI to actual data URL
+    if source_type == "doi":
+        try:
+            resolved = _resolve_doi(normalized, production=production)
+        except Exception as e:
+            msg = f"Failed to resolve DOI {normalized}: {e}"
+            raise DataSourceError(msg) from e
+        result["resolved_url"] = resolved
+    else:
+        result["resolved_url"] = normalized
+        resolved = normalized
+
+    # Check for OSN HTTPS→S3 conversion
+    if storage_options and source_type in ("doi", "remote"):
+        converted_url, converted_opts = _convert_osn_https_to_s3(
+            resolved, storage_options
+        )
+        if converted_url != resolved:
+            # OSN conversion was applied
+            result["s3_url"] = converted_url
+            result["endpoint"] = converted_opts.get("client_kwargs", {}).get(
+                "endpoint_url"
+            )
+            # Parse bucket and path from the S3 URL
+            parsed_s3 = urlparse(converted_url)
+            result["bucket"] = parsed_s3.netloc
+            result["path"] = parsed_s3.path.lstrip("/") or None
+            result["final_url"] = converted_url
+        else:
+            result["final_url"] = resolved
+    else:
+        result["final_url"] = resolved
+
+    return result
+
+
 def open_dataset(
     source: str | Path,
     chunks: dict[str, int] | str | None = "auto",
@@ -382,12 +558,15 @@ def open_dataset(
     For large datasets, lazy loading with dask is used by default (chunks="auto").
     This allows working with datasets larger than memory.
     """
+    original_source = str(source)
     source_type, normalized_source = _detect_source_type(source)
+    resolved_url: str | None = None  # Track DOI-resolved URL for error messages
 
     # Resolve DOI to actual data URL
     if source_type == "doi":
         try:
             normalized_source = _resolve_doi(normalized_source, production=production)
+            resolved_url = normalized_source
             source_type = "remote"  # After resolution, treat as remote URL
         except Exception as e:
             msg = f"Failed to resolve DOI {normalized_source}: {e}"
@@ -435,6 +614,11 @@ def open_dataset(
                 # Get path without protocol (e.g., s3://bucket/path -> bucket/path)
                 path = f"{parsed_url.netloc}/{parsed_url.path.lstrip('/')}"
                 store = fs.get_mapper(path)
+
+                # Early accessibility check for cloud storage
+                _check_remote_access(
+                    fs, path, original_source, normalized_source, storage_options
+                )
             else:
                 # For local files or HTTPS, use UPath without storage_options
                 store_path = UPath(normalized_source)
@@ -470,7 +654,7 @@ def open_dataset(
                         raise ImportError(msg) from e
 
             # Open the zarr store using the UPath
-            # xr.open_zarr can handle fsspec mappers directly”
+            # xr.open_zarr can handle fsspec mappers directly
             with warnings.catch_warnings():
                 warnings.simplefilter("default")
                 ds = xr.open_zarr(store, chunks=chunks, **kwargs)
@@ -483,8 +667,21 @@ def open_dataset(
         raise
     except ImportError:
         raise
+    except DataSourceError:
+        raise
     except Exception as e:
-        msg = f"Failed to load dataset from {normalized_source}: {e}"
+        # Build a detailed error message including the resolution chain
+        parts = [f"Failed to load dataset from '{original_source}'"]
+        if resolved_url and resolved_url != original_source:
+            parts.append(f"resolved to: {resolved_url}")
+        if normalized_source != original_source and normalized_source != resolved_url:
+            parts.append(f"final URL: {normalized_source}")
+        if storage_options and "client_kwargs" in storage_options:
+            endpoint = storage_options["client_kwargs"].get("endpoint_url")
+            if endpoint:
+                parts.append(f"S3 endpoint: {endpoint}")
+        parts.append(str(e))
+        msg = "\n  ".join(parts)
         raise DataSourceError(msg) from e
 
     # Validate dataset structure if requested

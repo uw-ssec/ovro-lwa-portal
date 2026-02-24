@@ -13,6 +13,7 @@ import xarray as xr
 
 from ovro_lwa_portal.io import (
     DataSourceError,
+    _check_remote_access,
     _convert_osn_https_to_s3,
     _detect_source_type,
     _is_doi,
@@ -21,6 +22,7 @@ from ovro_lwa_portal.io import (
     _resolve_doi_from_metadata,
     _validate_dataset,
     open_dataset,
+    resolve_source,
 )
 
 
@@ -608,3 +610,254 @@ class TestOSNConversion:
 
         assert s3_url == "s3://bucket"
         assert updated_opts["client_kwargs"]["endpoint_url"] == "https://uma1.osn.mghpcc.org"
+
+
+class TestResolveSource:
+    """Tests for resolve_source() helper."""
+
+    def test_resolve_local_path(self) -> None:
+        """Test resolving a local path."""
+        result = resolve_source("/path/to/data.zarr")
+
+        assert result["source_type"] == "local"
+        assert result["original_source"] == "/path/to/data.zarr"
+        assert result["resolved_url"] == "/path/to/data.zarr"
+        assert result["final_url"] == "/path/to/data.zarr"
+        assert result["s3_url"] is None
+        assert result["endpoint"] is None
+        assert result["bucket"] is None
+        assert result["path"] is None
+
+    def test_resolve_remote_https(self) -> None:
+        """Test resolving an HTTPS URL."""
+        result = resolve_source("https://example.com/data.zarr")
+
+        assert result["source_type"] == "remote"
+        assert result["resolved_url"] == "https://example.com/data.zarr"
+        assert result["final_url"] == "https://example.com/data.zarr"
+        assert result["s3_url"] is None
+
+    def test_resolve_remote_s3(self) -> None:
+        """Test resolving an S3 URL."""
+        result = resolve_source("s3://bucket/data.zarr")
+
+        assert result["source_type"] == "remote"
+        assert result["resolved_url"] == "s3://bucket/data.zarr"
+        assert result["final_url"] == "s3://bucket/data.zarr"
+
+    def test_resolve_osn_url_with_credentials(self) -> None:
+        """Test resolving an OSN HTTPS URL with S3 credentials."""
+        result = resolve_source(
+            "https://caltech1.osn.mghpcc.org/mybucket/data.zarr",
+            storage_options={"key": "K", "secret": "S"},
+        )
+
+        assert result["source_type"] == "remote"
+        assert result["resolved_url"] == "https://caltech1.osn.mghpcc.org/mybucket/data.zarr"
+        assert result["s3_url"] == "s3://mybucket/data.zarr"
+        assert result["endpoint"] == "https://caltech1.osn.mghpcc.org"
+        assert result["bucket"] == "mybucket"
+        assert result["path"] == "data.zarr"
+        assert result["final_url"] == "s3://mybucket/data.zarr"
+
+    def test_resolve_osn_url_without_credentials(self) -> None:
+        """Test resolving an OSN HTTPS URL without credentials returns HTTPS."""
+        result = resolve_source(
+            "https://caltech1.osn.mghpcc.org/mybucket/data.zarr"
+        )
+
+        assert result["s3_url"] is None
+        assert result["final_url"] == "https://caltech1.osn.mghpcc.org/mybucket/data.zarr"
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    def test_resolve_doi(self, mock_resolve_doi: Mock) -> None:
+        """Test resolving a DOI."""
+        mock_resolve_doi.return_value = "https://uma1.osn.mghpcc.org/bucket/data.zarr"
+
+        result = resolve_source("doi:10.5281/zenodo.1234567", production=True)
+
+        assert result["source_type"] == "doi"
+        assert result["original_source"] == "doi:10.5281/zenodo.1234567"
+        assert result["resolved_url"] == "https://uma1.osn.mghpcc.org/bucket/data.zarr"
+        mock_resolve_doi.assert_called_once_with("10.5281/zenodo.1234567", production=True)
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    def test_resolve_doi_with_osn_conversion(self, mock_resolve_doi: Mock) -> None:
+        """Test resolving a DOI that points to an OSN URL with credentials."""
+        mock_resolve_doi.return_value = (
+            "https://caltech1.osn.mghpcc.org/10.25800/all_subbands.zarr"
+        )
+
+        result = resolve_source(
+            "10.33569/test-doi",
+            production=False,
+            storage_options={"key": "K", "secret": "S"},
+        )
+
+        assert result["source_type"] == "doi"
+        assert result["s3_url"] == "s3://10.25800/all_subbands.zarr"
+        assert result["endpoint"] == "https://caltech1.osn.mghpcc.org"
+        assert result["bucket"] == "10.25800"
+        assert result["path"] == "all_subbands.zarr"
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    def test_resolve_doi_failure(self, mock_resolve_doi: Mock) -> None:
+        """Test that DOI resolution failure raises DataSourceError."""
+        mock_resolve_doi.side_effect = Exception("Resolution failed")
+
+        with pytest.raises(DataSourceError, match="Failed to resolve DOI"):
+            resolve_source("doi:10.5281/zenodo.1234567")
+
+    def test_resolve_pathlib_path(self) -> None:
+        """Test resolving a pathlib.Path."""
+        result = resolve_source(Path("/data/obs.zarr"))
+
+        assert result["source_type"] == "local"
+        assert result["original_source"] == "/data/obs.zarr"
+
+
+class TestCheckRemoteAccess:
+    """Tests for _check_remote_access pre-check."""
+
+    def test_successful_access(self) -> None:
+        """Test that successful ls() does not raise."""
+        mock_fs = MagicMock()
+        mock_fs.ls.return_value = [".zmetadata"]
+
+        # Should not raise
+        _check_remote_access(
+            mock_fs,
+            "bucket/data.zarr",
+            "doi:10.1234/test",
+            "s3://bucket/data.zarr",
+            {"client_kwargs": {"endpoint_url": "https://endpoint.com"}},
+        )
+
+        mock_fs.ls.assert_called_once_with("bucket/data.zarr", detail=False)
+
+    def test_no_such_bucket_error(self) -> None:
+        """Test that NoSuchBucket produces an actionable error."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception("An error occurred (NoSuchBucket)")
+
+        with pytest.raises(DataSourceError, match="Cannot access remote storage") as exc_info:
+            _check_remote_access(
+                mock_fs,
+                "bad-bucket/data.zarr",
+                "doi:10.1234/test",
+                "s3://bad-bucket/data.zarr",
+                {"client_kwargs": {"endpoint_url": "https://caltech1.osn.mghpcc.org"}},
+            )
+
+        error_msg = str(exc_info.value)
+        assert "doi:10.1234/test" in error_msg
+        assert "s3://bad-bucket/data.zarr" in error_msg
+        assert "caltech1.osn.mghpcc.org" in error_msg
+        assert "bad-bucket" in error_msg
+        assert "Hint" in error_msg
+        assert "does not exist" in error_msg
+
+    def test_access_denied_error(self) -> None:
+        """Test that AccessDenied produces a credentials hint."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception("AccessDenied: forbidden")
+
+        with pytest.raises(DataSourceError, match="Cannot access remote storage") as exc_info:
+            _check_remote_access(
+                mock_fs,
+                "bucket/data.zarr",
+                "s3://bucket/data.zarr",
+                "s3://bucket/data.zarr",
+                {"client_kwargs": {"endpoint_url": "https://endpoint.com"}},
+            )
+
+        error_msg = str(exc_info.value)
+        assert "credentials" in error_msg
+
+    def test_connection_error(self) -> None:
+        """Test that connection errors produce an endpoint hint."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = ConnectionError("Could not connect")
+
+        with pytest.raises(DataSourceError, match="Cannot access remote storage") as exc_info:
+            _check_remote_access(
+                mock_fs,
+                "bucket/data.zarr",
+                "s3://bucket/data.zarr",
+                "s3://bucket/data.zarr",
+                {"client_kwargs": {"endpoint_url": "https://bad-endpoint.com"}},
+            )
+
+        error_msg = str(exc_info.value)
+        assert "bad-endpoint.com" in error_msg
+
+    def test_error_includes_original_source(self) -> None:
+        """Test that error message includes the user's original source."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception("some error")
+
+        with pytest.raises(DataSourceError, match="doi:10.33569/test") as exc_info:
+            _check_remote_access(
+                mock_fs,
+                "bucket/path",
+                "doi:10.33569/test",
+                "s3://bucket/path",
+                {"client_kwargs": {"endpoint_url": "https://ep.com"}},
+            )
+
+        error_msg = str(exc_info.value)
+        assert "Resolved URL: s3://bucket/path" in error_msg
+
+    def test_error_without_endpoint(self) -> None:
+        """Test error message when no endpoint_url is in storage_options."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception("some error")
+
+        with pytest.raises(DataSourceError, match="Cannot access remote storage"):
+            _check_remote_access(
+                mock_fs,
+                "bucket/path",
+                "s3://bucket/path",
+                "s3://bucket/path",
+                {},
+            )
+
+
+class TestOpenDatasetErrorMessages:
+    """Tests for improved error messages in open_dataset."""
+
+    @patch("ovro_lwa_portal.io._resolve_doi")
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_error_includes_original_doi(
+        self, mock_open_zarr: Mock, mock_resolve_doi: Mock
+    ) -> None:
+        """Test that load errors include the original DOI source."""
+        mock_resolve_doi.return_value = "https://example.com/data.zarr"
+        mock_open_zarr.side_effect = Exception("zarr load failed")
+
+        with pytest.raises(DataSourceError, match="doi:10.5281/test") as exc_info:
+            open_dataset("doi:10.5281/test", validate=False)
+
+        error_msg = str(exc_info.value)
+        assert "resolved to:" in error_msg
+
+    @patch("ovro_lwa_portal.io.xr.open_zarr")
+    def test_error_includes_url(self, mock_open_zarr: Mock) -> None:
+        """Test that load errors include the URL for non-DOI sources."""
+        mock_open_zarr.side_effect = Exception("zarr load failed")
+
+        with pytest.raises(DataSourceError, match="https://example.com/data.zarr"):
+            open_dataset("https://example.com/data.zarr", validate=False)
+
+    def test_s3_precheck_raises_datasource_error(self) -> None:
+        """Test that S3 pre-check failure propagates as DataSourceError."""
+        mock_fs = MagicMock()
+        mock_fs.ls.side_effect = Exception("NoSuchBucket")
+
+        with patch("fsspec.filesystem", return_value=mock_fs):
+            with pytest.raises(DataSourceError, match="Cannot access remote storage"):
+                open_dataset(
+                    "s3://bad-bucket/data.zarr",
+                    storage_options={"key": "K", "secret": "S"},
+                    validate=False,
+                )

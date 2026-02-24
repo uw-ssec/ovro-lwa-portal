@@ -88,6 +88,10 @@ xfail_strict = false
 filterwarnings = ["error"]
 log_cli_level = "INFO"
 testpaths = ["tests"]
+markers = [
+    "network: tests requiring network access (deselect with '-m \"not network\"')",
+    "osn: tests requiring OSN credentials (deselect with '-m \"not osn\"')",
+]
 
 [tool.mypy]
 files = ["src", "tests"]
