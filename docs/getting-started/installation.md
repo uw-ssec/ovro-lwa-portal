@@ -36,6 +36,8 @@ pip install 'ovro_lwa_portal[prefect]'
 
 ## For Developers
 
+For detailed developer setup and workflow instructions, see [CONTRIBUTING.md](https://github.com/uw-ssec/ovro-lwa-portal/blob/main/CONTRIBUTING.md) on GitHub.
+
 ### 1. Clone the Repository
 
 ```bash

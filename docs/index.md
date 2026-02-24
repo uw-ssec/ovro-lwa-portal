@@ -3,6 +3,8 @@
 A Python library for radio astronomy data processing and visualization for the
 Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
 
+For a project overview and quick start, see the [README](https://github.com/uw-ssec/ovro-lwa-portal/blob/main/README.md) on GitHub.
+
 ## Features
 
 - **Unified Data Loading**: Load OVRO-LWA data from local paths, remote URLs
