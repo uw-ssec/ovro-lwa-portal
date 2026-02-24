@@ -2,29 +2,9 @@
 
 The `radport` accessor provides comprehensive visualization methods for OVRO-LWA data.
 
-## Basic Plotting
+For an introduction to plotting, refer to the [Basic Plotting](../getting-started/basic-plotting.md) guide.
 
-### Single Frame Plot
-
-```python
-import ovro_lwa_portal as ovro
-
-ds = ovro.open_dataset("path/to/data.zarr")
-
-# Plot a single time-frequency frame
-ds.radport.plot(time_idx=0, freq_idx=10)
-```
-
-**Parameters:**
-
-- `time_idx`: Time index to plot
-- `freq_idx`: Frequency index to plot
-- `cmap`: Colormap (default: 'viridis')
-- `norm`: Normalization ('linear', 'log', 'sqrt')
-- `title`: Custom title
-- `figsize`: Figure size tuple
-
-### Cutout Visualization
+## Cutout Visualization
 
 Extract and visualize regions of interest:
 

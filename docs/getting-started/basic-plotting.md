@@ -54,65 +54,6 @@ ds.radport.plot(
 )
 ```
 
-## Cutout Regions
-
-Extract and plot a region of interest:
-
-```python
-# Define cutout box (l, m coordinates)
-cutout = ds.radport.cutout(
-    l_min=-0.2, l_max=0.2,
-    m_min=-0.2, m_max=0.2
-)
-
-# Plot the cutout
-cutout.radport.plot_cutout()
-```
-
-## Dynamic Spectra
-
-Visualize time-frequency evolution:
-
-```python
-# Extract dynamic spectrum at a pixel
-dyn_spec = ds.radport.dynamic_spectrum(l_idx=512, m_idx=512)
-
-# Plot it
-ds.radport.plot_dynamic_spectrum(dyn_spec)
-```
-
-## Light Curves and Spectra
-
-```python
-# Light curve at a specific location
-lc = ds.radport.light_curve(l_idx=512, m_idx=512)
-ds.radport.plot_light_curve(lc)
-
-# Spectrum averaged over space and time
-spec = ds.radport.spectrum()
-ds.radport.plot_spectrum(spec)
-```
-
-## Multiple Subplots
-
-Create grids of plots:
-
-```python
-# Plot multiple time steps
-ds.radport.plot_time_grid(
-    freq_idx=10,
-    time_indices=[0, 10, 20, 30],
-    figsize=(12, 10)
-)
-
-# Plot multiple frequencies
-ds.radport.plot_frequency_grid(
-    time_idx=0,
-    freq_indices=[0, 5, 10, 15],
-    figsize=(12, 10)
-)
-```
-
 ## Saving Figures
 
 ```python
@@ -123,8 +64,21 @@ plt.savefig('ovro_skymap.png', dpi=300, bbox_inches='tight')
 plt.close()
 ```
 
+## What Else Can You Plot?
+
+The `radport` accessor supports many more visualization methods beyond basic
+sky maps. See the [Visualization](../user-guide/visualization.md) guide for:
+
+- **Cutout regions** — extract and plot sub-regions of interest
+- **Dynamic spectra** — time-frequency waterfalls at a pixel or spatial region
+- **Light curves and spectra** — track intensity over time or frequency
+- **Grid plots** — multi-panel layouts across time steps or frequencies
+- **Difference plots** — visualize changes between frames
+- **Averaged visualizations** — time or frequency averaged images
+- **Contour overlays** and custom colormaps
+
 ## Next Steps
 
 - Learn about [coordinate systems](coordinate-systems.md)
-- Explore advanced [visualization methods](../user-guide/visualization.md)
+- Explore the full [Visualization](../user-guide/visualization.md) guide
 - Create [animations](../user-guide/animations.md)
