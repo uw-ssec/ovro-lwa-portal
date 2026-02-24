@@ -758,11 +758,11 @@ class TestCheckRemoteAccess:
         assert "does not exist" in error_msg
 
     def test_access_denied_error(self) -> None:
-        """Test that AccessDenied produces a credentials hint."""
+        """Test that AccessDenied warns but does not hard-fail pre-check."""
         mock_fs = MagicMock()
         mock_fs.ls.side_effect = Exception("AccessDenied: forbidden")
 
-        with pytest.raises(DataSourceError, match="Cannot access remote storage") as exc_info:
+        with pytest.warns(UserWarning, match="Proceeding anyway"):
             _check_remote_access(
                 mock_fs,
                 "bucket/data.zarr",
@@ -770,9 +770,6 @@ class TestCheckRemoteAccess:
                 "s3://bucket/data.zarr",
                 {"client_kwargs": {"endpoint_url": "https://endpoint.com"}},
             )
-
-        error_msg = str(exc_info.value)
-        assert "credentials" in error_msg
 
     def test_connection_error(self) -> None:
         """Test that connection errors produce an endpoint hint."""
@@ -791,12 +788,12 @@ class TestCheckRemoteAccess:
         error_msg = str(exc_info.value)
         assert "bad-endpoint.com" in error_msg
 
-    def test_error_includes_original_source(self) -> None:
-        """Test that error message includes the user's original source."""
+    def test_unknown_precheck_error_warns(self) -> None:
+        """Test unknown pre-check errors warn and continue."""
         mock_fs = MagicMock()
         mock_fs.ls.side_effect = Exception("some error")
 
-        with pytest.raises(DataSourceError, match="doi:10.33569/test") as exc_info:
+        with pytest.warns(UserWarning, match="Pre-check failed with a non-fatal error"):
             _check_remote_access(
                 mock_fs,
                 "bucket/path",
@@ -805,15 +802,12 @@ class TestCheckRemoteAccess:
                 {"client_kwargs": {"endpoint_url": "https://ep.com"}},
             )
 
-        error_msg = str(exc_info.value)
-        assert "Resolved URL: s3://bucket/path" in error_msg
-
     def test_error_without_endpoint(self) -> None:
-        """Test error message when no endpoint_url is in storage_options."""
+        """Test warning message when no endpoint_url is in storage_options."""
         mock_fs = MagicMock()
         mock_fs.ls.side_effect = Exception("some error")
 
-        with pytest.raises(DataSourceError, match="Cannot access remote storage"):
+        with pytest.warns(UserWarning, match="Cannot access remote storage"):
             _check_remote_access(
                 mock_fs,
                 "bucket/path",

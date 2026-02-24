@@ -309,8 +309,10 @@ def _check_remote_access(
     """
     try:
         fs.ls(path, detail=False)
+        return
     except Exception as e:
         error_name = type(e).__name__
+        error_text = str(e)
         endpoint = storage_options.get("client_kwargs", {}).get("endpoint_url", "")
 
         parts = [
@@ -321,27 +323,43 @@ def _check_remote_access(
         if endpoint:
             parts.append(f"S3 endpoint: {endpoint}")
         parts.append(f"Storage path: {path}")
-        parts.append(f"Error ({error_name}): {e}")
+        parts.append(f"Error ({error_name}): {error_text}")
 
-        # Add hints for common errors
-        if "NoSuchBucket" in str(e) or "NoSuchBucket" in error_name:
+        # Least-privilege credentials may deny list operations but still allow direct reads.
+        # Don't block loading in this case; continue and let open_zarr perform the real read.
+        if "AccessDenied" in error_text or "Forbidden" in error_text:
+            details = parts + [
+                "Hint: List access is denied for this prefix. "
+                "Proceeding anyway because direct object reads may still succeed.",
+            ]
+            warnings.warn("\n  ".join(details), UserWarning, stacklevel=2)
+            return
+
+        # Fail fast for clearly fatal remote-access errors.
+        if "NoSuchBucket" in error_text or "NoSuchBucket" in error_name:
             bucket = path.split("/")[0] if "/" in path else path
             parts.append(
                 f"Hint: The bucket '{bucket}' does not exist at this endpoint. "
                 f"Check the URL or endpoint configuration."
             )
-        elif "AccessDenied" in str(e) or "Forbidden" in str(e):
-            parts.append(
-                "Hint: Access denied. Check your credentials in storage_options."
-            )
-        elif "EndpointConnectionError" in str(e) or "ConnectionError" in error_name:
+            msg = "\n  ".join(parts)
+            raise DataSourceError(msg) from e
+
+        if "EndpointConnectionError" in error_text or "ConnectionError" in error_name:
             parts.append(
                 f"Hint: Could not connect to endpoint '{endpoint}'. "
                 f"Check the endpoint URL and your network connection."
             )
+            msg = "\n  ".join(parts)
+            raise DataSourceError(msg) from e
 
-        msg = "\n  ".join(parts)
-        raise DataSourceError(msg) from e
+        # Unknown pre-check error: keep behavior non-blocking and let actual read decide.
+        details = parts + [
+            "Hint: Pre-check failed with a non-fatal error. "
+            "Continuing to attempt dataset load.",
+        ]
+        warnings.warn("\n  ".join(details), UserWarning, stacklevel=2)
+        return
 
 
 def resolve_source(
