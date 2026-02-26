@@ -40,8 +40,9 @@ Library usage
 
 Notes
 -----
-* The code assumes filenames of the form:
-  YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
+* Filenames must contain ``YYYYMMDD_HHMMSS`` (observation timestamp) and
+  ``<freq>MHz`` (subband frequency). All ``.fits`` files in the input
+  directory are assumed to be valid images for grouping.
 * LM grids must match across time steps; a mismatch raises a RuntimeError.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """
@@ -64,11 +65,8 @@ __all__ = ["convert_fits_dir_to_zarr", "fix_fits_headers"]
 
 logger = logging.getLogger(__name__)
 
-# Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
-PAT = re.compile(
-    r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
-)
-MHZ_RE = re.compile(r"_(\d+)MHz_")
+_DATETIME_RE = re.compile(r"(?P<date>\d{8})_(?P<hms>\d{6})")
+MHZ_RE = re.compile(r"(\d+)MHz")
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -331,7 +329,12 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
 
 
 def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
-    """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
+    """Group input FITS by time key ``YYYYMMDD_HHMMSS``.
+
+    Every ``.fits`` file in *in_dir* is considered a candidate.  The
+    observation timestamp is extracted by searching for an
+    ``YYYYMMDD_HHMMSS`` pattern anywhere in the filename.  Files whose
+    names do not contain a recognisable timestamp are silently skipped.
 
     Parameters
     ----------
@@ -345,7 +348,7 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
     """
     by_time: Dict[str, List[Path]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        m = PAT.match(f.name)
+        m = _DATETIME_RE.search(f.name)
         if not m:
             continue
         key = f"{m.group('date')}_{m.group('hms')}"
