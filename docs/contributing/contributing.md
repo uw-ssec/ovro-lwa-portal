@@ -3,9 +3,13 @@
 Thank you for your interest in contributing to OVRO-LWA Portal! This guide
 covers how to set up the project locally, run tests, and submit changes.
 
-For the full contributing guidelines, see [CONTRIBUTING.md](https://github.com/uw-ssec/ovro-lwa-portal/blob/main/CONTRIBUTING.md) on GitHub.
+For the full contributing guidelines, see
+[CONTRIBUTING.md](https://github.com/uw-ssec/ovro-lwa-portal/blob/main/CONTRIBUTING.md)
+on GitHub.
 
-Please review our [Code of Conduct](https://github.com/uw-ssec/code-of-conduct/blob/main/CODE_OF_CONDUCT.md) before contributing.
+Please review our
+[Code of Conduct](https://github.com/uw-ssec/code-of-conduct/blob/main/CODE_OF_CONDUCT.md)
+before contributing.
 
 ## Pull Requests
 

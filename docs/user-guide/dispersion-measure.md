@@ -24,10 +24,9 @@ This causes pulses to arrive at different times across the frequency band,
 
 ### Method 1: Coherent Dedispersion
 
-!!! note "Coming Soon"
-    Coherent dedispersion methods are planned for future
-    releases. Track progress in
-    [GitHub Issue #85](https://github.com/uw-ssec/ovro-lwa-portal/issues/85).
+!!! note "Coming Soon" Coherent dedispersion methods are planned for future
+releases. Track progress in
+[GitHub Issue #85](https://github.com/uw-ssec/ovro-lwa-portal/issues/85).
 
 ### Method 2: Incoherent Dedispersion
 
