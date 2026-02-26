@@ -61,18 +61,26 @@ ovro-ingest convert /data/fits /data/output \
 
 ### FITSToZarrConverter
 
-::: ovro_lwa_portal.ingest.FITSToZarrConverter options: show_root_heading: true
-show_root_full_path: false members_order: source
+::: ovro_lwa_portal.ingest.FITSToZarrConverter
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      members_order: source
 
 ### ConversionConfig
 
-::: ovro_lwa_portal.ingest.ConversionConfig options: show_root_heading: true
-show_root_full_path: false members_order: source
+::: ovro_lwa_portal.ingest.ConversionConfig
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      members_order: source
 
 ### ProgressCallback
 
-::: ovro_lwa_portal.ingest.ProgressCallback options: show_root_heading: true
-show_root_full_path: false
+::: ovro_lwa_portal.ingest.ProgressCallback
+    options:
+      show_root_heading: true
+      show_root_full_path: false
 
 ## Optional Prefect Integration
 
@@ -87,4 +95,5 @@ result = fits_to_zarr_flow(
 )
 ```
 
-!!! note Prefect integration requires the `prefect` optional dependency.
+!!! note
+    Prefect integration requires the `prefect` optional dependency.

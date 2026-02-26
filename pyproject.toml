@@ -165,7 +165,7 @@ mkdocstrings-python = ">=2.0.2,<3"
 ovro_lwa_portal = { path = ".", editable = true }
 
 [tool.pixi.tasks]
-doc-serve = { cmd = "mkdocs serve", description = "Serve the documentation site locally" }
+docs-serve = { cmd = "mkdocs serve", description = "Serve the documentation site locally" }
 
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }

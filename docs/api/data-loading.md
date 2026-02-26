@@ -37,5 +37,8 @@ ds = ovro_lwa_portal.open_dataset(
 
 ## Full API Reference
 
-::: ovro_lwa_portal.io options: show_root_heading: true show_root_full_path:
-false members_order: source
+::: ovro_lwa_portal.io
+    options:
+      show_root_heading: true
+      show_root_full_path: false
+      members_order: source

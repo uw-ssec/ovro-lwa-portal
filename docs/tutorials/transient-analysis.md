@@ -208,8 +208,9 @@ for v in variability[:5]:
           f"V={v['variability']:.2f}, mean={v['mean_flux']:.3e}")
 ```
 
-!!! tip A variability index above ~0.5 is a strong indicator of genuine
-time-variable emission, though the exact threshold depends on your noise level.
+!!! tip
+    A variability index above ~0.5 is a strong indicator of genuine
+    time-variable emission, though the exact threshold depends on your noise level.
 
 ## Step 9: Multi-Frequency Confirmation
 

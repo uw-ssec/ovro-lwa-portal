@@ -22,8 +22,9 @@ The WCS header is searched in three locations (in order):
 2. Dataset attributes (`fits_wcs_header` on the dataset)
 3. A `wcs_header_str` data variable in the dataset
 
-!!! note WCS functionality requires [astropy](https://www.astropy.org/) to be
-installed.
+!!! note
+    WCS functionality requires [astropy](https://www.astropy.org/) to be
+    installed.
 
 ## Pixel-to-Sky Conversion
 
