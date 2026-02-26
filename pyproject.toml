@@ -54,6 +54,7 @@ remote = [
     "s3fs>=2024.6.0",
     "gcsfs>=2024.6.0",
     "fsspec>=2024.6.0",
+    "caltechdata_api>=1.0.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -92,6 +93,10 @@ xfail_strict = false
 filterwarnings = ["error"]
 log_cli_level = "INFO"
 testpaths = ["tests"]
+markers = [
+    "network: tests requiring network access (deselect with '-m \"not network\"')",
+    "osn: tests requiring OSN credentials (deselect with '-m \"not osn\"')",
+]
 
 [tool.mypy]
 files = ["src", "tests"]

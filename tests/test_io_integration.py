@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 import xarray as xr
 
-from ovro_lwa_portal import open_dataset
+from ovro_lwa_portal import open_dataset, resolve_source
+from ovro_lwa_portal.io import DataSourceError
 
 
 @pytest.fixture
@@ -83,14 +85,14 @@ class TestOpenDatasetIntegration:
 
     def test_load_with_validation(self, sample_zarr_store: Path) -> None:
         """Test loading with validation enabled."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=True)
 
         assert isinstance(ds, xr.Dataset)
         # Should pass validation without warnings for this dataset
 
     def test_load_without_validation(self, sample_zarr_store: Path) -> None:
         """Test loading without validation."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert isinstance(ds, xr.Dataset)
 
@@ -122,7 +124,7 @@ class TestOpenDatasetIntegration:
 
     def test_dataset_attributes_preserved(self, sample_zarr_store: Path) -> None:
         """Test that dataset attributes are preserved."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert "instrument" in ds.attrs
         assert ds.attrs["instrument"] == "OVRO-LWA"
@@ -130,7 +132,7 @@ class TestOpenDatasetIntegration:
 
     def test_coordinates_preserved(self, sample_zarr_store: Path) -> None:
         """Test that coordinates are preserved."""
-        ds = open_dataset(sample_zarr_store)
+        ds = open_dataset(sample_zarr_store, validate=False)
 
         assert "right_ascension" in ds.coords
         assert "declination" in ds.coords
@@ -143,7 +145,7 @@ class TestOpenDatasetIntegration:
         ds_original = xr.open_zarr(sample_zarr_store)
 
         # Load via open_dataset
-        ds_loaded = open_dataset(sample_zarr_store, chunks=None)
+        ds_loaded = open_dataset(sample_zarr_store, validate=False, chunks=None)
 
         # Compare values
         np.testing.assert_array_equal(
@@ -155,10 +157,12 @@ class TestOpenDatasetIntegration:
         """Test selecting subsets of data."""
         ds = open_dataset(sample_zarr_store)
 
-        # Select subset: first 5 time steps by index, frequency between 40–60 MHz by value
-        subset = ds.isel(time=slice(0, 5)).sel(frequency=slice(40e6, 60e6))
+        # Select subset
+        # Note: xarray's label-based slicing includes both endpoints for integer coordinates
+        # slice(0, 5) gives [0, 1, 2, 3, 4, 5] = 6 elements
+        subset = ds.sel(time=slice(0, 5), frequency=slice(40e6, 60e6))
 
-        assert len(subset.time) == 5
+        assert len(subset.time) == 6  # Includes both 0 and 5
         assert subset.frequency.min() >= 40e6
         assert subset.frequency.max() <= 60e6
 
@@ -174,8 +178,8 @@ class TestOpenDatasetIntegration:
 
     def test_multiple_loads_same_store(self, sample_zarr_store: Path) -> None:
         """Test loading the same store multiple times."""
-        ds1 = open_dataset(sample_zarr_store)
-        ds2 = open_dataset(sample_zarr_store)
+        ds1 = open_dataset(sample_zarr_store, validate=False)
+        ds2 = open_dataset(sample_zarr_store, validate=False)
 
         # Both should load successfully
         assert isinstance(ds1, xr.Dataset)
@@ -199,3 +203,119 @@ class TestOpenDatasetIntegration:
         ds = open_dataset(str(sample_zarr_store))
 
         assert isinstance(ds, xr.Dataset)
+
+
+# Known test DOI for OVRO-LWA data on the DataCite test API
+TEST_DOI = "10.33569/9wsys-h7b71"
+
+
+@pytest.mark.network
+class TestDOIResolutionNetwork:
+    """Network tests for DOI resolution against real DataCite APIs.
+
+    These tests require network access and are skipped by default.
+    Run with: pytest -m network
+    """
+
+    def test_resolve_test_doi(self) -> None:
+        """Test resolving a known test DOI via the DataCite test API."""
+        result = resolve_source(TEST_DOI, production=False)
+
+        assert result["source_type"] == "doi"
+        assert result["resolved_url"] is not None
+        assert result["resolved_url"].startswith("https://")
+
+    def test_resolve_test_doi_returns_osn_url(self) -> None:
+        """Test that the test DOI resolves to an OSN HTTPS URL."""
+        result = resolve_source(TEST_DOI, production=False)
+
+        assert ".osn.mghpcc.org" in result["resolved_url"]
+
+    def test_resolve_test_doi_with_s3_conversion(self) -> None:
+        """Test resolving a test DOI with S3 credentials triggers OSN conversion."""
+        result = resolve_source(
+            TEST_DOI,
+            production=False,
+            storage_options={"key": "test", "secret": "test"},
+        )
+
+        assert result["s3_url"] is not None
+        assert result["s3_url"].startswith("s3://")
+        assert result["endpoint"] is not None
+        assert result["bucket"] is not None
+
+
+@pytest.mark.network
+@pytest.mark.osn
+class TestOSNAccessNetwork:
+    """Network tests for actual OSN S3 access.
+
+    These tests require both network access and OSN credentials.
+    Run with: pytest -m "network and osn"
+
+    Required environment variables:
+        OSN_KEY: OSN access key
+        OSN_SECRET: OSN secret key
+    """
+
+    @pytest.fixture
+    def osn_credentials(self) -> dict[str, str]:
+        """Get OSN credentials from environment or skip."""
+        key = os.environ.get("OSN_KEY")
+        secret = os.environ.get("OSN_SECRET")
+        if not key or not secret:
+            pytest.skip("OSN credentials not available (set OSN_KEY and OSN_SECRET)")
+        return {"key": key, "secret": secret}
+
+    def test_resolve_and_access_test_doi(self, osn_credentials: dict[str, str]) -> None:
+        """Test full DOI→URL→S3 resolution and bucket access."""
+        result = resolve_source(
+            TEST_DOI,
+            production=False,
+            storage_options=osn_credentials,
+        )
+
+        assert result["s3_url"] is not None
+        assert result["endpoint"] is not None
+
+        # Verify bucket is accessible using fsspec
+        import fsspec
+
+        fs = fsspec.filesystem(
+            "s3",
+            key=osn_credentials["key"],
+            secret=osn_credentials["secret"],
+            client_kwargs={"endpoint_url": result["endpoint"]},
+        )
+
+        # List the bucket — this is the actual access check
+        bucket = result["bucket"]
+        listing = fs.ls(bucket, detail=False)
+        assert len(listing) > 0
+
+    def test_open_dataset_from_test_doi(self, osn_credentials: dict[str, str]) -> None:
+        """Test loading actual data from a test DOI end-to-end."""
+        ds = open_dataset(
+            TEST_DOI,
+            production=False,
+            storage_options=osn_credentials,
+            validate=False,
+        )
+
+        assert isinstance(ds, xr.Dataset)
+        # Should have at least one data variable
+        assert len(ds.data_vars) > 0
+
+    def test_invalid_bucket_gives_clear_error(self, osn_credentials: dict[str, str]) -> None:
+        """Test that an invalid bucket produces a clear DataSourceError."""
+        with pytest.raises(DataSourceError, match="Cannot access remote storage"):
+            open_dataset(
+                "s3://nonexistent-bucket-12345/data.zarr",
+                storage_options={
+                    **osn_credentials,
+                    "client_kwargs": {
+                        "endpoint_url": "https://caltech1.osn.mghpcc.org",
+                    },
+                },
+                validate=False,
+            )

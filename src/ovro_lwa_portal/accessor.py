@@ -13,11 +13,13 @@ Example
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from scipy import interpolate
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -4258,4 +4260,466 @@ class RadportAccessor:
             fontsize=11,
         )
 
+        return fig
+
+    # =========================================================================
+    # Dispersion Measure Correction Methods
+    # =========================================================================
+
+    # Dispersion constant in MHz^2 pc^-1 cm^3 s
+    # Reference: Lorimer & Kramer (2004), Handbook of Pulsar Astronomy
+    K_DM = 4.148808e3  # MHz^2 pc^-1 cm^3 s
+
+    def dispersion_delay(
+        self,
+        dm: float,
+        freq_mhz: float | np.ndarray | None = None,
+        freq_ref_mhz: float | None = None,
+    ) -> float | np.ndarray:
+        """Calculate dispersion delay for a given DM and frequency.
+
+        Radio signals experience frequency-dependent delays when propagating
+        through the ionized interstellar medium. Lower frequencies arrive
+        later than higher frequencies. This method computes the time delay
+        using the cold plasma dispersion relation.
+
+        Parameters
+        ----------
+        dm : float
+            Dispersion measure in pc cm^-3. Must be non-negative.
+        freq_mhz : float or np.ndarray, optional
+            Frequency or array of frequencies in MHz at which to compute
+            delays. If None, uses all frequencies in the dataset.
+        freq_ref_mhz : float, optional
+            Reference frequency in MHz (typically the highest frequency).
+            Delays are computed relative to this frequency.
+            If None, uses the highest frequency in the dataset.
+
+        Returns
+        -------
+        float or np.ndarray
+            Time delay(s) in seconds. Positive values indicate the signal
+            arrives later at lower frequencies. Returns the same shape as
+            freq_mhz input.
+
+        Raises
+        ------
+        ValueError
+            If dm is negative.
+
+        Notes
+        -----
+        The dispersion delay is computed using:
+
+            Δt = K_DM × DM × (f_lo^-2 - f_hi^-2)
+
+        where:
+        - K_DM = 4.148808 × 10^3 MHz^2 pc^-1 cm^3 s (dispersion constant)
+        - DM is the dispersion measure in pc cm^-3
+        - f_lo, f_hi are frequencies in MHz
+
+        Example
+        -------
+        >>> # Crab pulsar DM = 56.8 pc cm^-3
+        >>> dm = 56.8
+        >>> delay = ds.radport.dispersion_delay(dm=dm, freq_mhz=46.0)
+        >>> print(f"Delay at 46 MHz: {delay:.3f} seconds")
+
+        >>> # Get delays at all dataset frequencies
+        >>> delays = ds.radport.dispersion_delay(dm=56.8)
+
+        References
+        ----------
+        .. [1] Lorimer & Kramer (2004), "Handbook of Pulsar Astronomy"
+        """
+        # Validate DM
+        if dm < 0:
+            raise ValueError(f"DM must be non-negative, got {dm}")
+
+        # Get frequencies
+        if freq_mhz is None:
+            freq_mhz = self._obj.coords["frequency"].values / 1e6
+
+        freq_mhz = np.asarray(freq_mhz)
+
+        # Get reference frequency (highest frequency by default)
+        if freq_ref_mhz is None:
+            freq_ref_mhz = float(self._obj.coords["frequency"].values.max() / 1e6)
+
+        # Validate reference frequency
+        if freq_ref_mhz <= 0:
+            raise ValueError(f"Reference frequency must be positive, got {freq_ref_mhz}")
+
+        # Validate input frequencies
+        if np.any(freq_mhz <= 0):
+            raise ValueError("All frequencies must be positive")
+
+        # Compute delay: Δt = K_DM × DM × (f^-2 - f_ref^-2)
+        delay = self.K_DM * dm * (freq_mhz**-2 - freq_ref_mhz**-2)
+
+        return delay
+
+    def dynamic_spectrum_dedispersed(
+        self,
+        l: float,
+        m: float,
+        dm: float,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        method: Literal["shift", "interpolate"] = "shift",
+        fill_value: float = np.nan,
+        trim: bool = False,
+    ) -> xr.DataArray:
+        """Extract a dedispersed dynamic spectrum for a single pixel.
+
+        Corrects for interstellar dispersion by shifting or interpolating
+        frequency channels according to the dispersion delay. This is essential
+        for analyzing dispersed radio transients like pulsars and FRBs.
+
+        Parameters
+        ----------
+        l : float
+            Target l coordinate for pixel selection.
+        m : float
+            Target m coordinate for pixel selection.
+        dm : float
+            Dispersion measure in pc cm^-3. Must be non-negative.
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to extract.
+        pol : int, default 0
+            Polarization index.
+        method : {'shift', 'interpolate'}, default 'shift'
+            Dedispersion method:
+            - 'shift': Fast integer-sample shifting (approximate).
+              Rounds delays to nearest time sample.
+            - 'interpolate': Slower but precise sub-sample interpolation.
+              Uses linear interpolation for accurate delay correction.
+        fill_value : float, default np.nan
+            Value to use for samples shifted outside the time range.
+        trim : bool, default False
+            If True, trim the time axis to only include valid data
+            (removes NaN edges from shifting). If False, returns full
+            time axis with NaN-filled edges.
+
+        Returns
+        -------
+        xr.DataArray
+            2D DataArray with dimensions (time, frequency) containing
+            the dedispersed dynamic spectrum. Time axis represents
+            arrival time at the reference frequency.
+            Includes metadata: pixel_l, pixel_m, dm, method, freq_ref_mhz.
+
+        Raises
+        ------
+        ValueError
+            If dm is negative, variable doesn't exist, or method is invalid.
+
+        Warns
+        -----
+        UserWarning
+            If the maximum dispersion shift exceeds 50% of the time span.
+
+        Notes
+        -----
+        The dedispersion aligns all frequency channels to a common reference
+        time (typically the highest frequency). Lower frequency channels are
+        shifted backwards in time to compensate for the dispersion delay.
+
+        For the 'shift' method, delays are rounded to the nearest integer
+        number of time samples, which introduces quantization error. For
+        precise analysis, use 'interpolate'.
+
+        Example
+        -------
+        >>> # Dedisperse at Crab pulsar DM
+        >>> dynspec = ds.radport.dynamic_spectrum_dedispersed(
+        ...     l=0.0, m=0.0, dm=56.8, method="interpolate"
+        ... )
+
+        >>> # Fast approximate dedispersion
+        >>> dynspec_fast = ds.radport.dynamic_spectrum_dedispersed(
+        ...     l=0.0, m=0.0, dm=56.8, method="shift", trim=True
+        ... )
+
+        See Also
+        --------
+        dispersion_delay : Compute dispersion delays for given frequencies.
+        dynamic_spectrum : Extract uncorrected dynamic spectrum.
+        plot_dynamic_spectrum : Plot dynamic spectrum with optional dedispersion.
+        """
+        # Validate inputs
+        if dm < 0:
+            raise ValueError(f"DM must be non-negative, got {dm}")
+
+        if method not in ("shift", "interpolate"):
+            raise ValueError(
+                f"Method must be 'shift' or 'interpolate', got '{method}'"
+            )
+
+        if var not in self._obj.data_vars:
+            available = sorted(self._obj.data_vars)
+            raise ValueError(
+                f"Variable '{var}' not found. Available: {available}"
+            )
+
+        # Get the uncorrected dynamic spectrum
+        dynspec = self.dynamic_spectrum(l=l, m=m, var=var, pol=pol)
+
+        # If DM is zero, return the original spectrum
+        if dm == 0:
+            dynspec.attrs["dm"] = 0.0
+            dynspec.attrs["method"] = method
+            dynspec.attrs["freq_ref_mhz"] = float(
+                self._obj.coords["frequency"].values.max() / 1e6
+            )
+            return dynspec
+
+        # Get coordinates
+        time_vals = dynspec.coords["time"].values
+        freq_vals = dynspec.coords["frequency"].values  # Hz
+        freq_mhz = freq_vals / 1e6
+
+        # Compute reference frequency (highest)
+        freq_ref_mhz = float(freq_mhz.max())
+
+        # Compute dispersion delays for each frequency channel
+        delays = self.dispersion_delay(dm=dm, freq_mhz=freq_mhz, freq_ref_mhz=freq_ref_mhz)
+
+        # Get time resolution
+        if len(time_vals) < 2:
+            raise ValueError("Need at least 2 time samples for dedispersion")
+
+        dt = float(time_vals[1] - time_vals[0])  # Time resolution in MJD
+        dt_seconds = dt * 86400.0  # Convert to seconds
+
+        # Convert delays to time samples
+        delay_samples = delays / dt_seconds
+
+        # Check for excessive delays
+        max_delay_samples = np.abs(delay_samples).max()
+        if max_delay_samples > 0.5 * len(time_vals):
+            warnings.warn(
+                f"Maximum dispersion shift ({max_delay_samples:.1f} samples) "
+                f"exceeds 50% of time span ({len(time_vals)} samples). "
+                "Consider using a smaller DM or longer observation.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Get data values
+        data = dynspec.values.copy()  # Shape: (time, frequency)
+        n_time, n_freq = data.shape
+
+        # Create output array
+        dedispersed = np.full_like(data, fill_value)
+
+        if method == "shift":
+            # Integer sample shifting (fast, approximate)
+            for i_freq in range(n_freq):
+                shift = int(np.round(delay_samples[i_freq]))
+
+                if shift == 0:
+                    dedispersed[:, i_freq] = data[:, i_freq]
+                elif shift > 0:
+                    # Signal arrives later at lower freq, shift backwards
+                    if shift < n_time:
+                        dedispersed[:-shift, i_freq] = data[shift:, i_freq]
+                else:
+                    # Negative shift (shouldn't happen for positive DM)
+                    shift = abs(shift)
+                    if shift < n_time:
+                        dedispersed[shift:, i_freq] = data[:-shift, i_freq]
+
+        else:  # method == "interpolate"
+            # Sub-sample interpolation (slower, precise)
+            for i_freq in range(n_freq):
+                delay_mjd = delays[i_freq] / 86400.0  # Convert to MJD
+
+                # Create interpolator for this frequency channel
+                interp_func = interpolate.interp1d(
+                    time_vals,
+                    data[:, i_freq],
+                    kind="linear",
+                    bounds_error=False,
+                    fill_value=fill_value,
+                )
+
+                # Interpolate at shifted times
+                # To correct for dispersion, we sample at time + delay
+                shifted_times = time_vals + delay_mjd
+                dedispersed[:, i_freq] = interp_func(shifted_times)
+
+        # Trim if requested
+        if trim:
+            # Find valid time range (where all frequencies have data)
+            valid_mask = ~np.all(np.isnan(dedispersed), axis=1)
+            if np.any(valid_mask):
+                first_valid = np.argmax(valid_mask)
+                last_valid = len(valid_mask) - np.argmax(valid_mask[::-1]) - 1
+                dedispersed = dedispersed[first_valid:last_valid + 1, :]
+                time_vals = time_vals[first_valid:last_valid + 1]
+
+        # Create output DataArray
+        result = xr.DataArray(
+            dedispersed,
+            dims=["time", "frequency"],
+            coords={
+                "time": time_vals,
+                "frequency": freq_vals,
+            },
+            name=f"{var}_dedispersed",
+            attrs={
+                "pixel_l": dynspec.attrs["pixel_l"],
+                "pixel_m": dynspec.attrs["pixel_m"],
+                "l_idx": dynspec.attrs["l_idx"],
+                "m_idx": dynspec.attrs["m_idx"],
+                "pol": pol,
+                "dm": dm,
+                "method": method,
+                "freq_ref_mhz": freq_ref_mhz,
+                "long_name": f"Dedispersed {var} (DM={dm:.2f} pc/cm³)",
+                "units": "Jy/beam",
+            },
+        )
+
+        return result
+
+    def plot_dynamic_spectrum_dedispersed(
+        self,
+        l: float,
+        m: float,
+        dm: float,
+        var: Literal["SKY", "BEAM"] = "SKY",
+        pol: int = 0,
+        method: Literal["shift", "interpolate"] = "shift",
+        trim: bool = False,
+        cmap: str = "inferno",
+        vmin: float | None = None,
+        vmax: float | None = None,
+        robust: bool = True,
+        figsize: tuple[float, float] = (10, 5),
+        add_colorbar: bool = True,
+        show_delay_curve: bool = False,
+        **kwargs: Any,
+    ) -> "Figure":
+        """Plot a dedispersed dynamic spectrum for a single pixel.
+
+        Creates a 2D visualization showing intensity variations across
+        time and frequency after correcting for interstellar dispersion.
+
+        Parameters
+        ----------
+        l : float
+            Target l coordinate for pixel selection.
+        m : float
+            Target m coordinate for pixel selection.
+        dm : float
+            Dispersion measure in pc cm^-3.
+        var : {'SKY', 'BEAM'}, default 'SKY'
+            Data variable to plot.
+        pol : int, default 0
+            Polarization index.
+        method : {'shift', 'interpolate'}, default 'shift'
+            Dedispersion method ('shift' for fast, 'interpolate' for precise).
+        trim : bool, default False
+            If True, trim time axis to valid data only.
+        cmap : str, default 'inferno'
+            Matplotlib colormap.
+        vmin, vmax : float, optional
+            Color scale limits.
+        robust : bool, default True
+            Use percentile-based color scaling.
+        figsize : tuple, default (10, 5)
+            Figure size in inches.
+        add_colorbar : bool, default True
+            Whether to add a colorbar.
+        show_delay_curve : bool, default False
+            If True, overlay the dispersion delay curve on the plot.
+        **kwargs : dict
+            Additional arguments passed to imshow.
+
+        Returns
+        -------
+        matplotlib.figure.Figure
+            The figure containing the dedispersed dynamic spectrum plot.
+
+        Example
+        -------
+        >>> fig = ds.radport.plot_dynamic_spectrum_dedispersed(
+        ...     l=0.0, m=0.0, dm=56.8, method="interpolate"
+        ... )
+        """
+        # Get dedispersed dynamic spectrum
+        dynspec = self.dynamic_spectrum_dedispersed(
+            l=l, m=m, dm=dm, var=var, pol=pol, method=method, trim=trim
+        )
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Compute data
+        data = dynspec.values
+
+        # Handle robust scaling
+        if robust and vmin is None and vmax is None:
+            finite_data = data[np.isfinite(data)]
+            if finite_data.size > 0:
+                vmin = float(np.percentile(finite_data, 2))
+                vmax = float(np.percentile(finite_data, 98))
+
+        # Get coordinate values
+        time_vals = dynspec.coords["time"].values
+        freq_vals = dynspec.coords["frequency"].values / 1e6  # Convert to MHz
+
+        # Compute extent for imshow
+        extent = [
+            float(time_vals.min()), float(time_vals.max()),
+            float(freq_vals.min()), float(freq_vals.max()),
+        ]
+
+        # Plot - transpose so time is x-axis and frequency is y-axis
+        im = ax.imshow(
+            data.T,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            extent=extent,
+            aspect="auto",
+            **kwargs,
+        )
+
+        # Optionally show dispersion delay curve
+        if show_delay_curve and dm > 0:
+            delays = self.dispersion_delay(dm=dm, freq_mhz=freq_vals)
+            # Convert delays to MJD offset from reference
+            delay_mjd = delays / 86400.0
+            # Plot as time offset from center of time range
+            t_center = (time_vals.min() + time_vals.max()) / 2
+            ax.plot(
+                t_center - delay_mjd,
+                freq_vals,
+                "w--",
+                linewidth=1.5,
+                alpha=0.7,
+                label="Dispersion curve",
+            )
+            ax.legend(loc="upper right")
+
+        if add_colorbar:
+            cbar = fig.colorbar(im, ax=ax)
+            cbar.set_label("Jy/beam")
+
+        # Labels and title
+        pixel_l = dynspec.attrs["pixel_l"]
+        pixel_m = dynspec.attrs["pixel_m"]
+        ax.set_xlabel("Time (MJD)")
+        ax.set_ylabel("Frequency (MHz)")
+        ax.set_title(
+            f"{var} Dedispersed Dynamic Spectrum\n"
+            f"l={pixel_l:+.4f}, m={pixel_m:+.4f}, pol={pol}, "
+            f"DM={dm:.2f} pc/cm³ ({method})"
+        )
+
+        fig.tight_layout()
         return fig

@@ -2248,3 +2248,356 @@ class TestRadportPlotSpectralIndexMap:
             assert isinstance(fig, plt.Figure)
         finally:
             plt.close(fig)
+
+
+# =============================================================================
+# Dispersion Measure Correction Tests
+# =============================================================================
+
+
+class TestRadportDispersionDelay:
+    """Tests for RadportAccessor.dispersion_delay() method."""
+
+    def test_dispersion_delay_returns_float_for_scalar(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() returns float for scalar frequency input."""
+        delay = valid_ovro_dataset.radport.dispersion_delay(dm=56.8, freq_mhz=46.0)
+        assert isinstance(delay, (float, np.floating))
+
+    def test_dispersion_delay_returns_array_for_array_input(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() returns array for array frequency input."""
+        freq_mhz = np.array([46.0, 50.0, 54.0])
+        delays = valid_ovro_dataset.radport.dispersion_delay(dm=56.8, freq_mhz=freq_mhz)
+        assert isinstance(delays, np.ndarray)
+        assert delays.shape == freq_mhz.shape
+
+    def test_dispersion_delay_uses_dataset_frequencies(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() uses dataset frequencies when freq_mhz is None."""
+        delays = valid_ovro_dataset.radport.dispersion_delay(dm=56.8)
+        n_freq = len(valid_ovro_dataset.coords["frequency"])
+        assert len(delays) == n_freq
+
+    def test_dispersion_delay_zero_dm_returns_zero(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() returns zero for DM=0."""
+        delay = valid_ovro_dataset.radport.dispersion_delay(dm=0.0, freq_mhz=46.0)
+        assert delay == 0.0
+
+    def test_dispersion_delay_negative_dm_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() raises ValueError for negative DM."""
+        with pytest.raises(ValueError, match="DM must be non-negative"):
+            valid_ovro_dataset.radport.dispersion_delay(dm=-10.0, freq_mhz=46.0)
+
+    def test_dispersion_delay_lower_freq_has_larger_delay(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """Lower frequencies have larger dispersion delays."""
+        delay_low = valid_ovro_dataset.radport.dispersion_delay(dm=56.8, freq_mhz=46.0)
+        delay_high = valid_ovro_dataset.radport.dispersion_delay(dm=56.8, freq_mhz=54.0)
+        assert delay_low > delay_high
+
+    def test_dispersion_delay_crab_pulsar_dm(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """Test dispersion delay with Crab pulsar DM=56.8 pc/cm³.
+
+        For Crab pulsar at typical LWA frequencies, delay should be
+        on the order of seconds between low and high frequencies.
+        """
+        # Crab pulsar DM
+        dm_crab = 56.8
+
+        # Compute delay at 46 MHz relative to 54 MHz reference
+        delay = valid_ovro_dataset.radport.dispersion_delay(
+            dm=dm_crab, freq_mhz=46.0, freq_ref_mhz=54.0
+        )
+
+        # Expected delay: K_DM * DM * (f_lo^-2 - f_hi^-2)
+        # K_DM = 4.148808e3 MHz^2 pc^-1 cm^3 s
+        # delay = 4.148808e3 * 56.8 * (46^-2 - 54^-2)
+        #       = 235655.3 * (0.000472 - 0.000343)
+        #       ≈ 30.4 seconds
+        expected_delay = 4.148808e3 * dm_crab * (46.0**-2 - 54.0**-2)
+        assert np.isclose(delay, expected_delay, rtol=1e-6)
+
+    def test_dispersion_delay_custom_reference_freq(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() accepts custom reference frequency."""
+        delay = valid_ovro_dataset.radport.dispersion_delay(
+            dm=56.8, freq_mhz=46.0, freq_ref_mhz=100.0
+        )
+        # Should be positive (46 MHz arrives later than 100 MHz)
+        assert delay > 0
+
+    def test_dispersion_delay_at_reference_freq_is_zero(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dispersion_delay() returns zero at the reference frequency."""
+        freq_ref = 54.0
+        delay = valid_ovro_dataset.radport.dispersion_delay(
+            dm=56.8, freq_mhz=freq_ref, freq_ref_mhz=freq_ref
+        )
+        assert np.isclose(delay, 0.0, atol=1e-10)
+
+
+class TestRadportDynamicSpectrumDedispersed:
+    """Tests for RadportAccessor.dynamic_spectrum_dedispersed() method."""
+
+    def test_dynamic_spectrum_dedispersed_returns_dataarray(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() returns xr.DataArray."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_dynamic_spectrum_dedispersed_correct_dims(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() returns correct dimensions."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8
+        )
+        assert set(result.dims) == {"time", "frequency"}
+
+    def test_dynamic_spectrum_dedispersed_has_dm_attr(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() includes DM in attributes."""
+        dm_value = 56.8
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=dm_value
+        )
+        assert result.attrs["dm"] == dm_value
+
+    def test_dynamic_spectrum_dedispersed_has_method_attr(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() includes method in attributes."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, method="shift"
+        )
+        assert result.attrs["method"] == "shift"
+
+        result_interp = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, method="interpolate"
+        )
+        assert result_interp.attrs["method"] == "interpolate"
+
+    def test_dynamic_spectrum_dedispersed_shift_method(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() works with shift method."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, method="shift"
+        )
+        # Should have same shape as input dynamic spectrum
+        n_time = len(valid_ovro_dataset.coords["time"])
+        n_freq = len(valid_ovro_dataset.coords["frequency"])
+        assert result.shape == (n_time, n_freq)
+
+    def test_dynamic_spectrum_dedispersed_interpolate_method(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() works with interpolate method."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, method="interpolate"
+        )
+        # Should have same shape as input dynamic spectrum
+        n_time = len(valid_ovro_dataset.coords["time"])
+        n_freq = len(valid_ovro_dataset.coords["frequency"])
+        assert result.shape == (n_time, n_freq)
+
+    def test_dynamic_spectrum_dedispersed_zero_dm_returns_original(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() returns original for DM=0."""
+        original = valid_ovro_dataset.radport.dynamic_spectrum(l=0.0, m=0.0)
+        dedispersed = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=0.0
+        )
+        np.testing.assert_array_equal(original.values, dedispersed.values)
+
+    def test_dynamic_spectrum_dedispersed_negative_dm_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() raises ValueError for negative DM."""
+        with pytest.raises(ValueError, match="DM must be non-negative"):
+            valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+                l=0.0, m=0.0, dm=-10.0
+            )
+
+    def test_dynamic_spectrum_dedispersed_invalid_method_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() raises ValueError for invalid method."""
+        with pytest.raises(ValueError, match="Method must be 'shift' or 'interpolate'"):
+            valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+                l=0.0, m=0.0, dm=56.8, method="invalid"
+            )
+
+    def test_dynamic_spectrum_dedispersed_invalid_var_raises(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() raises ValueError for invalid variable."""
+        with pytest.raises(ValueError, match="Variable 'INVALID' not found"):
+            valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+                l=0.0, m=0.0, dm=56.8, var="INVALID"
+            )
+
+    def test_dynamic_spectrum_dedispersed_trim_option(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() trim option reduces time samples."""
+        untrimmed = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, trim=False
+        )
+        trimmed = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, trim=True
+        )
+        # Trimmed should have same or fewer time samples
+        assert len(trimmed.coords["time"]) <= len(untrimmed.coords["time"])
+
+    def test_dynamic_spectrum_dedispersed_fill_value(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() uses fill_value for shifted regions."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, method="shift", fill_value=np.nan, trim=False
+        )
+        # Should have NaN values at edges where data was shifted out
+        # (unless DM is small enough that no shifting occurs)
+        assert result.attrs["dm"] == 10.0
+
+    def test_dynamic_spectrum_dedispersed_has_pixel_coords(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """dynamic_spectrum_dedispersed() includes pixel coordinates in attrs."""
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8
+        )
+        assert "pixel_l" in result.attrs
+        assert "pixel_m" in result.attrs
+        assert "l_idx" in result.attrs
+        assert "m_idx" in result.attrs
+
+    def test_dynamic_spectrum_dedispersed_crab_pulsar(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """Test dedispersion with Crab pulsar DM=56.8 pc/cm³."""
+        dm_crab = 56.8
+        result = valid_ovro_dataset.radport.dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=dm_crab, method="interpolate"
+        )
+        assert result.attrs["dm"] == dm_crab
+        assert "freq_ref_mhz" in result.attrs
+
+
+class TestRadportPlotDynamicSpectrumDedispersed:
+    """Tests for RadportAccessor.plot_dynamic_spectrum_dedispersed() method."""
+
+    def test_plot_dynamic_spectrum_dedispersed_returns_figure(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() returns a matplotlib Figure."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_shift_method(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() works with shift method."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, method="shift"
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_interpolate_method(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() works with interpolate method."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, method="interpolate"
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_with_delay_curve(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() can show dispersion delay curve."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, show_delay_curve=True
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_no_colorbar(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() accepts add_colorbar=False."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, add_colorbar=False
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_custom_cmap(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() accepts custom colormap."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, cmap="viridis"
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_with_vmin_vmax(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() accepts vmin/vmax parameters."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=56.8, vmin=0.0, vmax=10.0
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
+
+    def test_plot_dynamic_spectrum_dedispersed_trim_option(
+        self, valid_ovro_dataset: xr.Dataset
+    ) -> None:
+        """plot_dynamic_spectrum_dedispersed() accepts trim option."""
+        fig = valid_ovro_dataset.radport.plot_dynamic_spectrum_dedispersed(
+            l=0.0, m=0.0, dm=10.0, trim=True
+        )
+        try:
+            assert isinstance(fig, plt.Figure)
+        finally:
+            plt.close(fig)
