@@ -51,6 +51,7 @@ nav:
   - API Reference:
       - radport Accessor: api/radport-accessor.md
       - Data Loading: api/data-loading.md
+      - FITS to Zarr (Low-Level): api/fits-to-zarr-xradio.md
       - Ingest Module: api/ingest.md
   - Contributing:
       - Contributing: contributing/contributing.md
