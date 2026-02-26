@@ -591,7 +591,8 @@ def convert_fits_dir_to_zarr(
             first_write = False
         else:
             logger.info(f"[append] {out_zarr}")
-            xds_t.to_zarr(str(out_zarr), mode="a", append_dim="time")
+            time_vars = [v for v in xds_t.data_vars if "time" in xds_t[v].dims]
+            xds_t[time_vars].to_zarr(str(out_zarr), mode="a", append_dim="time")
 
         if progress_callback:
             progress_callback(
