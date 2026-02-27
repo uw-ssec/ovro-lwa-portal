@@ -61,26 +61,18 @@ ovro-ingest convert /data/fits /data/output \
 
 ### FITSToZarrConverter
 
-::: ovro_lwa_portal.ingest.FITSToZarrConverter
-    options:
-      show_root_heading: true
-      show_root_full_path: false
-      members_order: source
+::: ovro_lwa_portal.ingest.FITSToZarrConverter options: show_root_heading: true
+show_root_full_path: false members_order: source
 
 ### ConversionConfig
 
-::: ovro_lwa_portal.ingest.ConversionConfig
-    options:
-      show_root_heading: true
-      show_root_full_path: false
-      members_order: source
+::: ovro_lwa_portal.ingest.ConversionConfig options: show_root_heading: true
+show_root_full_path: false members_order: source
 
 ### ProgressCallback
 
-::: ovro_lwa_portal.ingest.ProgressCallback
-    options:
-      show_root_heading: true
-      show_root_full_path: false
+::: ovro_lwa_portal.ingest.ProgressCallback options: show_root_heading: true
+show_root_full_path: false
 
 ## Optional Prefect Integration
 
@@ -108,18 +100,16 @@ result = run_conversion_flow(
 
 ### run_conversion_flow
 
-::: ovro_lwa_portal.ingest.prefect_workflow.run_conversion_flow
-    options:
-      show_root_heading: true
-      show_root_full_path: false
+::: ovro_lwa_portal.ingest.prefect_workflow.run_conversion_flow options:
+show_root_heading: true show_root_full_path: false
 
 ### fits_to_zarr_flow
 
 `fits_to_zarr_flow` is the underlying Prefect `@flow`-decorated function called
 by `run_conversion_flow`. It accepts the same parameters (`input_dir`,
 `output_dir`, `zarr_name`, `fixed_dir`, `chunk_lm`, `rebuild`, `verbose`) and
-orchestrates three Prefect tasks in sequence: configuration validation, directory
-preparation, and the conversion itself (with automatic retries).
+orchestrates three Prefect tasks in sequence: configuration validation,
+directory preparation, and the conversion itself (with automatic retries).
 
 !!! note
 
