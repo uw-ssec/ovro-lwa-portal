@@ -37,10 +37,14 @@ result = convert_fits_dir_to_zarr(
 
 ### convert_fits_dir_to_zarr
 
-::: ovro_lwa_portal.fits_to_zarr_xradio.convert_fits_dir_to_zarr options:
-show_root_heading: true show_root_full_path: false
+::: ovro_lwa_portal.fits_to_zarr_xradio.convert_fits_dir_to_zarr
+    options:
+      show_root_heading: true
+      show_root_full_path: false
 
 ### fix_fits_headers
 
-::: ovro_lwa_portal.fits_to_zarr_xradio.fix_fits_headers options:
-show_root_heading: true show_root_full_path: false
+::: ovro_lwa_portal.fits_to_zarr_xradio.fix_fits_headers
+    options:
+      show_root_heading: true
+      show_root_full_path: false
