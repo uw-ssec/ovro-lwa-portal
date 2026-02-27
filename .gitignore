@@ -228,3 +228,6 @@ __marimo__/
 
 # Hatch version file
 src/*/version.py
+
+# Claude Code
+.claude-history/
