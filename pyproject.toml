@@ -56,6 +56,11 @@ remote = [
     "fsspec>=2024.6.0",
     "caltechdata_api>=1.0.0",
 ]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.25.0",
+]
 all = ["ovro_lwa_portal[dev]"]
 
 [project.license]
@@ -151,15 +156,22 @@ isort.required-imports = ["from __future__ import annotations"]
 [tool.pixi.workspace]
 # Pinned due to https://github.com/prefix-dev/pixi/issues/4723
 requires-pixi = ">=0.55.0"
-channels = ["conda-forge"]
+channels = ["https://prefix.dev/conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.dependencies]
 python-casacore = ">=3.7.1,<4"
+mkdocs = ">=1.6.1,<2"
+mkdocs-material = ">=9.7.1,<10"
+mkdocstrings-python = ">=2.0.2,<3"
 
 [tool.pixi.pypi-dependencies]
 # Dependency to the local package in editable mode
 ovro_lwa_portal = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+docs-serve = { cmd = "mkdocs serve", description = "Serve the documentation site locally" }
+rtd-publish = { cmd = "python -m mkdocs build --clean --site-dir $READTHEDOCS_OUTPUT/html --config-file mkdocs.yml", description = "Build docs for Read the Docs" }
 
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }
