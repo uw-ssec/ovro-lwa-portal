@@ -156,7 +156,7 @@ isort.required-imports = ["from __future__ import annotations"]
 [tool.pixi.workspace]
 # Pinned due to https://github.com/prefix-dev/pixi/issues/4723
 requires-pixi = ">=0.55.0"
-channels = ["conda-forge"]
+channels = ["https://prefix.dev/conda-forge"]
 platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.dependencies]
@@ -171,6 +171,7 @@ ovro_lwa_portal = { path = ".", editable = true }
 
 [tool.pixi.tasks]
 docs-serve = { cmd = "mkdocs serve", description = "Serve the documentation site locally" }
+docs-static = { cmd = "mkdocs build", description = "Build a static documentation site" }
 
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }

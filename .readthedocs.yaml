@@ -13,7 +13,7 @@ build:
     - asdf global pixi latest
 
     # Run the Pixi task defined in pixi.toml that builds docs for RTD
-    - NO_COLOR=1 pixi run docs-serve
+    - NO_COLOR=1 pixi run docs-static
 
 # MkDocs configuration file
 mkdocs:
