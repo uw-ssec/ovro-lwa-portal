@@ -171,7 +171,7 @@ ovro_lwa_portal = { path = ".", editable = true }
 
 [tool.pixi.tasks]
 docs-serve = { cmd = "mkdocs serve", description = "Serve the documentation site locally" }
-docs-static = { cmd = "mkdocs build", description = "Build a static documentation site" }
+rtd-publish = { cmd = "python -m mkdocs build --clean --site-dir $READTHEDOCS_OUTPUT/html --config-file mkdocs.yml", description = "Build docs for Read the Docs" }
 
 [tool.pixi.environments]
 default = { features = ["pre-commit", "gh-cli"], solve-group = "default" }
