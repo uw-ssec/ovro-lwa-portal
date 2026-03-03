@@ -1,6 +1,8 @@
 exclude: |
   (?x)^(
-    pixi.lock|onboarded.md
+    pixi.lock|
+    onboarded.md|
+    docs/api/.*\.md
   )$
 
 ci:

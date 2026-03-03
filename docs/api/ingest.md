@@ -118,8 +118,9 @@ result = run_conversion_flow(
 `fits_to_zarr_flow` is the underlying Prefect `@flow`-decorated function called
 by `run_conversion_flow`. It accepts the same parameters (`input_dir`,
 `output_dir`, `zarr_name`, `fixed_dir`, `chunk_lm`, `rebuild`, `verbose`) and
-orchestrates three Prefect tasks in sequence: configuration validation, directory
-preparation, and the conversion itself (with automatic retries).
+<<<<<<< HEAD
+orchestrates three Prefect tasks in sequence: configuration validation,
+directory preparation, and the conversion itself (with automatic retries).
 
 !!! note
 
