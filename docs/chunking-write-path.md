@@ -110,10 +110,10 @@ The OVRO-LWA data model has five dimensions: time, frequency, polarization, l, a
 
 These defaults align with the OVRO-LWA workflow, which processes observations as time-frequency grids. Each (time, frequency, polarization) combination gets its own set of spatial chunks on disk.
 
-**Implication for chunk layout:** With the default `chunk_lm=1024` on a 4096×4096 spatial grid, each time-frequency-polarization point generates 16 spatial chunks (4×4 tiles). For a dataset with 10 time steps, 109 frequency channels, and 2 polarizations, the total chunk count is:
+**Implication for chunk layout:** With the default `chunk_lm=1024` on a 4096×4096 spatial grid, each time-frequency-polarization point generates 16 spatial chunks (4×4 tiles). For a dataset with 10 time steps, 48 frequency channels, and 2 polarizations (note: typical OVRO-LWA observations use 1 polarization for Stokes I only), the total chunk count is:
 
 ```
-10 × 109 × 2 × 16 = 34,880 chunks
+10 × 48 × 2 × 16 = 15,360 chunks
 ```
 
 This granular chunking enables efficient parallel access for both time-series extraction (reading a fixed spatial position across time and frequency) and map generation (reading all spatial chunks for a single time-frequency point).
@@ -134,7 +134,7 @@ for v in xds.data_vars:
 
 This pattern appears at three locations (lines 313, 416, 472) to ensure clean encoding metadata throughout the pipeline. Without explicit compression configuration, Zarr applies its built-in Blosc compressor with default settings.
 
-**What xradio's write_image() does:** Under the hood, `write_image()` delegates to xarray's `.to_zarr()` method, which creates Zarr arrays with default compression. For OVRO-LWA float32 data, this typically achieves compression ratios between 3:1 and 5:1, reducing a 1024×1024×4 byte (4 MB) chunk to approximately 800 KB to 1.3 MB on disk.
+**What xradio's write_image() does:** Under the hood, `write_image()` delegates to xarray's `.to_zarr()` method, which creates Zarr arrays with default compression. The actual compression codec and settings applied by default are not explicitly documented and may vary. To verify the compression configuration for your specific dataset, inspect the `.zarray` metadata as described in the "Inspecting Chunk Metadata" section below.
 
 **How to configure explicit compression:** To control compression settings, modify the encoding dictionary before the `write_image()` call. Insert this pattern in `_load_for_combine()` or `_write_or_append_zarr()`:
 
@@ -256,7 +256,7 @@ print(f"Array shape: {meta['shape']}")
 Chunk shape: [1, 1, 1, 1024, 1024]
 Compressor: {'id': 'blosc', 'cname': 'lz4', 'clevel': 5, 'shuffle': 1}
 Dtype: <f4
-Array shape: [10, 109, 2, 4096, 4096]
+Array shape: [10, 48, 2, 4096, 4096]
 ```
 
 This output confirms that:
@@ -264,6 +264,7 @@ This output confirms that:
 - Time, frequency, and polarization have chunk size 1
 - Data type is float32 (`<f4`)
 - Blosc compressor with lz4 codec is active
+- Array has 10 time steps, 48 frequency channels, and 2 polarizations (typical OVRO-LWA observations use 1 polarization)
 
 **Programmatic inspection with zarr:**
 
@@ -329,6 +330,6 @@ All data variables should report identical chunk shapes if they share the same d
 
 ## See Also
 
-- [Chunking Fundamentals](chunking-fundamentals.md) — Conceptual background on Zarr chunks and the 10–100 MB sweet spot
-- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) — User guide for the conversion CLI and Python API
-- [FITS to Zarr API Reference](api/fits-to-zarr-xradio.md) — Low-level API documentation
+- [Chunking Fundamentals](chunking-fundamentals.md) - Conceptual background on Zarr chunks and the 10-100 MB sweet spot
+- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) - User guide for the conversion CLI and Python API
+- [FITS to Zarr API Reference](api/fits-to-zarr-xradio.md) - Low-level API documentation

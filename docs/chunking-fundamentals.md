@@ -11,7 +11,7 @@ Think of a chunk as a contiguous block of array data that is compressed and stor
 ```mermaid
 flowchart TB
     subgraph "5D OVRO-LWA Array"
-        A["Array Shape:<br/>time × frequency × polarization × l × m<br/>10 × 109 × 2 × 4096 × 4096"]
+        A["Array Shape:<br/>time × frequency × polarization × l × m<br/>10 × 48 × 2 × 4096 × 4096"]
     end
 
     subgraph "Chunking Strategy"
@@ -61,19 +61,17 @@ OVRO-LWA datasets are stored as 5-dimensional arrays with the following structur
 - **SKY** (required): Sky brightness as a function of time, frequency, and position (float32)
 - **BEAM** (optional): Instrumental beam pattern (float32)
 
-The spatial grid spans 4096×4096 pixels in the (l, m) plane, providing a wide-field view of the radio sky. At single precision (float32), a single spatial frame occupies 4096 × 4096 × 4 bytes = 67,108,864 bytes ≈ 64 MB uncompressed. With 109 frequency channels and 2 polarizations, a single time snapshot totals approximately 14 GB uncompressed.
-
-<!-- TODO: fill in from research doc dimension sizes table -->
+The spatial grid spans 4096×4096 pixels in the (l, m) plane, providing a wide-field view of the radio sky. At single precision (float32), a single spatial frame occupies 4096 × 4096 × 4 bytes = 67,108,864 bytes ≈ 64 MB uncompressed. With 48 frequency channels and 2 polarizations, a single time snapshot totals approximately 6.1 GB uncompressed.
 
 Typical dimension sizes vary by observation:
 
-| Dimension | Typical Size | Range |
+| Dimension | Typical Range | Notes |
 |-----------|--------------|-------|
-| time | 10–100 | 1–1000 |
-| frequency | 109 | Fixed |
-| polarization | 2 | Fixed |
-| l | 4096 | Fixed |
-| m | 4096 | Fixed |
+| time | 1-100+ steps | One step per FITS snapshot |
+| frequency | 20-48 channels | 27-88 MHz, ~1.3 MHz spacing |
+| polarization | 1-4 | Usually 1 (Stokes I only) |
+| l | 512-4096 | Direction cosine, spatial |
+| m | 512-4096 | Direction cosine, spatial |
 
 The fixed spatial resolution and frequency channels come from the OVRO-LWA instrument design, while time coverage depends on the observation duration and cadence.
 
@@ -85,7 +83,7 @@ Below 1 MB, chunks become dominated by network latency rather than transfer time
 
 Above 500 MB, chunks waste bandwidth when analysis requires only a spatial subset or a single time slice. Reading a 1 GB chunk to extract a 10 MB region transfers 990 MB of unnecessary data. For interactive workflows or selective queries, oversized chunks create unacceptable delays.
 
-Consider a worked example for the OVRO-LWA data model. With a chunk shape of `chunk_lm=1024` on a 4096×4096 spatial grid, the array divides into 4 chunks per spatial dimension, yielding 16 spatial chunks per frame. Each spatial chunk contains 1024 × 1024 × 4 bytes = 4 MB uncompressed. After zstd compression (typical ratio: 3:1 to 5:1 for radio astronomy data), each chunk compresses to approximately 800 KB to 1.3 MB, comfortably within the 10–100 MB target range after accounting for frequency and time chunking.
+Consider a worked example for the OVRO-LWA data model. With a chunk shape of `chunk_lm=1024` on a 4096×4096 spatial grid, the array divides into 4 chunks per spatial dimension, yielding 16 spatial chunks per frame. Each spatial chunk contains 1024 × 1024 × 4 bytes = 4 MB uncompressed. After compression with typical Zarr compression settings (typical ratio: 2:1 to 10:1 depending on data characteristics and compressor settings), the compressed chunk size will depend on the specific compressor configuration used by xradio's write_image() and the data characteristics, but generally falls within or near the 10–100 MB target range after accounting for frequency and time chunking.
 
 This chunking strategy aligns with OVRO-LWA's two primary access patterns. For time-frequency extraction targeting a known source position, chunking along spatial dimensions minimizes the number of chunks needed to cover a small region on the sky. The analysis typically averages over frequency channels, so loading a single spatial chunk across all frequencies provides efficient access. For map generation at a selected time or frequency range, chunking along time and frequency dimensions allows selective loading of specific spectral windows without reading the entire dataset. Reading 16 spatial chunks to reconstruct a full 4096×4096 map at a single time-frequency point requires 16 parallel GET requests, completing in approximately the same time as a single request due to parallelization.
 
@@ -95,7 +93,7 @@ Chunk size optimization is not a one-size-fits-all problem. The best chunking st
 
 **Chunk shape**: The number of array elements included in a single chunk along each dimension. For example, a chunk shape of `(1, 1, 1, 1024, 1024)` includes 1 time sample, 1 frequency channel, 1 polarization, and 1024×1024 spatial pixels.
 
-**Chunk size**: The storage size of a single chunk in bytes, typically measured after compression. A chunk with shape `(1, 1, 1, 1024, 1024)` at float32 precision occupies 4 MB uncompressed and approximately 1 MB after zstd compression.
+**Chunk size**: The storage size of a single chunk in bytes, typically measured after compression. A chunk with shape `(1, 1, 1, 1024, 1024)` at float32 precision occupies 4 MB uncompressed, with the compressed size depending on the compressor configuration and data characteristics.
 
 **Compression ratio**: The factor by which data is reduced during compression. A compression ratio of 4:1 means that 4 MB of uncompressed data compresses to 1 MB. Zarr supports multiple compressors including zstd, blosc, and gzip.
 
@@ -109,11 +107,11 @@ Chunk size optimization is not a one-size-fits-all problem. The best chunking st
 
 ## External References
 
-- [Zarr Performance User Guide](https://zarr.readthedocs.io/en/stable/user-guide/performance.html) — Official Zarr performance recommendations
-- [ESIP Cloud Computing Optimization](https://esipfed.github.io/cloud-computing-cluster/resources-for-optimization.html) — Cloud-optimized data formats for Earth science
-- [Xarray Intro to Zarr Tutorial](https://tutorial.xarray.dev/intermediate/intro-to-zarr.html) — Hands-on tutorial for working with Zarr in xarray
+- [Zarr Performance User Guide](https://zarr.readthedocs.io/en/stable/user-guide/performance.html) - Official Zarr performance recommendations
+- [ESIP Cloud Computing Optimization](https://esipfed.github.io/cloud-computing-cluster/resources-for-optimization.html) - Cloud-optimized data formats for Earth science
+- [Xarray Intro to Zarr Tutorial](https://tutorial.xarray.dev/intermediate/intro-to-zarr.html) - Hands-on tutorial for working with Zarr in xarray
 
 ## See Also
 
-- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) — Converting OVRO-LWA FITS files to Zarr format
-- [Data Loading API Reference](api/data-loading.md) — API documentation for loading Zarr datasets
+- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) - Converting OVRO-LWA FITS files to Zarr format
+- [Data Loading API Reference](api/data-loading.md) - API documentation for loading Zarr datasets
