@@ -176,11 +176,16 @@ contains 1024 × 1024 × 4 bytes = 4 MB uncompressed.
 
 Radio astronomy sky images typically achieve compression ratios of 3:1 to 6:1
 with Zarr's default Blosc compressor, as the spatial structure and empty sky
-regions compress efficiently. For OVRO-LWA data with the default compressor
-settings, a 4 MB uncompressed chunk typically compresses to 0.7–1.3 MB on disk.
-With 1 polarization, 48 frequency channels means 48 chunks per spatial tile per
-time step, totaling 34–62 MB per spatial region across all frequencies. This
-aligns well with the 10–100 MB target range for cloud-optimized chunking.
+regions compress efficiently. These ratios are typical for the domain based on
+published results for similar radio telescope data. For OVRO-LWA data with
+typical astronomical image characteristics and the default compressor settings,
+a 4 MB uncompressed chunk would typically compress to approximately 0.7–1.3 MB
+on disk. With 1 polarization, 48 frequency channels means 48 chunks per spatial
+tile per time step, totaling 34–62 MB per spatial region across all frequencies.
+This aligns well with the 10–100 MB target range for cloud-optimized chunking.
+Actual compression ratios depend on sky structure and noise characteristics —
+use the measurement procedures below to verify compression on your specific
+datasets.
 
 !!! tip "Measuring Actual Compression"
 

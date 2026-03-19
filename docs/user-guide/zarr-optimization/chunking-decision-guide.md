@@ -105,7 +105,7 @@ Avoid these common mistakes that degrade performance:
     ~1-2 MB typically.
 
     **Reference:**
-    [Chunking Fundamentals](chunking-fundamentals.md#the-10-100-mb-sweet-spot)
+    [Chunking Fundamentals](chunking-fundamentals.md#the-chunk-size-sweet-spot)
     explains the latency-throughput tradeoff.
 
 !!! warning "Misaligned Read Chunks"
@@ -159,7 +159,7 @@ Avoid these common mistakes that degrade performance:
     all subsequent appends to the same store.
 
     **Reference:**
-    [Write Path Pipeline](chunking-write-path.md#append-mode-behavior) explains
+    [Write Path Pipeline](chunking-write-path.md#append-mode-and-chunk-consistency) explains
     how append mode handles chunk boundaries.
 
 ## Troubleshooting FAQ
