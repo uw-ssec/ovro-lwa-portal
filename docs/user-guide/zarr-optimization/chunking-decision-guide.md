@@ -57,22 +57,21 @@ For detailed explanations of each recipe, see
 
 Common scenarios with recommended configurations:
 
-| Scenario                              | Write chunk_lm | Read chunks=                                                 | Notes                                        |
-| ------------------------------------- | -------------- | ------------------------------------------------------------ | -------------------------------------------- |
-| Small local dataset (< 1 GB)          | any            | `None`                                                       | Loads entire dataset to RAM                  |
-| Large local dataset (> 10 GB)         | 1024           | `"auto"`                                                     | Dask handles memory automatically            |
-| Cloud: spatial analysis               | 1024           | `{"time": 1, "frequency": 1, "l": 1024, "m": 1024}`          | Aligns with write chunks, minimal HTTP       |
-| Cloud: time series (point sources)    | 512            | `{"time": -1, "frequency": 1, "l": 256, "m": 256}`           | Small spatial tiles reduce bandwidth waste   |
-| Cloud: spectral analysis              | 1024           | `{"time": 1, "frequency": -1, "l": 256, "m": 256}`           | All frequencies per spatial tile             |
-| Cloud: batch processing               | 1024           | `{"time": 5, "frequency": 10, "l": 512, "m": 512}`           | Balanced chunks for mixed access             |
-| Cloud: exploratory (unknown pattern)  | 1024           | `"auto"`                                                     | Start with auto, optimize after profiling    |
-| Local: memory-constrained environment | 512-1024       | Reduce largest dimension (e.g., `{"l": 512, "m": 512}`)      | Trade parallelism for memory footprint       |
-| Cloud: high-frequency access          | 1024           | Same as access pattern + `fsspec.simplecache` (see Caching) | Cache frequently accessed chunks             |
+| Scenario                              | Write chunk_lm | Read chunks=                                                | Notes                                      |
+| ------------------------------------- | -------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| Small local dataset (< 1 GB)          | any            | `None`                                                      | Loads entire dataset to RAM                |
+| Large local dataset (> 10 GB)         | 1024           | `"auto"`                                                    | Dask handles memory automatically          |
+| Cloud: spatial analysis               | 1024           | `{"time": 1, "frequency": 1, "l": 1024, "m": 1024}`         | Aligns with write chunks, minimal HTTP     |
+| Cloud: time series (point sources)    | 512            | `{"time": -1, "frequency": 1, "l": 256, "m": 256}`          | Small spatial tiles reduce bandwidth waste |
+| Cloud: spectral analysis              | 1024           | `{"time": 1, "frequency": -1, "l": 256, "m": 256}`          | All frequencies per spatial tile           |
+| Cloud: batch processing               | 1024           | `{"time": 5, "frequency": 10, "l": 512, "m": 512}`          | Balanced chunks for mixed access           |
+| Cloud: exploratory (unknown pattern)  | 1024           | `"auto"`                                                    | Start with auto, optimize after profiling  |
+| Local: memory-constrained environment | 512-1024       | Reduce largest dimension (e.g., `{"l": 512, "m": 512}`)     | Trade parallelism for memory footprint     |
+| Cloud: high-frequency access          | 1024           | Same as access pattern + `fsspec.simplecache` (see Caching) | Cache frequently accessed chunks           |
 
 **Key principle:** Read chunks should be multiples of write chunks for optimal
-alignment. See
-[Chunking Fundamentals](chunking-fundamentals.md#chunk-alignment) for why
-alignment matters.
+alignment. See [Chunking Fundamentals](chunking-fundamentals.md#chunk-alignment)
+for why alignment matters.
 
 ## Anti-Patterns (What NOT to Do)
 
@@ -361,8 +360,8 @@ ds = ovro_lwa_portal.open_dataset("old_store.zarr", chunks={
 ds.to_zarr("new_store.zarr", mode="w")
 ```
 
-**Pros:** Simple, one command
-**Cons:** Loads entire dataset into memory (in chunks), slow for large data
+**Pros:** Simple, one command **Cons:** Loads entire dataset into memory (in
+chunks), slow for large data
 
 **Option 2: Efficient out-of-core rechunking with rechunker (for large
 datasets)**
@@ -393,8 +392,8 @@ rechunk_plan.execute()
 
 **When to rechunk vs. when to tune read-time chunks:**
 
-- **Rechunk the store** when you need to change on-disk chunk layout
-  permanently for all users (e.g., preparing data for public release)
+- **Rechunk the store** when you need to change on-disk chunk layout permanently
+  for all users (e.g., preparing data for public release)
 - **Tune read-time chunks** when you want to optimize for your specific access
   pattern without modifying the source data (recommended for most users)
 
@@ -402,8 +401,8 @@ rechunk_plan.execute()
 
 - [Write Path Pipeline](chunking-write-path.md) for how write-time chunks are
   created
-- [Read-Time Optimization](chunking-read-optimization.md) for tuning read
-  chunks without rechunking
+- [Read-Time Optimization](chunking-read-optimization.md) for tuning read chunks
+  without rechunking
 
 ## Documentation Cross-Reference
 
@@ -452,8 +451,7 @@ Condensed reference for quick lookup:
 
 - **Chunk size sweet spot:** 10-100 MB compressed per chunk
 - **Cloud latency:** ~50-100ms per HTTP GET request
-- **Default write config:** `chunk_lm=1024` (4 MB uncompressed per spatial
-  tile)
+- **Default write config:** `chunk_lm=1024` (4 MB uncompressed per spatial tile)
 - **Default read config:** `chunks="auto"` (Dask/xarray decide)
 - **Task count target:** 1,000-10,000 tasks per operation
 
@@ -493,8 +491,7 @@ ds = ovro_lwa_portal.open_dataset(
    `zarr.consolidate_metadata("store.zarr")` if missing
 2. **Aligned chunks:** Read chunks should be divisors/multiples of write chunks
    (256, 512, 1024, 2048)
-3. **Caching:** Use `fsspec.simplecache` for repeated access to the same
-   chunks
+3. **Caching:** Use `fsspec.simplecache` for repeated access to the same chunks
 4. **Credentials:** Set `storage_options={"key": "...", "secret": "..."}` for
    S3/OSN
 
@@ -544,24 +541,24 @@ print(".zmetadata exists:", ".zmetadata" in store.store)
 
 ### Quick Fixes
 
-| Problem                       | Quick Fix                                                                      |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| Slow cloud reads              | Check alignment: `ds.SKY.chunks` vs on-disk chunks                             |
+| Problem                       | Quick Fix                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| Slow cloud reads              | Check alignment: `ds.SKY.chunks` vs on-disk chunks                            |
 | Out of memory                 | Reduce chunk sizes: `ds.chunk({"l": 512, "m": 512})`                          |
 | Too many Dask tasks           | Increase chunk sizes: `ds.chunk({"l": 2048, "m": 2048})`                      |
-| Missing consolidated metadata | `zarr.consolidate_metadata("store.zarr")`                                      |
+| Missing consolidated metadata | `zarr.consolidate_metadata("store.zarr")`                                     |
 | Can't connect to OSN          | Verify endpoint: `storage_options={"client_kwargs": {"endpoint_url": "..."}}` |
 
 ### Access Pattern Quick Reference
 
-| Pattern       | chunks=                                              | Why                         |
-| ------------- | ---------------------------------------------------- | --------------------------- |
-| Spatial maps  | `{"time": 1, "frequency": 1, "l": 1024, "m": 1024}`  | Aligns with write chunks    |
-| Time series   | `{"time": -1, "frequency": 1, "l": 256, "m": 256}`   | Minimize spatial waste      |
-| Spectral      | `{"time": 1, "frequency": -1, "l": 256, "m": 256}`   | All frequencies per tile    |
-| Batch         | `{"time": 5, "frequency": 10, "l": 512, "m": 512}`   | Balanced general purpose    |
-| Small data    | `None`                                               | Load to RAM, skip Dask      |
-| Unknown/mixed | `"auto"`                                             | Let Dask decide, profile it |
+| Pattern       | chunks=                                             | Why                         |
+| ------------- | --------------------------------------------------- | --------------------------- |
+| Spatial maps  | `{"time": 1, "frequency": 1, "l": 1024, "m": 1024}` | Aligns with write chunks    |
+| Time series   | `{"time": -1, "frequency": 1, "l": 256, "m": 256}`  | Minimize spatial waste      |
+| Spectral      | `{"time": 1, "frequency": -1, "l": 256, "m": 256}`  | All frequencies per tile    |
+| Batch         | `{"time": 5, "frequency": 10, "l": 512, "m": 512}`  | Balanced general purpose    |
+| Small data    | `None`                                              | Load to RAM, skip Dask      |
+| Unknown/mixed | `"auto"`                                            | Let Dask decide, profile it |
 
 ---
 
