@@ -192,18 +192,18 @@ modify the encoding dictionary before the `write_image()` call. Insert this
 pattern in `_load_for_combine()` or `_write_or_append_zarr()`:
 
 ```python
-import zarr
+from numcodecs import Blosc
 
 # Example: Configure zstd compression (level 3) with no shuffle
 for v in xds.data_vars:
     xds[v].encoding = {
-        "compressor": zarr.Blosc(cname="zstd", clevel=3, shuffle=0),
+        "compressor": Blosc(cname="zstd", clevel=3, shuffle=0),
     }
 
 # Alternative: Use lz4 for faster compression/decompression
 for v in xds.data_vars:
     xds[v].encoding = {
-        "compressor": zarr.Blosc(cname="lz4", clevel=5, shuffle=2),
+        "compressor": Blosc(cname="lz4", clevel=5, shuffle=2),
     }
 ```
 
