@@ -50,6 +50,7 @@ nav:
           - Compression Strategies: user-guide/zarr-optimization/chunking-compression.md
           - Read-Time Optimization: user-guide/zarr-optimization/chunking-read-optimization.md
           - Benchmarking Performance: user-guide/zarr-optimization/chunking-benchmarking.md
+          - Cloud Storage Configuration: user-guide/zarr-optimization/chunking-cloud-storage.md
   - Tutorials:
       - Transient Analysis: tutorials/transient-analysis.md
       - Pulsar Dedispersion: tutorials/pulsar-dedispersion.md
