@@ -142,7 +142,7 @@ Avoid these common mistakes that degrade performance:
     shows tasks queued for minutes, actual computation is fast once started.
 
     **Solution:** Increase chunk sizes to consolidate tasks. Check task count
-    with `len(ds.SKY.data.__dask_graph__())` and target 1,000-10,000 tasks for
+    with `len(ds.SKY.data.__dask_graph__())` and target 100-10,000 tasks for
     typical operations.
 
     **Reference:**
@@ -334,7 +334,7 @@ explains the memory implications of different chunk modes.
    result = sum(ds.SKY.isel(l=i, m=j) for i in range(...) for j in range(...))
    ```
 
-**Target:** Aim for 1,000-10,000 tasks for typical operations. Fewer than 100
+**Target:** Aim for 100-10,000 tasks for typical operations. Fewer than 100
 limits parallelism; more than 100,000 creates scheduling overhead.
 
 **Reference:**
@@ -453,7 +453,7 @@ Condensed reference for quick lookup:
 - **Cloud latency:** ~50-100ms per HTTP GET request
 - **Default write config:** `chunk_lm=1024` (4 MB uncompressed per spatial tile)
 - **Default read config:** `chunks="auto"` (Dask/xarray decide)
-- **Task count target:** 1,000-10,000 tasks per operation
+- **Task count target:** 100-10,000 tasks per operation
 
 ### Default Configuration
 

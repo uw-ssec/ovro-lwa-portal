@@ -251,8 +251,8 @@ import ovro_lwa_portal
 ds = ovro_lwa_portal.open_dataset(
     "s3://bucket-name/observation.zarr",
     storage_options={
-        "key": "AKIAIOSFODNN7EXAMPLE",
-        "secret": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "key": "<AWS_ACCESS_KEY_ID>",
+        "secret": "<AWS_SECRET_ACCESS_KEY>",
     }
 )
 ```
@@ -593,7 +593,7 @@ ds = ovro_lwa_portal.open_dataset(
     storage_options={
         "key": "...",
         "secret": "...",
-        "config_kwargs": {"max_concurrency": 10},
+        "max_concurrency": 10,
     }
 )
 ```

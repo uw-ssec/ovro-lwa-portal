@@ -167,8 +167,8 @@ task_count = len(ds.SKY.isel(time=0, frequency=0).__dask_graph__())
 print(f"Dask tasks: {task_count}")
 ```
 
-As a rule of thumb, aim for 10-1000 tasks per operation. Fewer than 10 limits
-parallelism; more than 10,000 creates excessive scheduling overhead.
+As a rule of thumb, aim for 100-10,000 tasks per operation. Fewer than 100
+limits parallelism; more than 10,000 creates excessive scheduling overhead.
 
 ## Benchmarking Methodology
 
@@ -575,7 +575,7 @@ operations (< 60 seconds total). Each request adds ~50-100ms latency.
 
 **Task count:**
 
-Aim for 10-1000 tasks per operation. Fewer than 10 limits parallelism on
+Aim for 100-10,000 tasks per operation. Fewer than 100 limits parallelism on
 multi-core systems; more than 10,000 creates excessive scheduling overhead in
 the Dask scheduler.
 
