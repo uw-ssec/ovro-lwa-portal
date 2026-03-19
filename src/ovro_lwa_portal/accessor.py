@@ -193,6 +193,178 @@ class RadportAccessor:
         m_idx = int(np.argmin(np.abs(m_values - m)))
         return l_idx, m_idx
 
+    def _compute_pixel_track(
+        self,
+        ra: float,
+        dec: float,
+        observatory: Any = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Compute per-time-step pixel indices for a fixed (RA, Dec).
+
+        Uses the closed-form SIN projection equations and LST derived from
+        MJD timestamps to track a celestial source across time steps.
+
+        Parameters
+        ----------
+        ra : float
+            Right Ascension in degrees (FK5/J2000).
+        dec : float
+            Declination in degrees (FK5/J2000).
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location. Defaults to OVRO-LWA.
+
+        Returns
+        -------
+        l_indices : np.ndarray of int, shape (n_times,)
+            Pixel l-index at each time step. -1 where source is below horizon.
+        m_indices : np.ndarray of int, shape (n_times,)
+            Pixel m-index at each time step. -1 where source is below horizon.
+        visible : np.ndarray of bool, shape (n_times,)
+            True where source is above the horizon.
+        """
+        from astropy.coordinates import EarthLocation
+        from astropy.time import Time
+
+        # OVRO-LWA location (default)
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        # Get MJD timestamps from dataset
+        mjd_array = self._obj.coords["time"].values
+
+        # Vectorized LST computation
+        t = Time(mjd_array, format="mjd", scale="utc")
+        lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
+
+        # Closed-form SIN projection (vectorized)
+        ha_rad = np.deg2rad(lst_deg - ra)
+        dec_rad = np.deg2rad(dec)
+        lat_rad = np.deg2rad(observatory.lat.deg)
+
+        l_vals = np.cos(dec_rad) * np.sin(ha_rad)
+        m_vals = np.sin(dec_rad) * np.cos(lat_rad) - np.cos(dec_rad) * np.sin(
+            lat_rad
+        ) * np.cos(ha_rad)
+
+        # Check visibility: source above horizon when sin(altitude) > 0
+        # sin(alt) = sin(dec)*sin(lat) + cos(dec)*cos(lat)*cos(ha)
+        sin_alt = np.sin(dec_rad) * np.sin(lat_rad) + np.cos(
+            dec_rad
+        ) * np.cos(lat_rad) * np.cos(ha_rad)
+        visible = sin_alt > 0
+
+        # Get coordinate arrays for pixel lookup
+        l_coords = self._obj.coords["l"].values
+        m_coords = self._obj.coords["m"].values
+
+        # Vectorized nearest-neighbor pixel lookup using searchsorted
+        # Requires sorted coordinate arrays (ascending)
+        l_sorted = np.sort(l_coords)
+        m_sorted = np.sort(m_coords)
+
+        l_insert = np.searchsorted(l_sorted, l_vals)
+        m_insert = np.searchsorted(m_sorted, m_vals)
+
+        # Clamp to valid range
+        l_insert = np.clip(l_insert, 0, len(l_sorted) - 1)
+        m_insert = np.clip(m_insert, 0, len(m_sorted) - 1)
+
+        # Choose nearest neighbor (searchsorted gives insertion point,
+        # check if previous index is closer)
+        l_prev = np.clip(l_insert - 1, 0, len(l_sorted) - 1)
+        l_indices = np.where(
+            np.abs(l_sorted[l_insert] - l_vals) <= np.abs(l_sorted[l_prev] - l_vals),
+            l_insert,
+            l_prev,
+        )
+
+        m_prev = np.clip(m_insert - 1, 0, len(m_sorted) - 1)
+        m_indices = np.where(
+            np.abs(m_sorted[m_insert] - m_vals) <= np.abs(m_sorted[m_prev] - m_vals),
+            m_insert,
+            m_prev,
+        )
+
+        # Check pixel bounds (source may be visible but outside image FOV)
+        in_bounds = (
+            (l_vals >= l_sorted[0])
+            & (l_vals <= l_sorted[-1])
+            & (m_vals >= m_sorted[0])
+            & (m_vals <= m_sorted[-1])
+        )
+        visible = visible & in_bounds
+
+        # Mark below-horizon / out-of-bounds time steps
+        l_indices[~visible] = -1
+        m_indices[~visible] = -1
+
+        return l_indices.astype(int), m_indices.astype(int), visible
+
+    def _resolve_coordinates(
+        self,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
+        observatory: Any = None,
+    ) -> (
+        tuple[int, int]
+        | tuple[np.ndarray, np.ndarray, np.ndarray]
+    ):
+        """Validate coordinate input and return pixel indices.
+
+        Dispatches to either the fixed-pixel path (l/m) or the per-time
+        tracking path (ra/dec).
+
+        Parameters
+        ----------
+        ra : float, optional
+            Right Ascension in degrees.
+        dec : float, optional
+            Declination in degrees.
+        l : float, optional
+            Direction cosine l coordinate.
+        m : float, optional
+            Direction cosine m coordinate.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
+
+        Returns
+        -------
+        tuple[int, int]
+            Fixed pixel indices ``(l_idx, m_idx)`` when l/m provided.
+        tuple[np.ndarray, np.ndarray, np.ndarray]
+            Per-time ``(l_indices, m_indices, visible)`` when ra/dec provided.
+
+        Raises
+        ------
+        ValueError
+            If input is ambiguous (both pairs, neither pair, or partial pair).
+        """
+        has_radec = ra is not None or dec is not None
+        has_lm = l is not None or m is not None
+
+        if has_radec and has_lm:
+            raise ValueError("Provide either (ra, dec) or (l, m), not both.")
+
+        if not has_radec and not has_lm:
+            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
+
+        if has_radec:
+            if ra is None or dec is None:
+                raise ValueError("Both ra and dec must be provided together.")
+            return self._compute_pixel_track(ra, dec, observatory=observatory)
+
+        # l/m path
+        if l is None or m is None:
+            raise ValueError("Both l and m must be provided together.")
+        return self.nearest_lm_idx(l, m)
+
     # =========================================================================
     # Plotting Methods
     # =========================================================================
@@ -425,8 +597,11 @@ class RadportAccessor:
 
     def cutout(
         self,
-        l_center: float,
-        m_center: float,
+        *,
+        ra_center: float | None = None,
+        dec_center: float | None = None,
+        l_center: float | None = None,
+        m_center: float | None = None,
         dl: float,
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
@@ -443,10 +618,15 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l_center : float
-            Center l coordinate of the cutout region.
-        m_center : float
-            Center m coordinate of the cutout region.
+        ra_center : float, optional
+            Center Right Ascension in degrees. Requires ``dec_center``.
+            Converted to l/m at the specified time step using WCS.
+        dec_center : float, optional
+            Center Declination in degrees. Requires ``ra_center``.
+        l_center : float, optional
+            Center l coordinate of the cutout region. Requires ``m_center``.
+        m_center : float, optional
+            Center m coordinate of the cutout region. Requires ``l_center``.
         dl : float
             Half-width of the cutout in the l direction.
             The cutout spans [l_center - dl, l_center + dl].
@@ -484,10 +664,10 @@ class RadportAccessor:
         >>> cutout = ds.radport.cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1)
 
         >>> # Extract at specific frequency
-        >>> cutout = ds.radport.cutout(0.0, 0.0, 0.1, 0.1, freq_mhz=50.0)
+        >>> cutout = ds.radport.cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1, freq_mhz=50.0)
 
-        >>> # Plot the cutout
-        >>> cutout.plot()
+        >>> # Extract using celestial coordinates
+        >>> cutout = ds.radport.cutout(ra_center=180.0, dec_center=45.0, dl=0.1, dm=0.1)
         """
         # Validate variable
         if var not in self._obj.data_vars:
@@ -506,6 +686,34 @@ class RadportAccessor:
             time_idx = self.nearest_time_idx(time_mjd)
         elif time_idx is None:
             time_idx = 0
+
+        # Resolve center coordinates
+        has_radec = ra_center is not None or dec_center is not None
+        has_lm = l_center is not None or m_center is not None
+
+        if has_radec and has_lm:
+            raise ValueError(
+                "Provide either (ra_center, dec_center) or (l_center, m_center), not both."
+            )
+        if not has_radec and not has_lm:
+            raise ValueError(
+                "Must provide either (ra_center, dec_center) or (l_center, m_center)."
+            )
+
+        if has_radec:
+            if ra_center is None or dec_center is None:
+                raise ValueError(
+                    "Both ra_center and dec_center must be provided together."
+                )
+            # Convert RA/Dec to pixel, then pixel to l/m coordinate value
+            pix_l, pix_m = self.coords_to_pixel(ra_center, dec_center)
+            l_center = float(self._obj.coords["l"].values[pix_l])
+            m_center = float(self._obj.coords["m"].values[pix_m])
+        else:
+            if l_center is None or m_center is None:
+                raise ValueError(
+                    "Both l_center and m_center must be provided together."
+                )
 
         # Extract 2D slice
         da = self._obj[var].isel(
@@ -558,8 +766,11 @@ class RadportAccessor:
 
     def plot_cutout(
         self,
-        l_center: float,
-        m_center: float,
+        *,
+        ra_center: float | None = None,
+        dec_center: float | None = None,
+        l_center: float | None = None,
+        m_center: float | None = None,
         dl: float,
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
@@ -582,8 +793,14 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l_center, m_center : float
-            Center coordinates of the cutout region.
+        ra_center : float, optional
+            Center Right Ascension in degrees. Requires ``dec_center``.
+        dec_center : float, optional
+            Center Declination in degrees. Requires ``ra_center``.
+        l_center : float, optional
+            Center l coordinate. Requires ``m_center``.
+        m_center : float, optional
+            Center m coordinate. Requires ``l_center``.
         dl, dm : float
             Half-widths of the cutout in l and m directions.
         var : {'SKY', 'BEAM'}, default 'SKY'
@@ -618,10 +835,12 @@ class RadportAccessor:
 
         Examples
         --------
-        >>> fig = ds.radport.plot_cutout(0.0, 0.0, 0.1, 0.1, freq_mhz=50.0)
+        >>> fig = ds.radport.plot_cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1, freq_mhz=50.0)
         """
         # Get cutout data
         cutout = self.cutout(
+            ra_center=ra_center,
+            dec_center=dec_center,
             l_center=l_center,
             m_center=m_center,
             dl=dl,
@@ -675,9 +894,11 @@ class RadportAccessor:
             cbar = fig.colorbar(im, ax=ax)
             cbar.set_label("Jy/beam")
 
-        # Build title
+        # Build title (use resolved l/m from cutout attrs)
+        resolved_l = cutout.attrs["cutout_l_center"]
+        resolved_m = cutout.attrs["cutout_m_center"]
         title = self._build_plot_title(var, actual_time_idx, actual_freq_idx, pol)
-        title += f"\nl=[{l_center-dl:+.2f},{l_center+dl:+.2f}], m=[{m_center-dm:+.2f},{m_center+dm:+.2f}]"
+        title += f"\nl=[{resolved_l-dl:+.2f},{resolved_l+dl:+.2f}], m=[{resolved_m-dm:+.2f},{resolved_m+dm:+.2f}]"
 
         ax.set_xlabel("l (direction cosine)")
         ax.set_ylabel("m (direction cosine)")
@@ -692,40 +913,55 @@ class RadportAccessor:
 
     def dynamic_spectrum(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        observatory: Any = None,
     ) -> xr.DataArray:
         """Extract a dynamic spectrum (time vs frequency) for a single pixel.
 
         Returns a 2D DataArray showing how intensity varies across time
-        and frequency at the pixel nearest to the specified (l, m) location.
+        and frequency at the pixel nearest to the specified location.
+
+        When celestial coordinates (ra, dec) are provided, the pixel is
+        tracked across time steps as the source drifts due to Earth rotation.
+        Time steps where the source is below the horizon are NaN-filled.
 
         Parameters
         ----------
-        l : float
-            Target l coordinate for pixel selection.
-        m : float
-            Target m coordinate for pixel selection.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Target l direction cosine coordinate. Requires ``m``.
+        m : float, optional
+            Target m direction cosine coordinate. Requires ``l``.
         var : {'SKY', 'BEAM'}, default 'SKY'
             Data variable to extract.
         pol : int, default 0
             Polarization index.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
 
         Returns
         -------
         xr.DataArray
             2D DataArray with dimensions (time, frequency).
             Includes metadata: pixel_l, pixel_m, l_idx, m_idx, pol.
+            When ra/dec is used, also includes ra, dec, and tracking=True.
 
         Examples
         --------
-        >>> # Get dynamic spectrum at image center
+        >>> # Get dynamic spectrum at image center (direction cosines)
         >>> dynspec = ds.radport.dynamic_spectrum(l=0.0, m=0.0)
 
-        >>> # Plot it
-        >>> dynspec.plot(x='time', y='frequency')
+        >>> # Track a celestial source across time
+        >>> dynspec = ds.radport.dynamic_spectrum(ra=180.0, dec=45.0)
         """
         # Validate variable
         if var not in self._obj.data_vars:
@@ -734,31 +970,82 @@ class RadportAccessor:
                 f"Variable '{var}' not found. Available: {available}"
             )
 
-        # Find nearest pixel
-        l_idx, m_idx = self.nearest_lm_idx(l, m)
+        result = self._resolve_coordinates(
+            ra=ra, dec=dec, l=l, m=m, observatory=observatory
+        )
 
-        # Extract (time, frequency) slice at this pixel
-        da = self._obj[var].isel(l=l_idx, m=m_idx, polarization=pol)
+        if isinstance(result, tuple) and len(result) == 2:
+            # Fixed pixel path (l/m)
+            l_idx, m_idx = result
+            da = self._obj[var].isel(l=l_idx, m=m_idx, polarization=pol)
 
-        # Sort by time and frequency for consistent plotting
-        if "time" in da.dims:
-            da = da.sortby("time")
-        if "frequency" in da.dims:
-            da = da.sortby("frequency")
+            if "time" in da.dims:
+                da = da.sortby("time")
+            if "frequency" in da.dims:
+                da = da.sortby("frequency")
 
-        # Add metadata
-        da.attrs["pixel_l"] = float(self._obj.coords["l"].values[l_idx])
-        da.attrs["pixel_m"] = float(self._obj.coords["m"].values[m_idx])
-        da.attrs["l_idx"] = l_idx
-        da.attrs["m_idx"] = m_idx
-        da.attrs["pol"] = pol
+            da.attrs["pixel_l"] = float(self._obj.coords["l"].values[l_idx])
+            da.attrs["pixel_m"] = float(self._obj.coords["m"].values[m_idx])
+            da.attrs["l_idx"] = l_idx
+            da.attrs["m_idx"] = m_idx
+            da.attrs["pol"] = pol
+
+            return da
+
+        # Per-time tracking path (ra/dec)
+        l_indices, m_indices, visible = result
+        data_var = self._obj[var].isel(polarization=pol)
+
+        if "time" in data_var.dims:
+            data_var = data_var.sortby("time")
+        if "frequency" in data_var.dims:
+            data_var = data_var.sortby("frequency")
+
+        n_times = self._obj.sizes["time"]
+        n_freqs = self._obj.sizes["frequency"]
+
+        # Build output array, NaN-filled
+        out = np.full((n_times, n_freqs), np.nan)
+
+        # Extract per-time pixel values using advanced indexing
+        vis_mask = visible
+        if np.any(vis_mask):
+            vis_l = xr.DataArray(l_indices[vis_mask], dims="time")
+            vis_m = xr.DataArray(m_indices[vis_mask], dims="time")
+            # isel with DataArray indexers for per-time extraction
+            tracked = data_var.isel(time=np.where(vis_mask)[0]).isel(
+                l=vis_l, m=vis_m
+            )
+            out[vis_mask] = tracked.values
+
+        time_coords = data_var.coords["time"].values
+        freq_coords = data_var.coords["frequency"].values
+
+        da = xr.DataArray(
+            out,
+            dims=["time", "frequency"],
+            coords={"time": time_coords, "frequency": freq_coords},
+            attrs={
+                "pixel_l": "tracked",
+                "pixel_m": "tracked",
+                "l_idx": "tracked",
+                "m_idx": "tracked",
+                "pol": pol,
+                "ra": ra,
+                "dec": dec,
+                "tracking": True,
+            },
+        )
 
         return da
 
     def plot_dynamic_spectrum(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
         cmap: str = "inferno",
@@ -767,19 +1054,24 @@ class RadportAccessor:
         robust: bool = True,
         figsize: tuple[float, float] = (8, 5),
         add_colorbar: bool = True,
+        observatory: Any = None,
         **kwargs: Any,
     ) -> Figure:
         """Plot a dynamic spectrum (time vs frequency) for a single pixel.
 
         Creates a 2D visualization showing intensity variations across
-        time and frequency at a specified (l, m) location.
+        time and frequency at a specified location.
 
         Parameters
         ----------
-        l : float
-            Target l coordinate for pixel selection.
-        m : float
-            Target m coordinate for pixel selection.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Target l direction cosine coordinate. Requires ``m``.
+        m : float, optional
+            Target m direction cosine coordinate. Requires ``l``.
         var : {'SKY', 'BEAM'}, default 'SKY'
             Data variable to plot.
         pol : int, default 0
@@ -794,6 +1086,8 @@ class RadportAccessor:
             Figure size in inches.
         add_colorbar : bool, default True
             Whether to add a colorbar.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
         **kwargs : dict
             Additional arguments passed to imshow.
 
@@ -805,9 +1099,12 @@ class RadportAccessor:
         Examples
         --------
         >>> fig = ds.radport.plot_dynamic_spectrum(l=0.0, m=0.0)
+        >>> fig = ds.radport.plot_dynamic_spectrum(ra=180.0, dec=45.0)
         """
         # Get dynamic spectrum
-        dynspec = self.dynamic_spectrum(l=l, m=m, var=var, pol=pol)
+        dynspec = self.dynamic_spectrum(
+            ra=ra, dec=dec, l=l, m=m, var=var, pol=pol, observatory=observatory
+        )
 
         # Create figure
         fig, ax = plt.subplots(figsize=figsize)
@@ -1581,24 +1878,36 @@ class RadportAccessor:
 
     def light_curve(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         freq_idx: int | None = None,
         freq_mhz: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        observatory: Any = None,
     ) -> xr.DataArray:
         """Extract a light curve (time series) at a specific spatial location.
 
         Returns intensity as a function of time at the pixel nearest to
-        the specified (l, m) coordinates and frequency.
+        the specified coordinates and frequency.
+
+        When celestial coordinates (ra, dec) are provided, the pixel is
+        tracked across time steps as the source drifts due to Earth rotation.
+        Time steps where the source is below the horizon are NaN-filled.
 
         Parameters
         ----------
-        l : float
-            Direction cosine l coordinate.
-        m : float
-            Direction cosine m coordinate.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Direction cosine l coordinate. Requires ``m``.
+        m : float, optional
+            Direction cosine m coordinate. Requires ``l``.
         freq_idx : int, optional
             Frequency index. Default is 0. Ignored if `freq_mhz` is provided.
         freq_mhz : float, optional
@@ -1607,6 +1916,8 @@ class RadportAccessor:
             Data variable to extract.
         pol : int, default 0
             Polarization index.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
 
         Returns
         -------
@@ -1616,7 +1927,7 @@ class RadportAccessor:
         Examples
         --------
         >>> lc = ds.radport.light_curve(l=0.0, m=0.0, freq_mhz=50.0)
-        >>> lc.plot()  # Plot intensity vs time
+        >>> lc = ds.radport.light_curve(ra=180.0, dec=45.0, freq_mhz=50.0)
         """
         if var not in self._obj.data_vars:
             available = sorted(self._obj.data_vars)
@@ -1630,37 +1941,78 @@ class RadportAccessor:
         else:
             fi = 0
 
-        # Find nearest pixel
-        l_idx, m_idx = self.nearest_lm_idx(l, m)
-
-        # Extract light curve
-        lc = self._obj[var].isel(
-            frequency=fi,
-            polarization=pol,
-            l=l_idx,
-            m=m_idx,
+        result = self._resolve_coordinates(
+            ra=ra, dec=dec, l=l, m=m, observatory=observatory
         )
 
-        # Add metadata
         freq_hz = float(self._obj.coords["frequency"].values[fi])
-        l_val = float(self._obj.coords["l"].values[l_idx])
-        m_val = float(self._obj.coords["m"].values[m_idx])
 
-        lc.attrs["variable"] = var
-        lc.attrs["freq_idx"] = fi
-        lc.attrs["freq_mhz"] = freq_hz / 1e6
-        lc.attrs["pol"] = pol
-        lc.attrs["l"] = l_val
-        lc.attrs["m"] = m_val
-        lc.attrs["l_idx"] = l_idx
-        lc.attrs["m_idx"] = m_idx
+        if isinstance(result, tuple) and len(result) == 2:
+            # Fixed pixel path (l/m)
+            l_idx, m_idx = result
+            lc = self._obj[var].isel(
+                frequency=fi, polarization=pol, l=l_idx, m=m_idx
+            )
+
+            l_val = float(self._obj.coords["l"].values[l_idx])
+            m_val = float(self._obj.coords["m"].values[m_idx])
+
+            lc.attrs["variable"] = var
+            lc.attrs["freq_idx"] = fi
+            lc.attrs["freq_mhz"] = freq_hz / 1e6
+            lc.attrs["pol"] = pol
+            lc.attrs["l"] = l_val
+            lc.attrs["m"] = m_val
+            lc.attrs["l_idx"] = l_idx
+            lc.attrs["m_idx"] = m_idx
+
+            return lc
+
+        # Per-time tracking path (ra/dec)
+        l_indices, m_indices, visible = result
+        data_var = self._obj[var].isel(frequency=fi, polarization=pol)
+
+        n_times = self._obj.sizes["time"]
+        out = np.full(n_times, np.nan)
+
+        vis_mask = visible
+        if np.any(vis_mask):
+            vis_l = xr.DataArray(l_indices[vis_mask], dims="time")
+            vis_m = xr.DataArray(m_indices[vis_mask], dims="time")
+            tracked = data_var.isel(time=np.where(vis_mask)[0]).isel(
+                l=vis_l, m=vis_m
+            )
+            out[vis_mask] = tracked.values
+
+        time_coords = self._obj.coords["time"].values
+        lc = xr.DataArray(
+            out,
+            dims=["time"],
+            coords={"time": time_coords},
+            attrs={
+                "variable": var,
+                "freq_idx": fi,
+                "freq_mhz": freq_hz / 1e6,
+                "pol": pol,
+                "l": "tracked",
+                "m": "tracked",
+                "l_idx": "tracked",
+                "m_idx": "tracked",
+                "ra": ra,
+                "dec": dec,
+                "tracking": True,
+            },
+        )
 
         return lc
 
     def plot_light_curve(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         freq_idx: int | None = None,
         freq_mhz: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
@@ -1668,16 +2020,21 @@ class RadportAccessor:
         figsize: tuple[float, float] = (10, 4),
         marker: str = "o",
         linestyle: str = "-",
+        observatory: Any = None,
         **kwargs: Any,
     ) -> Figure:
         """Plot a light curve (time series) at a specific spatial location.
 
         Parameters
         ----------
-        l : float
-            Direction cosine l coordinate.
-        m : float
-            Direction cosine m coordinate.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Direction cosine l coordinate. Requires ``m``.
+        m : float, optional
+            Direction cosine m coordinate. Requires ``l``.
         freq_idx : int, optional
             Frequency index. Default is 0. Ignored if `freq_mhz` is provided.
         freq_mhz : float, optional
@@ -1692,6 +2049,8 @@ class RadportAccessor:
             Marker style for data points.
         linestyle : str, default '-'
             Line style connecting points.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
         **kwargs : dict
             Additional arguments passed to plt.plot.
 
@@ -1702,9 +2061,12 @@ class RadportAccessor:
         Examples
         --------
         >>> fig = ds.radport.plot_light_curve(l=0.0, m=0.0, freq_mhz=50.0)
+        >>> fig = ds.radport.plot_light_curve(ra=180.0, dec=45.0, freq_mhz=50.0)
         """
         lc = self.light_curve(
-            l=l, m=m, freq_idx=freq_idx, freq_mhz=freq_mhz, var=var, pol=pol
+            ra=ra, dec=dec, l=l, m=m,
+            freq_idx=freq_idx, freq_mhz=freq_mhz, var=var, pol=pol,
+            observatory=observatory,
         )
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -1716,12 +2078,20 @@ class RadportAccessor:
         ax.set_ylabel(f"{var} Intensity (Jy/beam)")
 
         freq_mhz_val = lc.attrs["freq_mhz"]
-        l_val = lc.attrs["l"]
-        m_val = lc.attrs["m"]
-        ax.set_title(
-            f"{var} Light Curve at (l={l_val:.3f}, m={m_val:.3f}), "
-            f"f={freq_mhz_val:.2f} MHz, pol={pol}"
-        )
+        if lc.attrs.get("tracking"):
+            ra_val = lc.attrs["ra"]
+            dec_val = lc.attrs["dec"]
+            ax.set_title(
+                f"{var} Light Curve (tracked) at RA={ra_val:.4f}°, "
+                f"Dec={dec_val:.4f}°, f={freq_mhz_val:.2f} MHz, pol={pol}"
+            )
+        else:
+            l_val = lc.attrs["l"]
+            m_val = lc.attrs["m"]
+            ax.set_title(
+                f"{var} Light Curve at (l={l_val:.3f}, m={m_val:.3f}), "
+                f"f={freq_mhz_val:.2f} MHz, pol={pol}"
+            )
 
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
@@ -1730,8 +2100,11 @@ class RadportAccessor:
 
     def spectrum(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         time_idx: int | None = None,
         time_mjd: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
@@ -1740,14 +2113,18 @@ class RadportAccessor:
         """Extract a frequency spectrum at a specific spatial location and time.
 
         Returns intensity as a function of frequency at the pixel nearest to
-        the specified (l, m) coordinates and time.
+        the specified coordinates and time.
 
         Parameters
         ----------
-        l : float
-            Direction cosine l coordinate.
-        m : float
-            Direction cosine m coordinate.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Direction cosine l coordinate. Requires ``m``.
+        m : float, optional
+            Direction cosine m coordinate. Requires ``l``.
         time_idx : int, optional
             Time index. Default is 0. Ignored if `time_mjd` is provided.
         time_mjd : float, optional
@@ -1765,7 +2142,7 @@ class RadportAccessor:
         Examples
         --------
         >>> spec = ds.radport.spectrum(l=0.0, m=0.0, time_idx=0)
-        >>> spec.plot()  # Plot intensity vs frequency
+        >>> spec = ds.radport.spectrum(ra=180.0, dec=45.0, time_idx=0)
         """
         if var not in self._obj.data_vars:
             available = sorted(self._obj.data_vars)
@@ -1779,8 +2156,17 @@ class RadportAccessor:
         else:
             ti = 0
 
-        # Find nearest pixel
-        l_idx, m_idx = self.nearest_lm_idx(l, m)
+        # Resolve coordinates
+        if ra is not None or dec is not None:
+            if ra is None or dec is None:
+                raise ValueError("Both ra and dec must be provided together.")
+            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+        elif l is not None or m is not None:
+            if l is None or m is None:
+                raise ValueError("Both l and m must be provided together.")
+            l_idx, m_idx = self.nearest_lm_idx(l, m)
+        else:
+            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
 
         # Extract spectrum
         spec = self._obj[var].isel(
@@ -1808,8 +2194,11 @@ class RadportAccessor:
 
     def plot_spectrum(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         time_idx: int | None = None,
         time_mjd: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
@@ -1824,10 +2213,14 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l : float
-            Direction cosine l coordinate.
-        m : float
-            Direction cosine m coordinate.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Direction cosine l coordinate. Requires ``m``.
+        m : float, optional
+            Direction cosine m coordinate. Requires ``l``.
         time_idx : int, optional
             Time index. Default is 0. Ignored if `time_mjd` is provided.
         time_mjd : float, optional
@@ -1854,9 +2247,11 @@ class RadportAccessor:
         Examples
         --------
         >>> fig = ds.radport.plot_spectrum(l=0.0, m=0.0, time_idx=0)
+        >>> fig = ds.radport.plot_spectrum(ra=180.0, dec=45.0, time_idx=0)
         """
         spec = self.spectrum(
-            l=l, m=m, time_idx=time_idx, time_mjd=time_mjd, var=var, pol=pol
+            ra=ra, dec=dec, l=l, m=m,
+            time_idx=time_idx, time_mjd=time_mjd, var=var, pol=pol,
         )
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -3558,16 +3953,22 @@ class RadportAccessor:
         # Build list of peaks sorted by SNR (descending)
         peaks = []
         for l_idx, m_idx in zip(l_indices, m_indices):
-            peaks.append(
-                {
-                    "l": float(l_coords[l_idx]),
-                    "m": float(m_coords[m_idx]),
-                    "l_idx": int(l_idx),
-                    "m_idx": int(m_idx),
-                    "flux": float(signal[l_idx, m_idx]),
-                    "snr": float(snr[l_idx, m_idx]),
-                }
-            )
+            peak: dict[str, Any] = {
+                "l": float(l_coords[l_idx]),
+                "m": float(m_coords[m_idx]),
+                "l_idx": int(l_idx),
+                "m_idx": int(m_idx),
+                "flux": float(signal[l_idx, m_idx]),
+                "snr": float(snr[l_idx, m_idx]),
+            }
+            if self.has_wcs:
+                try:
+                    ra_val, dec_val = self.pixel_to_coords(int(l_idx), int(m_idx))
+                    peak["ra"] = ra_val
+                    peak["dec"] = dec_val
+                except (ValueError, ImportError):
+                    pass
+            peaks.append(peak)
 
         # Sort by SNR descending
         peaks.sort(key=lambda p: p["snr"], reverse=True)
@@ -3780,8 +4181,11 @@ class RadportAccessor:
 
     def spectral_index(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         time_idx: int = 0,
         pol: int = 0,
         freq1_mhz: float | None = None,
@@ -3797,10 +4201,14 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l : float
-            The l coordinate value for the pixel location.
-        m : float
-            The m coordinate value for the pixel location.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            The l coordinate value for the pixel location. Requires ``m``.
+        m : float, optional
+            The m coordinate value for the pixel location. Requires ``l``.
         time_idx : int, default 0
             Time index for the measurement.
         pol : int, default 0
@@ -3850,8 +4258,17 @@ class RadportAccessor:
                 f"Available variables: {list(self._obj.data_vars)}."
             )
 
-        # Get pixel indices
-        l_idx, m_idx = self.nearest_lm_idx(l, m)
+        # Resolve coordinates
+        if ra is not None or dec is not None:
+            if ra is None or dec is None:
+                raise ValueError("Both ra and dec must be provided together.")
+            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+        elif l is not None or m is not None:
+            if l is None or m is None:
+                raise ValueError("Both l and m must be provided together.")
+            l_idx, m_idx = self.nearest_lm_idx(l, m)
+        else:
+            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
 
         # Resolve frequency indices
         if freq1_mhz is not None:
@@ -4010,8 +4427,11 @@ class RadportAccessor:
 
     def integrated_flux(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         time_idx: int = 0,
         pol: int = 0,
         freq_min_mhz: float | None = None,
@@ -4026,10 +4446,14 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l : float
-            The l coordinate value for the pixel location.
-        m : float
-            The m coordinate value for the pixel location.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            The l coordinate value for the pixel location. Requires ``m``.
+        m : float, optional
+            The m coordinate value for the pixel location. Requires ``l``.
         time_idx : int, default 0
             Time index for the measurement.
         pol : int, default 0
@@ -4078,8 +4502,17 @@ class RadportAccessor:
                 f"Available variables: {list(self._obj.data_vars)}."
             )
 
-        # Get pixel indices
-        l_idx, m_idx = self.nearest_lm_idx(l, m)
+        # Resolve coordinates
+        if ra is not None or dec is not None:
+            if ra is None or dec is None:
+                raise ValueError("Both ra and dec must be provided together.")
+            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+        elif l is not None or m is not None:
+            if l is None or m is None:
+                raise ValueError("Both l and m must be provided together.")
+            l_idx, m_idx = self.nearest_lm_idx(l, m)
+        else:
+            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
 
         # Get all frequency values
         freq_hz = self._obj.coords["frequency"].values
@@ -4361,14 +4794,18 @@ class RadportAccessor:
 
     def dynamic_spectrum_dedispersed(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
         method: Literal["shift", "interpolate"] = "shift",
         fill_value: float = np.nan,
         trim: bool = False,
+        observatory: Any = None,
     ) -> xr.DataArray:
         """Extract a dedispersed dynamic spectrum for a single pixel.
 
@@ -4378,10 +4815,14 @@ class RadportAccessor:
 
         Parameters
         ----------
-        l : float
-            Target l coordinate for pixel selection.
-        m : float
-            Target m coordinate for pixel selection.
+        ra : float, optional
+            Right Ascension in degrees (FK5/J2000). Requires ``dec``.
+        dec : float, optional
+            Declination in degrees (FK5/J2000). Requires ``ra``.
+        l : float, optional
+            Target l direction cosine coordinate. Requires ``m``.
+        m : float, optional
+            Target m direction cosine coordinate. Requires ``l``.
         dm : float
             Dispersion measure in pc cm^-3. Must be non-negative.
         var : {'SKY', 'BEAM'}, default 'SKY'
@@ -4463,7 +4904,9 @@ class RadportAccessor:
             )
 
         # Get the uncorrected dynamic spectrum
-        dynspec = self.dynamic_spectrum(l=l, m=m, var=var, pol=pol)
+        dynspec = self.dynamic_spectrum(
+            ra=ra, dec=dec, l=l, m=m, var=var, pol=pol, observatory=observatory
+        )
 
         # If DM is zero, return the original spectrum
         if dm == 0:
@@ -4586,8 +5029,11 @@ class RadportAccessor:
 
     def plot_dynamic_spectrum_dedispersed(
         self,
-        l: float,
-        m: float,
+        *,
+        ra: float | None = None,
+        dec: float | None = None,
+        l: float | None = None,
+        m: float | None = None,
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
@@ -4600,6 +5046,7 @@ class RadportAccessor:
         figsize: tuple[float, float] = (10, 5),
         add_colorbar: bool = True,
         show_delay_curve: bool = False,
+        observatory: Any = None,
         **kwargs: Any,
     ) -> "Figure":
         """Plot a dedispersed dynamic spectrum for a single pixel.
@@ -4651,7 +5098,8 @@ class RadportAccessor:
         """
         # Get dedispersed dynamic spectrum
         dynspec = self.dynamic_spectrum_dedispersed(
-            l=l, m=m, dm=dm, var=var, pol=pol, method=method, trim=trim
+            ra=ra, dec=dec, l=l, m=m, dm=dm, var=var, pol=pol,
+            method=method, trim=trim, observatory=observatory,
         )
 
         # Create figure
