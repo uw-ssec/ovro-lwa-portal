@@ -47,10 +47,11 @@ nav:
       - Zarr chunk optimization for cloud-based object stores:
           - Chunking Fundamentals: user-guide/zarr-optimization/chunking-fundamentals.md
           - Write Path Pipeline: user-guide/zarr-optimization/chunking-write-path.md
-          - Compression Strategies: user-guide/zarr-optimization/chunking-compression.md
           - Read-Time Optimization: user-guide/zarr-optimization/chunking-read-optimization.md
+          - Compression Strategies: user-guide/zarr-optimization/chunking-compression.md
           - Benchmarking Performance: user-guide/zarr-optimization/chunking-benchmarking.md
           - Cloud Storage Configuration: user-guide/zarr-optimization/chunking-cloud-storage.md
+          - Decision Guide: user-guide/zarr-optimization/chunking-decision-guide.md
   - Tutorials:
       - Transient Analysis: tutorials/transient-analysis.md
       - Pulsar Dedispersion: tutorials/pulsar-dedispersion.md
