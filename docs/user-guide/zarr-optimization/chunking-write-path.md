@@ -238,11 +238,10 @@ Zarr requires all chunks along a dimension to have the same shape. If you append
 data with a different `chunk_lm` value than the original store, the Zarr
 metadata will become inconsistent, **silently corrupting** the chunk layout.
 
-!!! warning "Chunk Size Consistency Required"
-
-    Always use the **same chunk_lm value** when appending to an existing store.
-    Changing chunk_lm between appends will create a malformed Zarr array that may
-    fail to read or return incorrect data.
+!!! warning "Chunk Size Consistency Required" Always use the **same chunk_lm
+value** when appending to an existing store. Changing chunk_lm between appends
+will create a malformed Zarr array that may fail to read or return incorrect
+data.
 
 **Example of incorrect usage:**
 
