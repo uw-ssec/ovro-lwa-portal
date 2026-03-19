@@ -21,7 +21,7 @@ dimension.
 ```mermaid
 flowchart TB
     subgraph "5D OVRO-LWA Array"
-        A["Array Shape:<br/>time × frequency × polarization × l × m<br/>10 × 48 × 2 × 4096 × 4096"]
+        A["Array Shape:<br/>time × frequency × polarization × l × m<br/>10 × 48 × 1 × 4096 × 4096"]
     end
 
     subgraph "Chunking Strategy"
@@ -38,6 +38,38 @@ flowchart TB
     style A fill:#e1f5ff
     style B fill:#fff4e1
     style C fill:#f0f0f0
+```
+
+The spatial tiling structure for a 4096×4096 image with chunk_lm=1024 creates a
+4×4 grid:
+
+```
+4096×4096 spatial array chunked into 1024×1024 tiles:
+
+    l-axis (4096 pixels) →
+m  ┌────────┬────────┬────────┬────────┐
+│  │        │        │        │        │
+a  │ (0,0)  │ (0,1)  │ (0,2)  │ (0,3)  │  Each tile = 1024×1024 pixels
+x  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │              = 4 MB uncompressed
+i  │        │        │        │        │              (float32)
+s  ├────────┼────────┼────────┼────────┤
+   │        │        │        │        │
+4  │ (1,0)  │ (1,1)  │ (1,2)  │ (1,3)  │
+0  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+9  │        │        │        │        │
+6  ├────────┼────────┼────────┼────────┤
+   │        │        │        │        │
+p  │ (2,0)  │ (2,1)  │ (2,2)  │ (2,3)  │
+i  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+x  │        │        │        │        │
+e  ├────────┼────────┼────────┼────────┤
+l  │        │        │        │        │
+s  │ (3,0)  │ (3,1)  │ (3,2)  │ (3,3)  │
+↓  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+   │        │        │        │        │
+   └────────┴────────┴────────┴────────┘
+
+Total: 16 spatial chunks per time-frequency-polarization point
 ```
 
 Each chunk maps to a single file on local storage or a single object in cloud
@@ -103,8 +135,9 @@ structure:
 The spatial grid spans 4096×4096 pixels in the (l, m) plane, providing a
 wide-field view of the radio sky. At single precision (float32), a single
 spatial frame occupies 4096 × 4096 × 4 bytes = 67,108,864 bytes ≈ 64 MB
-uncompressed. With 48 frequency channels and 2 polarizations, a single time
-snapshot totals approximately 6.1 GB uncompressed.
+uncompressed. With 48 frequency channels and 1 polarization (typical for
+OVRO-LWA observations using Stokes I only), a single time snapshot totals
+approximately 3 GB uncompressed.
 
 Typical dimension sizes vary by observation:
 
@@ -139,12 +172,29 @@ queries, oversized chunks create unacceptable delays.
 Consider a worked example for the OVRO-LWA data model. With a chunk shape of
 `chunk_lm=1024` on a 4096×4096 spatial grid, the array divides into 4 chunks per
 spatial dimension, yielding 16 spatial chunks per frame. Each spatial chunk
-contains 1024 × 1024 × 4 bytes = 4 MB uncompressed. After compression with
-typical Zarr compression settings (typical ratio: 2:1 to 10:1 depending on data
-characteristics and compressor settings), the compressed chunk size will depend
-on the specific compressor configuration used by xradio's write_image() and the
-data characteristics, but generally falls within or near the 10–100 MB target
-range after accounting for frequency and time chunking.
+contains 1024 × 1024 × 4 bytes = 4 MB uncompressed.
+
+Radio astronomy sky images typically achieve compression ratios of 3:1 to 6:1
+with Zarr's default Blosc compressor, as the spatial structure and empty sky
+regions compress efficiently. For OVRO-LWA data with the default compressor
+settings, a 4 MB uncompressed chunk typically compresses to 0.7–1.3 MB on disk.
+With 1 polarization, 48 frequency channels means 48 chunks per spatial tile per
+time step, totaling 34–62 MB per spatial region across all frequencies. This
+aligns well with the 10–100 MB target range for cloud-optimized chunking.
+
+!!! tip "Measuring Actual Compression"
+
+    To verify compression ratios on your data, inspect an existing Zarr store:
+    ```bash
+    # Get compressed size of all chunks for SKY variable
+    du -sh /path/to/store.zarr/SKY/
+
+    # Compare to uncompressed size from metadata
+    python -c "import zarr; z = zarr.open('/path/to/store.zarr', 'r'); \
+    print(f'Uncompressed: {z.SKY.nbytes / 1e9:.2f} GB')"
+    ```
+    The ratio of uncompressed to compressed size gives your empirical compression
+    ratio for planning future conversions.
 
 This chunking strategy aligns with OVRO-LWA's two primary access patterns. For
 time-frequency extraction targeting a known source position, chunking along
@@ -209,7 +259,7 @@ granularity and scheduling overhead.
 
 ## See Also
 
-- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) - Converting OVRO-LWA
-  FITS files to Zarr format
-- [Data Loading API Reference](api/data-loading.md) - API documentation for
-  loading Zarr datasets
+- [FITS to Zarr Conversion](../fits-to-zarr.md) - Converting OVRO-LWA FITS files
+  to Zarr format
+- [Data Loading API Reference](../../api/data-loading.md) - API documentation
+  for loading Zarr datasets

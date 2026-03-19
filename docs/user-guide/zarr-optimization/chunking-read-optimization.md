@@ -91,6 +91,17 @@ These recipes provide optimized chunk configurations for common OVRO-LWA
 workflows. Each recipe includes a concrete worked example showing expected HTTP
 request counts for typical operations.
 
+!!! note "Why Polarization is Omitted from Recipes"
+
+    The polarization dimension is not specified in the `chunks` parameter because
+    it's already chunked optimally at size 1 on disk (one chunk per polarization).
+    When a dimension is omitted from the chunks dict, Xarray uses the on-disk
+    chunk size by default. Since OVRO-LWA observations typically contain only 1
+    polarization (Stokes I), explicitly setting `"polarization": 1` would be
+    redundant. For datasets with multiple polarizations, the on-disk chunking of
+    1 per polarization is already optimal for analysis workflows that process one
+    polarization at a time.
+
 ### Recipe A: Full Spatial Images (Snapshot Analysis)
 
 **Configuration:**
@@ -484,6 +495,80 @@ with ProgressBar():
 The progress bar shows task execution. Each task typically corresponds to one or
 more chunk fetches. Comparing task count to expected HTTP requests helps
 validate your chunking strategy.
+
+## Monitoring Dask Scheduler Activity
+
+When working with large datasets, it's valuable to observe what computation is
+happening in the background. Dask provides several tools for monitoring
+scheduler activity and estimating resource usage before execution.
+
+### Distributed Dashboard
+
+For distributed workloads, Dask's distributed scheduler provides a real-time web
+dashboard showing worker status, task progress, memory usage, and communication
+patterns:
+
+```python
+from dask.distributed import Client
+
+# Start a local cluster with dashboard
+client = Client()
+print(f"Dashboard available at: {client.dashboard_link}")
+
+# Now operations will be visible in the dashboard
+ds = ovro_lwa_portal.open_dataset(
+    "s3://ovro-lwa/obs.zarr",
+    chunks={"time": 1, "frequency": 1, "l": 1024, "m": 1024}
+)
+
+result = ds.SKY.isel(time=0).mean(dim=["l", "m"]).compute()
+```
+
+The dashboard provides views including:
+
+- **Task Stream**: Shows individual task execution timing and worker assignment
+- **Progress**: Real-time progress bars for active computations
+- **Memory**: Memory usage per worker and data transfer volumes
+- **Workers**: Status and resource utilization of each worker
+
+Access the dashboard by opening the URL printed by `client.dashboard_link` in
+your browser (typically `http://localhost:8787/status`).
+
+### Estimating Computation Before Execution
+
+To understand what work will be performed before calling `.compute()`, inspect
+the Dask task graph:
+
+```python
+# Check number of tasks
+print(f"Number of tasks: {len(ds.SKY.isel(time=0).__dask_graph__())}")
+
+# Estimate number of chunks to fetch
+n_chunks = ds.SKY.isel(time=0).data.npartitions
+print(f"Chunks to fetch: {n_chunks}")
+
+# Estimate uncompressed data volume
+chunk_shape = ds.SKY.isel(time=0).chunks
+total_elements = sum(
+    c[0] * c[1] for c in zip(chunk_shape[-2], chunk_shape[-1])
+)
+data_volume_mb = (total_elements * 4) / (1024**2)  # float32 = 4 bytes
+print(f"Estimated data volume: {data_volume_mb:.1f} MB uncompressed")
+```
+
+For cloud storage, multiply the number of chunks by your typical chunk size
+(after compression) to estimate network transfer volume. Add ~100ms latency
+overhead per chunk for HTTP request timing.
+
+!!! tip "Visualizing Task Graphs"
+
+    For small computations, visualize the task graph structure:
+    ```python
+    ds.SKY.isel(time=0, l=slice(0, 1024), m=slice(0, 1024)).data.visualize()
+    ```
+    This generates a graph image showing task dependencies. Large graphs become
+    unreadable, but this is useful for understanding chunking impact on small
+    subsets.
 
 ## See Also
 

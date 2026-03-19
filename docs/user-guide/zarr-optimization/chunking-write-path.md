@@ -144,12 +144,12 @@ own set of spatial chunks on disk.
 
 **Implication for chunk layout:** With the default `chunk_lm=1024` on a
 4096×4096 spatial grid, each time-frequency-polarization point generates 16
-spatial chunks (4×4 tiles). For a dataset with 10 time steps, 48 frequency
-channels, and 2 polarizations (note: typical OVRO-LWA observations use 1
-polarization for Stokes I only), the total chunk count is:
+spatial chunks (4×4 tiles). For a typical OVRO-LWA dataset with 10 time steps,
+48 frequency channels, and 1 polarization (Stokes I only), the total chunk count
+is:
 
 ```
-10 × 48 × 2 × 16 = 15,360 chunks
+10 × 48 × 1 × 16 = 7,680 chunks
 ```
 
 This granular chunking enables efficient parallel access for both time-series
@@ -238,9 +238,11 @@ Zarr requires all chunks along a dimension to have the same shape. If you append
 data with a different `chunk_lm` value than the original store, the Zarr
 metadata will become inconsistent, **silently corrupting** the chunk layout.
 
-**Warning:** Always use the **same chunk_lm value** when appending to an
-existing store. Changing chunk_lm between appends will create a malformed Zarr
-array that may fail to read or return incorrect data.
+!!! warning "Chunk Size Consistency Required"
+
+    Always use the **same chunk_lm value** when appending to an existing store.
+    Changing chunk_lm between appends will create a malformed Zarr array that may
+    fail to read or return incorrect data.
 
 **Example of incorrect usage:**
 
@@ -407,7 +409,7 @@ dimensions. Mismatched chunks indicate a configuration error during conversion.
 
 - [Chunking Fundamentals](chunking-fundamentals.md) - Conceptual background on
   Zarr chunks and the 10-100 MB sweet spot
-- [FITS to Zarr Conversion](user-guide/fits-to-zarr.md) - User guide for the
-  conversion CLI and Python API
-- [FITS to Zarr API Reference](api/fits-to-zarr-xradio.md) - Low-level API
+- [FITS to Zarr Conversion](../fits-to-zarr.md) - User guide for the conversion
+  CLI and Python API
+- [FITS to Zarr API Reference](../../api/fits-to-zarr-xradio.md) - Low-level API
   documentation
