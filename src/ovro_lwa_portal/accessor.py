@@ -224,6 +224,7 @@ class RadportAccessor:
         """
         from astropy.coordinates import EarthLocation
         from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
 
         # OVRO-LWA location (default)
         if observatory is None:
@@ -237,8 +238,16 @@ class RadportAccessor:
         mjd_array = self._obj.coords["time"].values
 
         # Vectorized LST computation
-        t = Time(mjd_array, format="mjd", scale="utc")
-        lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
+        # Use bundled IERS-B data to avoid network downloads.
+        # Mean sidereal time has ~1 arcsec error — negligible at
+        # OVRO-LWA's ~6-arcmin beam resolution.
+        orig_auto_download = iers_conf.auto_download
+        try:
+            iers_conf.auto_download = False
+            t = Time(mjd_array, format="mjd", scale="utc")
+            lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
+        finally:
+            iers_conf.auto_download = orig_auto_download
 
         # Closed-form SIN projection (vectorized)
         ha_rad = np.deg2rad(lst_deg - ra)
@@ -602,8 +611,10 @@ class RadportAccessor:
         dec_center: float | None = None,
         l_center: float | None = None,
         m_center: float | None = None,
-        dl: float,
-        dm: float,
+        dl: float | None = None,
+        dm: float | None = None,
+        dra: float | None = None,
+        ddec: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         time_idx: int | None = None,
         freq_idx: int | None = None,
@@ -613,7 +624,7 @@ class RadportAccessor:
     ) -> xr.DataArray:
         """Extract a spatial cutout (rectangular region) from the data.
 
-        Returns a 2D DataArray containing data within the specified (l, m)
+        Returns a 2D DataArray containing data within the specified
         bounding box for a given time, frequency, and polarization.
 
         Parameters
@@ -627,12 +638,21 @@ class RadportAccessor:
             Center l coordinate of the cutout region. Requires ``m_center``.
         m_center : float, optional
             Center m coordinate of the cutout region. Requires ``l_center``.
-        dl : float
-            Half-width of the cutout in the l direction.
+        dl : float, optional
+            Half-width of the cutout in the l direction (direction cosine).
             The cutout spans [l_center - dl, l_center + dl].
-        dm : float
-            Half-width of the cutout in the m direction.
+            Use with l_center/m_center.
+        dm : float, optional
+            Half-width of the cutout in the m direction (direction cosine).
             The cutout spans [m_center - dm, m_center + dm].
+            Use with l_center/m_center.
+        dra : float, optional
+            Half-width of the cutout in RA in degrees.
+            Use with ra_center/dec_center. Converted to dl internally
+            using the SIN projection at the center declination.
+        ddec : float, optional
+            Half-width of the cutout in Dec in degrees.
+            Use with ra_center/dec_center. Converted to dm internally.
         var : {'SKY', 'BEAM'}, default 'SKY'
             Data variable to extract.
         time_idx : int, optional
@@ -651,7 +671,8 @@ class RadportAccessor:
         xr.DataArray
             2D DataArray with dimensions (l, m) containing the cutout data.
             Includes metadata attributes: cutout_l_center, cutout_m_center,
-            cutout_dl, cutout_dm.
+            cutout_dl, cutout_dm. When using RA/Dec, also includes
+            cutout_ra_center, cutout_dec_center, cutout_dra, cutout_ddec.
 
         Raises
         ------
@@ -660,14 +681,11 @@ class RadportAccessor:
 
         Examples
         --------
-        >>> # Extract 0.2 x 0.2 region centered at (0, 0)
+        >>> # Extract 0.2 x 0.2 region centered at (0, 0) in direction cosines
         >>> cutout = ds.radport.cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1)
 
-        >>> # Extract at specific frequency
-        >>> cutout = ds.radport.cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1, freq_mhz=50.0)
-
-        >>> # Extract using celestial coordinates
-        >>> cutout = ds.radport.cutout(ra_center=180.0, dec_center=45.0, dl=0.1, dm=0.1)
+        >>> # Extract using celestial coordinates with extent in degrees
+        >>> cutout = ds.radport.cutout(ra_center=180.0, dec_center=45.0, dra=5.0, ddec=5.0)
         """
         # Validate variable
         if var not in self._obj.data_vars:
@@ -700,11 +718,31 @@ class RadportAccessor:
                 "Must provide either (ra_center, dec_center) or (l_center, m_center)."
             )
 
+        # Track whether we're in celestial mode for metadata/plotting
+        celestial_mode = False
+
         if has_radec:
             if ra_center is None or dec_center is None:
                 raise ValueError(
                     "Both ra_center and dec_center must be provided together."
                 )
+            celestial_mode = True
+
+            # Convert dra/ddec (degrees) to dl/dm (direction cosines)
+            if dra is not None or ddec is not None:
+                if dra is None or ddec is None:
+                    raise ValueError(
+                        "Both dra and ddec must be provided together."
+                    )
+                dec_rad = np.deg2rad(dec_center)
+                dl = np.deg2rad(dra) * np.cos(dec_rad)
+                dm = np.deg2rad(ddec)
+            elif dl is None or dm is None:
+                raise ValueError(
+                    "Must provide cutout extent: either (dra, ddec) in degrees "
+                    "or (dl, dm) in direction cosines."
+                )
+
             # Convert RA/Dec to pixel, then pixel to l/m coordinate value
             pix_l, pix_m = self.coords_to_pixel(ra_center, dec_center)
             l_center = float(self._obj.coords["l"].values[pix_l])
@@ -713,6 +751,10 @@ class RadportAccessor:
             if l_center is None or m_center is None:
                 raise ValueError(
                     "Both l_center and m_center must be provided together."
+                )
+            if dl is None or dm is None:
+                raise ValueError(
+                    "Both dl and dm must be provided when using l_center/m_center."
                 )
 
         # Extract 2D slice
@@ -761,6 +803,14 @@ class RadportAccessor:
         cutout.attrs["time_idx"] = time_idx
         cutout.attrs["freq_idx"] = freq_idx
         cutout.attrs["pol"] = pol
+        cutout.attrs["celestial_mode"] = celestial_mode
+
+        if celestial_mode:
+            cutout.attrs["cutout_ra_center"] = ra_center
+            cutout.attrs["cutout_dec_center"] = dec_center
+            if dra is not None:
+                cutout.attrs["cutout_dra"] = dra
+                cutout.attrs["cutout_ddec"] = ddec
 
         return cutout
 
@@ -771,8 +821,10 @@ class RadportAccessor:
         dec_center: float | None = None,
         l_center: float | None = None,
         m_center: float | None = None,
-        dl: float,
-        dm: float,
+        dl: float | None = None,
+        dm: float | None = None,
+        dra: float | None = None,
+        ddec: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         time_idx: int | None = None,
         freq_idx: int | None = None,
@@ -801,8 +853,11 @@ class RadportAccessor:
             Center l coordinate. Requires ``m_center``.
         m_center : float, optional
             Center m coordinate. Requires ``l_center``.
-        dl, dm : float
-            Half-widths of the cutout in l and m directions.
+        dl, dm : float, optional
+            Half-widths of the cutout in l and m directions (direction cosines).
+        dra, ddec : float, optional
+            Half-widths of the cutout in degrees.
+            Use with ra_center/dec_center for consistent units.
         var : {'SKY', 'BEAM'}, default 'SKY'
             Data variable to plot.
         time_idx : int, optional
@@ -836,6 +891,7 @@ class RadportAccessor:
         Examples
         --------
         >>> fig = ds.radport.plot_cutout(l_center=0.0, m_center=0.0, dl=0.1, dm=0.1, freq_mhz=50.0)
+        >>> fig = ds.radport.plot_cutout(ra_center=180.0, dec_center=45.0, dra=5.0, ddec=5.0)
         """
         # Get cutout data
         cutout = self.cutout(
@@ -845,6 +901,8 @@ class RadportAccessor:
             m_center=m_center,
             dl=dl,
             dm=dm,
+            dra=dra,
+            ddec=ddec,
             var=var,
             time_idx=time_idx,
             freq_idx=freq_idx,
@@ -856,6 +914,7 @@ class RadportAccessor:
         # Resolve actual indices for title
         actual_time_idx = cutout.attrs["time_idx"]
         actual_freq_idx = cutout.attrs["freq_idx"]
+        celestial_mode = cutout.attrs.get("celestial_mode", False)
 
         # Create figure
         fig, ax = plt.subplots(figsize=figsize)
@@ -870,13 +929,45 @@ class RadportAccessor:
                 vmin = float(np.percentile(finite_data, 2))
                 vmax = float(np.percentile(finite_data, 98))
 
-        # Get coordinate extents
+        # Get coordinate extents and set axis labels
         l_vals = cutout.coords["l"].values
         m_vals = cutout.coords["m"].values
-        extent = [
-            float(l_vals.min()), float(l_vals.max()),
-            float(m_vals.min()), float(m_vals.max()),
-        ]
+
+        _wcs_available = False
+        if celestial_mode:
+            try:
+                self._get_wcs()
+                _wcs_available = True
+            except (ImportError, ValueError):
+                pass
+        if celestial_mode and _wcs_available:
+            # Convert l/m extent corners to RA/Dec for display
+            wcs = self._get_wcs()
+            from astropy.wcs.utils import pixel_to_skycoord
+
+            # Map l/m pixel range to RA/Dec
+            l_pix_min = int(np.argmin(np.abs(self._obj.coords["l"].values - l_vals.min())))
+            l_pix_max = int(np.argmin(np.abs(self._obj.coords["l"].values - l_vals.max())))
+            m_pix_min = int(np.argmin(np.abs(self._obj.coords["m"].values - m_vals.min())))
+            m_pix_max = int(np.argmin(np.abs(self._obj.coords["m"].values - m_vals.max())))
+
+            corner_ll = pixel_to_skycoord(l_pix_min, m_pix_min, wcs)
+            corner_ur = pixel_to_skycoord(l_pix_max, m_pix_max, wcs)
+
+            extent = [
+                corner_ll.ra.deg, corner_ur.ra.deg,
+                corner_ll.dec.deg, corner_ur.dec.deg,
+            ]
+
+            ax.set_xlabel("RA (degrees)")
+            ax.set_ylabel("Dec (degrees)")
+        else:
+            extent = [
+                float(l_vals.min()), float(l_vals.max()),
+                float(m_vals.min()), float(m_vals.max()),
+            ]
+            ax.set_xlabel("l (direction cosine)")
+            ax.set_ylabel("m (direction cosine)")
 
         # Plot
         im = ax.imshow(
@@ -894,14 +985,22 @@ class RadportAccessor:
             cbar = fig.colorbar(im, ax=ax)
             cbar.set_label("Jy/beam")
 
-        # Build title (use resolved l/m from cutout attrs)
-        resolved_l = cutout.attrs["cutout_l_center"]
-        resolved_m = cutout.attrs["cutout_m_center"]
+        # Build title
         title = self._build_plot_title(var, actual_time_idx, actual_freq_idx, pol)
-        title += f"\nl=[{resolved_l-dl:+.2f},{resolved_l+dl:+.2f}], m=[{resolved_m-dm:+.2f},{resolved_m+dm:+.2f}]"
+        if celestial_mode:
+            ra_c = cutout.attrs["cutout_ra_center"]
+            dec_c = cutout.attrs["cutout_dec_center"]
+            title += f"\nRA={ra_c:.4f}°, Dec={dec_c:.4f}°"
+        else:
+            resolved_l = cutout.attrs["cutout_l_center"]
+            resolved_m = cutout.attrs["cutout_m_center"]
+            dl_val = cutout.attrs["cutout_dl"]
+            dm_val = cutout.attrs["cutout_dm"]
+            title += (
+                f"\nl=[{resolved_l - dl_val:+.2f},{resolved_l + dl_val:+.2f}], "
+                f"m=[{resolved_m - dm_val:+.2f},{resolved_m + dm_val:+.2f}]"
+            )
 
-        ax.set_xlabel("l (direction cosine)")
-        ax.set_ylabel("m (direction cosine)")
         ax.set_title(title)
 
         fig.tight_layout()
@@ -1147,13 +1246,22 @@ class RadportAccessor:
             cbar.set_label("Jy/beam")
 
         # Labels and title
-        pixel_l = dynspec.attrs["pixel_l"]
-        pixel_m = dynspec.attrs["pixel_m"]
         ax.set_xlabel("Time (MJD)")
         ax.set_ylabel("Frequency (MHz)")
-        ax.set_title(
-            f"{var} Dynamic Spectrum at l={pixel_l:+.4f}, m={pixel_m:+.4f}, pol={pol}"
-        )
+
+        if dynspec.attrs.get("tracking"):
+            ra_val = dynspec.attrs["ra"]
+            dec_val = dynspec.attrs["dec"]
+            ax.set_title(
+                f"{var} Dynamic Spectrum (tracked) at RA={ra_val:.4f}°, "
+                f"Dec={dec_val:.4f}°, pol={pol}"
+            )
+        else:
+            pixel_l = dynspec.attrs["pixel_l"]
+            pixel_m = dynspec.attrs["pixel_m"]
+            ax.set_title(
+                f"{var} Dynamic Spectrum at l={pixel_l:+.4f}, m={pixel_m:+.4f}, pol={pol}"
+            )
 
         fig.tight_layout()
         return fig
@@ -2808,15 +2916,31 @@ class RadportAccessor:
         self,
         ra: float,
         dec: float,
+        *,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        observatory: Any = None,
     ) -> tuple[int, int]:
         """Convert celestial coordinates (RA, Dec) to pixel indices.
+
+        A fixed (RA, Dec) maps to different pixel positions at different
+        times due to Earth rotation. When ``time_idx`` or ``time_mjd`` is
+        provided, the conversion uses the SIN projection at that specific
+        time step. Without a time argument, the static WCS header is used
+        (valid only for the reference time of the dataset).
 
         Parameters
         ----------
         ra : float
-            Right Ascension in degrees.
+            Right Ascension in degrees (FK5/J2000).
         dec : float
-            Declination in degrees.
+            Declination in degrees (FK5/J2000).
+        time_idx : int, optional
+            Time index for time-aware conversion.
+        time_mjd : float, optional
+            MJD value for time-aware conversion (overrides ``time_idx``).
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location. Defaults to OVRO-LWA.
 
         Returns
         -------
@@ -2826,12 +2950,32 @@ class RadportAccessor:
         Raises
         ------
         ValueError
-            If WCS is not available or coordinates are outside the image.
+            If WCS is not available (static mode), coordinates are outside
+            the image, or the source is below the horizon at the given time.
 
         Example
         -------
         >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0)
+        >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0, time_idx=10)
         """
+        # Time-aware path: use _compute_pixel_track for a single time step
+        if time_idx is not None or time_mjd is not None:
+            if time_mjd is not None:
+                time_idx = self.nearest_time_idx(time_mjd)
+
+            l_indices, m_indices, visible = self._compute_pixel_track(
+                ra, dec, observatory=observatory
+            )
+
+            if not visible[time_idx]:
+                raise ValueError(
+                    f"Source (RA={ra}, Dec={dec}) is below the horizon "
+                    f"at time index {time_idx}."
+                )
+
+            return int(l_indices[time_idx]), int(m_indices[time_idx])
+
+        # Static WCS path (original behavior)
         try:
             from astropy.coordinates import SkyCoord
             from astropy import units as u
@@ -5159,15 +5303,25 @@ class RadportAccessor:
             cbar.set_label("Jy/beam")
 
         # Labels and title
-        pixel_l = dynspec.attrs["pixel_l"]
-        pixel_m = dynspec.attrs["pixel_m"]
         ax.set_xlabel("Time (MJD)")
         ax.set_ylabel("Frequency (MHz)")
-        ax.set_title(
-            f"{var} Dedispersed Dynamic Spectrum\n"
-            f"l={pixel_l:+.4f}, m={pixel_m:+.4f}, pol={pol}, "
-            f"DM={dm:.2f} pc/cm³ ({method})"
-        )
+
+        if dynspec.attrs.get("tracking"):
+            ra_val = dynspec.attrs["ra"]
+            dec_val = dynspec.attrs["dec"]
+            ax.set_title(
+                f"{var} Dedispersed Dynamic Spectrum (tracked)\n"
+                f"RA={ra_val:.4f}°, Dec={dec_val:.4f}°, pol={pol}, "
+                f"DM={dm:.2f} pc/cm³ ({method})"
+            )
+        else:
+            pixel_l = dynspec.attrs["pixel_l"]
+            pixel_m = dynspec.attrs["pixel_m"]
+            ax.set_title(
+                f"{var} Dedispersed Dynamic Spectrum\n"
+                f"l={pixel_l:+.4f}, m={pixel_m:+.4f}, pol={pol}, "
+                f"DM={dm:.2f} pc/cm³ ({method})"
+            )
 
         fig.tight_layout()
         return fig
