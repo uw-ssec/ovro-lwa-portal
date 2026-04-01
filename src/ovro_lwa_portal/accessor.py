@@ -234,8 +234,10 @@ class RadportAccessor:
                 lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
             )
 
-        # Get MJD timestamps from dataset
-        mjd_array = self._obj.coords["time"].values
+        # Get MJD timestamps from dataset, ensuring float64 dtype
+        mjd_array = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
+        # Handle scalar (single time step) by ensuring 1-d
+        mjd_array = np.atleast_1d(mjd_array)
 
         # Vectorized LST computation
         # Use bundled IERS-B data to avoid network downloads.
@@ -270,10 +272,13 @@ class RadportAccessor:
         l_coords = self._obj.coords["l"].values
         m_coords = self._obj.coords["m"].values
 
-        # Vectorized nearest-neighbor pixel lookup using searchsorted
-        # Requires sorted coordinate arrays (ascending)
-        l_sorted = np.sort(l_coords)
-        m_sorted = np.sort(m_coords)
+        # Vectorized nearest-neighbor pixel lookup using searchsorted.
+        # argsort provides the mapping from sorted→original positions so
+        # the returned indices are valid for isel() against the dataset.
+        l_order = np.argsort(l_coords)
+        m_order = np.argsort(m_coords)
+        l_sorted = l_coords[l_order]
+        m_sorted = m_coords[m_order]
 
         l_insert = np.searchsorted(l_sorted, l_vals)
         m_insert = np.searchsorted(m_sorted, m_vals)
@@ -285,18 +290,22 @@ class RadportAccessor:
         # Choose nearest neighbor (searchsorted gives insertion point,
         # check if previous index is closer)
         l_prev = np.clip(l_insert - 1, 0, len(l_sorted) - 1)
-        l_indices = np.where(
+        l_sorted_idx = np.where(
             np.abs(l_sorted[l_insert] - l_vals) <= np.abs(l_sorted[l_prev] - l_vals),
             l_insert,
             l_prev,
         )
 
         m_prev = np.clip(m_insert - 1, 0, len(m_sorted) - 1)
-        m_indices = np.where(
+        m_sorted_idx = np.where(
             np.abs(m_sorted[m_insert] - m_vals) <= np.abs(m_sorted[m_prev] - m_vals),
             m_insert,
             m_prev,
         )
+
+        # Map sorted indices back to original coordinate order
+        l_indices = l_order[l_sorted_idx]
+        m_indices = m_order[m_sorted_idx]
 
         # Check pixel bounds (source may be visible but outside image FOV)
         in_bounds = (
@@ -307,9 +316,21 @@ class RadportAccessor:
         )
         visible = visible & in_bounds
 
-        # Mark below-horizon / out-of-bounds time steps
-        l_indices[~visible] = -1
-        m_indices[~visible] = -1
+        # Warn if source is never visible during the observation
+        if not np.any(visible):
+            warnings.warn(
+                f"Source (RA={ra}°, Dec={dec}°) is never above the horizon "
+                f"during this observation. All output values will be NaN.",
+                stacklevel=3,
+            )
+
+        # Mark below-horizon / out-of-bounds time steps with out-of-range
+        # sentinel (n_l, not -1, to avoid silent last-element extraction
+        # if a caller forgets to check the visible mask).
+        n_l = len(l_coords)
+        n_m = len(m_coords)
+        l_indices[~visible] = n_l
+        m_indices[~visible] = n_m
 
         return l_indices.astype(int), m_indices.astype(int), visible
 
@@ -700,6 +721,8 @@ class RadportAccessor:
         elif freq_idx is None:
             freq_idx = 0
 
+        # Track whether user explicitly requested a specific time step
+        user_specified_time = time_idx is not None or time_mjd is not None
         if time_mjd is not None:
             time_idx = self.nearest_time_idx(time_mjd)
         elif time_idx is None:
@@ -735,7 +758,22 @@ class RadportAccessor:
                         "Both dra and ddec must be provided together."
                     )
                 dec_rad = np.deg2rad(dec_center)
-                dl = np.deg2rad(dra) * np.cos(dec_rad)
+                cos_dec = np.cos(dec_rad)
+
+                # Near the celestial poles, RA extent maps to ~zero
+                # extent in l. The pixel scale sets the minimum
+                # meaningful dl.
+                l_coords = self._obj.coords["l"].values
+                pixel_scale_l = float(np.abs(np.median(np.diff(np.sort(l_coords)))))
+                dl = np.deg2rad(dra) * cos_dec
+                if dl < pixel_scale_l:
+                    raise ValueError(
+                        f"At Dec={dec_center}°, the requested dra={dra}° "
+                        f"maps to dl={dl:.6f} in direction cosines, which "
+                        f"is smaller than the pixel scale ({pixel_scale_l:.6f}). "
+                        f"Near the celestial poles, RA extent degenerates. "
+                        f"Use dl/dm directly for cutouts near the poles."
+                    )
                 dm = np.deg2rad(ddec)
             elif dl is None or dm is None:
                 raise ValueError(
@@ -743,8 +781,14 @@ class RadportAccessor:
                     "or (dl, dm) in direction cosines."
                 )
 
-            # Convert RA/Dec to pixel, then pixel to l/m coordinate value
-            pix_l, pix_m = self.coords_to_pixel(ra_center, dec_center)
+            # Convert RA/Dec to pixel, then pixel to l/m coordinate value.
+            # Use time-aware SIN projection only when the user explicitly
+            # specified a time step; otherwise fall back to the static WCS
+            # (which is correct for the dataset's reference time).
+            c2p_kwargs: dict[str, Any] = {}
+            if user_specified_time:
+                c2p_kwargs["time_idx"] = time_idx
+            pix_l, pix_m = self.coords_to_pixel(ra_center, dec_center, **c2p_kwargs)
             l_center = float(self._obj.coords["l"].values[pix_l])
             m_center = float(self._obj.coords["m"].values[pix_m])
         else:
@@ -933,34 +977,41 @@ class RadportAccessor:
         l_vals = cutout.coords["l"].values
         m_vals = cutout.coords["m"].values
 
-        _wcs_available = False
-        if celestial_mode:
-            try:
-                self._get_wcs()
-                _wcs_available = True
-            except (ImportError, ValueError):
-                pass
-        if celestial_mode and _wcs_available:
-            # Convert l/m extent corners to RA/Dec for display
-            wcs = self._get_wcs()
-            from astropy.wcs.utils import pixel_to_skycoord
+        if celestial_mode and "cutout_dra" in cutout.attrs:
+            # Use the requested RA/Dec extent directly — this avoids
+            # non-linear SIN projection artifacts when converting l/m
+            # pixel corners back to RA/Dec.
+            ra_c = cutout.attrs["cutout_ra_center"]
+            dec_c = cutout.attrs["cutout_dec_center"]
+            dra_val = cutout.attrs["cutout_dra"]
+            ddec_val = cutout.attrs["cutout_ddec"]
 
-            # Map l/m pixel range to RA/Dec
-            l_pix_min = int(np.argmin(np.abs(self._obj.coords["l"].values - l_vals.min())))
-            l_pix_max = int(np.argmin(np.abs(self._obj.coords["l"].values - l_vals.max())))
-            m_pix_min = int(np.argmin(np.abs(self._obj.coords["m"].values - m_vals.min())))
-            m_pix_max = int(np.argmin(np.abs(self._obj.coords["m"].values - m_vals.max())))
+            # Clamp Dec to physical range and wrap RA to [0, 360)
+            ra_min = (ra_c - dra_val) % 360.0
+            ra_max = (ra_c + dra_val) % 360.0
+            dec_min = max(-90.0, dec_c - ddec_val)
+            dec_max = min(90.0, dec_c + ddec_val)
 
-            corner_ll = pixel_to_skycoord(l_pix_min, m_pix_min, wcs)
-            corner_ur = pixel_to_skycoord(l_pix_max, m_pix_max, wcs)
+            # If RA wraps across 0°/360°, keep the raw values for
+            # a continuous axis (matplotlib handles negative/360+ fine)
+            if ra_min > ra_max:
+                ra_min = ra_c - dra_val
+                ra_max = ra_c + dra_val
 
-            extent = [
-                corner_ll.ra.deg, corner_ur.ra.deg,
-                corner_ll.dec.deg, corner_ur.dec.deg,
-            ]
+            extent = [ra_min, ra_max, dec_min, dec_max]
 
             ax.set_xlabel("RA (degrees)")
             ax.set_ylabel("Dec (degrees)")
+        elif celestial_mode:
+            # Celestial mode with dl/dm (no dra/ddec) — display in l/m
+            # since we can't reliably invert the SIN projection for
+            # display extents.
+            extent = [
+                float(l_vals.min()), float(l_vals.max()),
+                float(m_vals.min()), float(m_vals.max()),
+            ]
+            ax.set_xlabel("l (direction cosine)")
+            ax.set_ylabel("m (direction cosine)")
         else:
             extent = [
                 float(l_vals.min()), float(l_vals.max()),
@@ -1092,33 +1143,36 @@ class RadportAccessor:
             return da
 
         # Per-time tracking path (ra/dec)
+        # Do NOT sortby("time") here — _compute_pixel_track returns
+        # positional indices matching the original dataset time order.
+        # Sorting data_var would misalign positional indices with data.
         l_indices, m_indices, visible = result
         data_var = self._obj[var].isel(polarization=pol)
-
-        if "time" in data_var.dims:
-            data_var = data_var.sortby("time")
-        if "frequency" in data_var.dims:
-            data_var = data_var.sortby("frequency")
 
         n_times = self._obj.sizes["time"]
         n_freqs = self._obj.sizes["frequency"]
 
+        time_coords = self._obj.coords["time"].values
+        freq_coords = self._obj.coords["frequency"].values
+
         # Build output array, NaN-filled
         out = np.full((n_times, n_freqs), np.nan)
 
-        # Extract per-time pixel values using advanced indexing
+        # Extract per-time pixel values
         vis_mask = visible
         if np.any(vis_mask):
-            vis_l = xr.DataArray(l_indices[vis_mask], dims="time")
-            vis_m = xr.DataArray(m_indices[vis_mask], dims="time")
-            # isel with DataArray indexers for per-time extraction
-            tracked = data_var.isel(time=np.where(vis_mask)[0]).isel(
-                l=vis_l, m=vis_m
-            )
-            out[vis_mask] = tracked.values
+            vis_times = np.where(vis_mask)[0]
+            vis_l = l_indices[vis_mask]
+            vis_m = m_indices[vis_mask]
 
-        time_coords = data_var.coords["time"].values
-        freq_coords = data_var.coords["frequency"].values
+            # Load only the visible time steps into memory to avoid
+            # building massive dask task graphs from per-time fancy indexing.
+            subset = data_var.isel(time=vis_times)
+            if hasattr(subset, "load"):
+                subset = subset.load()
+
+            for i, (ti, li, mi) in enumerate(zip(vis_times, vis_l, vis_m)):
+                out[ti] = subset.isel(time=i, l=int(li), m=int(mi)).values
 
         da = xr.DataArray(
             out,
@@ -2085,12 +2139,18 @@ class RadportAccessor:
 
         vis_mask = visible
         if np.any(vis_mask):
-            vis_l = xr.DataArray(l_indices[vis_mask], dims="time")
-            vis_m = xr.DataArray(m_indices[vis_mask], dims="time")
-            tracked = data_var.isel(time=np.where(vis_mask)[0]).isel(
-                l=vis_l, m=vis_m
-            )
-            out[vis_mask] = tracked.values
+            vis_times = np.where(vis_mask)[0]
+            vis_l = l_indices[vis_mask]
+            vis_m = m_indices[vis_mask]
+
+            # Load only visible time steps into memory to avoid
+            # dask task graph explosion from per-time fancy indexing.
+            subset = data_var.isel(time=vis_times)
+            if hasattr(subset, "load"):
+                subset = subset.load()
+
+            for i, (ti, li, mi) in enumerate(zip(vis_times, vis_l, vis_m)):
+                out[ti] = float(subset.isel(time=i, l=int(li), m=int(mi)).values)
 
         time_coords = self._obj.coords["time"].values
         lc = xr.DataArray(
@@ -2989,6 +3049,22 @@ class RadportAccessor:
         coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="fk5")
         x, y = wcs.world_to_pixel(coord)
 
+        # WCS returns NaN for coordinates outside the projection domain
+        # (e.g., sources below the horizon or outside the SIN projection)
+        if np.isnan(x) or np.isnan(y):
+            # Compute angular distance from phase center to give context
+            crval1 = wcs.wcs.crval[0]
+            crval2 = wcs.wcs.crval[1]
+            phase_center = SkyCoord(ra=crval1 * u.deg, dec=crval2 * u.deg, frame="fk5")
+            sep = coord.separation(phase_center).deg
+            raise ValueError(
+                f"Source (RA={ra}°, Dec={dec}°) is outside the visible sky "
+                f"for this dataset's SIN projection. The source is {sep:.1f}° "
+                f"from the phase center (RA={crval1:.1f}°, Dec={crval2:.1f}°). "
+                f"The SIN projection covers a hemisphere centered on the phase "
+                f"center — sources beyond ~90° cannot be mapped to pixels."
+            )
+
         l_idx = int(round(float(x)))
         m_idx = int(round(float(y)))
 
@@ -2997,8 +3073,11 @@ class RadportAccessor:
         n_m = self._obj.sizes["m"]
         if not (0 <= l_idx < n_l) or not (0 <= m_idx < n_m):
             raise ValueError(
-                f"Coordinates (RA={ra}, Dec={dec}) map to pixel ({l_idx}, {m_idx}) "
-                f"which is outside image bounds [0, {n_l}) x [0, {n_m})"
+                f"Coordinates (RA={ra}°, Dec={dec}°) map to pixel "
+                f"({l_idx}, {m_idx}) which is outside the image bounds "
+                f"[0, {n_l}) x [0, {n_m}). The source may be in the "
+                f"visible sky but outside the field of view captured "
+                f"by this dataset."
             )
 
         return l_idx, m_idx
@@ -4036,6 +4115,9 @@ class RadportAccessor:
             - m_idx: m pixel index
             - flux: peak flux value (Jy/beam)
             - snr: signal-to-noise ratio
+            - ra: Right Ascension in degrees (None if WCS unavailable
+              or pixel is outside the projection domain)
+            - dec: Declination in degrees (None if WCS unavailable)
 
         Raises
         ------
@@ -4105,6 +4187,11 @@ class RadportAccessor:
                 "flux": float(signal[l_idx, m_idx]),
                 "snr": float(snr[l_idx, m_idx]),
             }
+            # Always include ra/dec keys for consistent caller interface.
+            # Set to None when WCS is unavailable or conversion fails
+            # (e.g., edge pixels outside the SIN projection domain).
+            peak["ra"] = None
+            peak["dec"] = None
             if self.has_wcs:
                 try:
                     ra_val, dec_val = self.pixel_to_coords(int(l_idx), int(m_idx))

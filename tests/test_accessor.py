@@ -2695,13 +2695,19 @@ class TestComputePixelTrack:
     def test_below_horizon_marked_invisible(
         self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
     ) -> None:
-        """Source well below horizon has visible=False and indices=-1."""
+        """Source well below horizon has visible=False and out-of-range sentinels."""
         ds = valid_ovro_dataset_with_tracking_wcs
         # Dec = -80 is very far south, never visible from OVRO-LWA (lat 37.2°)
-        l_idx, m_idx, visible = ds.radport._compute_pixel_track(ra=0.0, dec=-80.0)
+        with pytest.warns(UserWarning, match="never above the horizon"):
+            l_idx, m_idx, visible = ds.radport._compute_pixel_track(
+                ra=0.0, dec=-80.0
+            )
         assert not np.any(visible)
-        assert np.all(l_idx == -1)
-        assert np.all(m_idx == -1)
+        # Sentinel values are n_l/n_m (out-of-range), not -1
+        n_l = ds.sizes["l"]
+        n_m = ds.sizes["m"]
+        assert np.all(l_idx == n_l)
+        assert np.all(m_idx == n_m)
 
     def test_result_shapes_match_time_array(
         self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
@@ -2947,7 +2953,8 @@ class TestCelestialTimeSeriesTracking:
         """Time steps where source is below horizon are NaN in light curve."""
         ds = valid_ovro_dataset_with_tracking_wcs
         # Dec=-80 is never visible from OVRO-LWA
-        lc = ds.radport.light_curve(ra=0.0, dec=-80.0, freq_mhz=50.0)
+        with pytest.warns(UserWarning, match="never above the horizon"):
+            lc = ds.radport.light_curve(ra=0.0, dec=-80.0, freq_mhz=50.0)
         assert np.all(np.isnan(lc.values))
 
     def test_dedispersed_radec_works_end_to_end(
