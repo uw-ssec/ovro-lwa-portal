@@ -8,7 +8,8 @@ $ARGUMENTS — PR number or URL (optional, defaults to current branch's PR)
 
 1. Determine the PR:
    - If `$ARGUMENTS` is provided, use it as the PR number or URL
-   - If not, find the PR for the current branch: `gh pr view --json number,title,state,headRefName`
+   - If not, find the PR for the current branch:
+     `gh pr view --json number,title,state,headRefName`
 
 2. Check PR status:
    - `gh pr view <number> --json state,mergeable,mergeStateStatus,statusCheckRollup,title,headRefName`
@@ -20,9 +21,11 @@ $ARGUMENTS — PR number or URL (optional, defaults to current branch's PR)
    - If there are unstaged changes, stash them before proceeding: `git stash`
 
 4. Merge the PR:
+
    ```bash
    gh pr merge <number> --squash --delete-branch
    ```
+
    Use `--squash` by default (consistent with this repo's history).
 
 5. Clean up locally:
@@ -35,7 +38,8 @@ $ARGUMENTS — PR number or URL (optional, defaults to current branch's PR)
 6. Verify cleanup:
    - `git branch -a | grep <branch-name>` to confirm branch is gone everywhere
 
-7. Confirm: "PR #N merged into main. Branch `<name>` deleted locally and remotely."
+7. Confirm: "PR #N merged into main. Branch `<name>` deleted locally and
+   remotely."
 
 ## Rules
 

@@ -14,7 +14,8 @@ Create a pull request for the current branch.
 3. If the branch hasn't been pushed, push with `git push -u origin <branch>`.
 
 4. Analyze ALL commits in the branch (not just the latest) to draft:
-   - **Title**: Use conventional commit format: `type(scope): short description` (under 70 chars)
+   - **Title**: Use conventional commit format: `type(scope): short description`
+     (under 70 chars)
    - **Body**: Structured summary with test plan
 
 5. Create the PR:
@@ -39,6 +40,7 @@ EOF
 ## Title Convention
 
 Use the same conventional commit types as /commit:
+
 - `feat(scope):` for new features
 - `fix(scope):` for bug fixes
 - `refactor(scope):` for restructuring
@@ -50,4 +52,5 @@ Use the same conventional commit types as /commit:
 - Keep title under 70 characters
 - Always include a test plan with specific checkboxes
 - Never create a PR from `main` to `main`
-- If the branch name contains a hint (e.g., `feat/`, `fix/`), use that as the commit type
+- If the branch name contains a hint (e.g., `feat/`, `fix/`), use that as the
+  commit type

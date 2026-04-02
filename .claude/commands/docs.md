@@ -1,6 +1,7 @@
 Write comprehensive documentation for recent work in this session.
 
-Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broadly)
+Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate
+broadly)
 
 ## Instructions
 
@@ -11,9 +12,12 @@ Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broad
    - Review any open plans in `docs/plans/`
    - Read `docs/index.md` and `mkdocs.yml` for existing structure
 
-2. **Determine scope** — Based on the argument and recent changes, decide which docs need writing or updating:
-   - If argument is a specific topic (e.g., "queues", "auth", "notifications"), focus there
-   - If argument is a section (e.g., "architecture", "database", "guides"), update that section
+2. **Determine scope** — Based on the argument and recent changes, decide which
+   docs need writing or updating:
+   - If argument is a specific topic (e.g., "queues", "auth", "notifications"),
+     focus there
+   - If argument is a section (e.g., "architecture", "database", "guides"),
+     update that section
    - If argument is "all" or empty, document everything from the current session
    - Always check existing docs first — update rather than duplicate
 
@@ -44,14 +48,19 @@ Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broad
    - Frontend changes → `docs/frontend/`
    - How-to content → `docs/guides/`
    - Implementation plans → `docs/plans/` (named `YYYY-MM-DD-topic.md`)
-   - Session learnings → `docs/guides/architecture-decisions.md` (append new entries at top of relevant section)
+   - Session learnings → `docs/guides/architecture-decisions.md` (append new
+     entries at top of relevant section)
    - Script documentation → `docs/scripts/`
 
-5. **Update mkdocs.yml nav** — If you created a new file, add it to the `nav:` section in `mkdocs.yml` under the correct heading. Match existing indentation and naming style.
+5. **Update mkdocs.yml nav** — If you created a new file, add it to the `nav:`
+   section in `mkdocs.yml` under the correct heading. Match existing indentation
+   and naming style.
 
-6. **Update docs/index.md** — If the new doc is significant, add a link in the Documentation section of `docs/index.md` with a one-line description.
+6. **Update docs/index.md** — If the new doc is significant, add a link in the
+   Documentation section of `docs/index.md` with a one-line description.
 
-7. **Verify** — Run `pixi run docs-build` to confirm MkDocs builds without errors.
+7. **Verify** — Run `pixi run docs-build` to confirm MkDocs builds without
+   errors.
 
 8. **Report** — Show the user:
    - Files created or updated (with paths)
@@ -60,11 +69,13 @@ Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broad
 
 ## Documentation Style
 
-- Use MkDocs Material features: admonitions (`!!! note`, `!!! warning`, `!!! tip`), tabs, Mermaid diagrams, code blocks with language tags
+- Use MkDocs Material features: admonitions (`!!! note`, `!!! warning`,
+  `!!! tip`), tabs, Mermaid diagrams, code blocks with language tags
 - Start every doc with a level-1 heading and a 1-2 sentence summary
 - Use tables for structured data (configs, env vars, field mappings)
 - Keep headings hierarchical (h1 → h2 → h3, never skip levels)
-- Use imperative voice for guides ("Run the migration", not "You should run the migration")
+- Use imperative voice for guides ("Run the migration", not "You should run the
+  migration")
 - Architecture decisions follow the pattern:
 
 ```markdown
@@ -81,7 +92,8 @@ Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broad
 - Use `sequenceDiagram` for request/response flows
 - Use `erDiagram` for database relationships
 - Keep diagrams focused — split complex systems into multiple diagrams
-- Label edges with the protocol or mechanism (e.g., `-->|JWT|`, `-->|REST|`, `-->|Queue|`)
+- Label edges with the protocol or mechanism (e.g., `-->|JWT|`, `-->|REST|`,
+  `-->|Queue|`)
 
 ## Rules
 
@@ -91,4 +103,5 @@ Arguments: $ARGUMENTS (optional — topic, section, or "all" to regenerate broad
 - Date-stamp architecture decisions and plans
 - Use relative links between docs (e.g., `../guides/getting-started.md`)
 - Build must pass before considering the task done
-- If `pixi run docs-build` fails, fix the issue (usually a nav mismatch or broken link)
+- If `pixi run docs-build` fails, fix the issue (usually a nav mismatch or
+  broken link)
