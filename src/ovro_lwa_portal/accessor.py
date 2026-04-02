@@ -378,6 +378,120 @@ class RadportAccessor:
 
         return l_indices.astype(int), m_indices.astype(int), visible
 
+    def _compute_pixel_at_time(
+        self,
+        ra: float,
+        dec: float,
+        time_idx: int,
+        observatory: Any = None,
+    ) -> tuple[int, int]:
+        """Compute the pixel index for (RA, Dec) at a single time step.
+
+        This is a lightweight alternative to `_compute_pixel_track` for
+        single-frame methods (spectrum, cutout, spectral_index, etc.)
+        that only need one time step.  It computes the LST for just the
+        requested timestamp rather than the full time axis.
+
+        Parameters
+        ----------
+        ra, dec : float
+            Source coordinates in degrees (FK5/J2000).
+        time_idx : int
+            Index into the dataset's time dimension.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location. Defaults to OVRO-LWA.
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(l_idx, m_idx)`` pixel indices.
+
+        Raises
+        ------
+        ValueError
+            If the source is below the horizon or outside the image FOV
+            at the requested time step.
+        """
+        from astropy.coordinates import EarthLocation
+        from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
+
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        mjd = float(self._obj.coords["time"].values[time_idx])
+        lon_deg = float(observatory.lon.deg)
+
+        # Check the full-array LST cache first — if a prior
+        # _compute_pixel_track call already computed all LSTs, reuse it.
+        all_mjd = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
+        all_mjd = np.atleast_1d(all_mjd)
+        full_key = (all_mjd.tobytes(), lon_deg)
+
+        if full_key in self._lst_cache:
+            lst_deg = float(self._lst_cache[full_key][time_idx])
+        else:
+            # Compute LST for just this single timestamp.
+            single_key = (np.float64(mjd).tobytes(), lon_deg)
+            if single_key in self._lst_cache:
+                lst_deg = float(self._lst_cache[single_key])
+            else:
+                orig = iers_conf.auto_download
+                try:
+                    iers_conf.auto_download = False
+                    t = Time(mjd, format="mjd", scale="utc")
+                    lst_deg = float(
+                        t.sidereal_time("mean", longitude=observatory.lon).deg
+                    )
+                finally:
+                    iers_conf.auto_download = orig
+                self._lst_cache[single_key] = np.array(lst_deg)
+
+        # SIN projection for the single time step
+        ha_rad = np.deg2rad(lst_deg - ra)
+        dec_rad = np.deg2rad(dec)
+        lat_rad = np.deg2rad(observatory.lat.deg)
+
+        l_val = np.cos(dec_rad) * np.sin(ha_rad)
+        m_val = np.sin(dec_rad) * np.cos(lat_rad) - np.cos(dec_rad) * np.sin(
+            lat_rad
+        ) * np.cos(ha_rad)
+
+        # Visibility check
+        sin_alt = np.sin(dec_rad) * np.sin(lat_rad) + np.cos(
+            dec_rad
+        ) * np.cos(lat_rad) * np.cos(ha_rad)
+        if sin_alt <= 0:
+            raise ValueError(
+                f"Source (RA={ra}, Dec={dec}) is below the horizon "
+                f"at time index {time_idx}."
+            )
+
+        # Nearest-neighbor pixel lookup
+        l_coords = self._obj.coords["l"].values
+        m_coords = self._obj.coords["m"].values
+
+        l_idx = int(np.argmin(np.abs(l_coords - l_val)))
+        m_idx = int(np.argmin(np.abs(m_coords - m_val)))
+
+        # Bounds check
+        if not (l_coords.min() <= l_val <= l_coords.max()):
+            raise ValueError(
+                f"Source (RA={ra}, Dec={dec}) maps to l={l_val:.4f} which "
+                f"is outside the image FOV at time index {time_idx}."
+            )
+        if not (m_coords.min() <= m_val <= m_coords.max()):
+            raise ValueError(
+                f"Source (RA={ra}, Dec={dec}) maps to m={m_val:.4f} which "
+                f"is outside the image FOV at time index {time_idx}."
+            )
+
+        return l_idx, m_idx
+
     def _resolve_coordinates(
         self,
         *,
@@ -3085,22 +3199,15 @@ class RadportAccessor:
         >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0)
         >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0, time_idx=10)
         """
-        # Time-aware path: use _compute_pixel_track for a single time step
+        # Time-aware path: compute LST for just the single requested
+        # timestamp rather than the full time axis (~10x faster).
         if time_idx is not None or time_mjd is not None:
             if time_mjd is not None:
                 time_idx = self.nearest_time_idx(time_mjd)
 
-            l_indices, m_indices, visible = self._compute_pixel_track(
-                ra, dec, observatory=observatory
+            return self._compute_pixel_at_time(
+                ra, dec, time_idx, observatory=observatory
             )
-
-            if not visible[time_idx]:
-                raise ValueError(
-                    f"Source (RA={ra}, Dec={dec}) is below the horizon "
-                    f"at time index {time_idx}."
-                )
-
-            return int(l_indices[time_idx]), int(m_indices[time_idx])
 
         # Static WCS path (original behavior)
         try:
