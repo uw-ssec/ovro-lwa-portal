@@ -5,6 +5,17 @@ Newest entries appear first within each section.
 
 ## Celestial Coordinate Tracking
 
+### 2026-04-02: Guard find_peaks ra/dec against WCS NaN at projection boundary (Accepted)
+
+- **Decision:** `find_peaks` now checks `np.isfinite` on `pixel_to_coords`
+  return values before assigning to the peak dict. Peaks outside the SIN
+  projection domain keep `ra=None, dec=None`.
+- **Why:** QA on real OSN data found that peaks near l^2+m^2 ~ 1 (the SIN
+  projection boundary) got `ra=nan, dec=nan` instead of `None`. Astropy's WCS
+  returns `nan` for these edge pixels, overwriting the `None` default.
+- **Result:** Callers can reliably test `if peak["ra"] is not None` without
+  also checking for `nan`.
+
 ### 2026-04-02: Single-time methods resolve RA/Dec at the requested frame (Accepted)
 
 - **Decision:** `spectrum()`, `spectral_index()`, `integrated_flux()`, and
@@ -130,3 +141,39 @@ the same chunk.
 takes more than 2 seconds. This keeps fast operations silent while giving
 feedback on slow ones — important for interactive use where Casey wants to know
 "is it doing something?"
+
+## QA on Real S3 Data (2026-04-02)
+
+Ran the full accessor workflow against `all_subbands_2024-05-24_first10.zarr`
+on OSN — 10 time x 10 freq x 4096x4096, chunks `(1,1,1,4096,4096)`.
+
+### Chunk layout dominates remote pixel access time
+
+With `(4096,4096)` spatial chunks, every single-pixel `isel(l=idx, m=idx)`
+requires fetching the full ~64 MB compressed chunk from S3.
+`dynamic_spectrum(l=0, m=0)` reads 100 chunks (10t x 10f) = ~3 GB of
+network transfer for 100 scalar values, taking ~115s. This is inherent
+to the storage layout, not a code issue.
+
+| Chunk layout | Estimated pixel access (100 chunks) |
+|---|---|
+| (4096, 4096) | ~115s over S3 |
+| (512, 512) | ~2s (64x fewer bytes per chunk) |
+
+**Recommendation:** Rechunk production zarr stores to (512, 512) or
+(1024, 1024) spatial chunks for workflows that mix full-image rendering
+with point-pixel access.
+
+### Single-frame operations are fast regardless of chunk size
+
+`spectrum()`, `cutout()`, and `spectral_index()` with RA/Dec all completed
+in < 0.01s during QA because they read only 1 chunk (one time step at one
+frequency). The `_compute_pixel_at_time` optimization confirmed working —
+no unnecessary LST computation for the full time axis.
+
+### WCS returns NaN at the SIN projection boundary
+
+Peaks detected near l^2 + m^2 ~ 1 (the edge of the hemisphere) get `nan`
+from `astropy.wcs.WCS.world_to_pixel` / `pixel_to_world`. The accessor now
+catches these and keeps `ra=None, dec=None` in peak dicts rather than
+leaking `nan`.

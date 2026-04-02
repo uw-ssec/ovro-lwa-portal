@@ -4369,8 +4369,11 @@ class RadportAccessor:
             if self.has_wcs:
                 try:
                     ra_val, dec_val = self.pixel_to_coords(int(l_idx), int(m_idx))
-                    peak["ra"] = ra_val
-                    peak["dec"] = dec_val
+                    # WCS returns NaN for pixels outside the SIN
+                    # projection domain (near l²+m²≈1).  Keep None.
+                    if np.isfinite(ra_val) and np.isfinite(dec_val):
+                        peak["ra"] = ra_val
+                        peak["dec"] = dec_val
                 except (ValueError, ImportError):
                     pass
             peaks.append(peak)
