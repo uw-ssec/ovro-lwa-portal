@@ -207,24 +207,25 @@ def production_dataset() -> xr.Dataset:
     from astropy.time import Time
     from astropy.utils.iers import conf as iers_conf
 
-    rng = np.random.default_rng(42)
-
     mjd_times = MJD_START + np.arange(N_TIME) * MJD_STEP
     freq_hz = np.linspace(FREQ_START_HZ, FREQ_STOP_HZ, N_FREQ)
     l_coords = np.linspace(-1.0, 1.0, N_L)
     m_coords = np.linspace(-1.0, 1.0, N_M)
 
     # ------------------------------------------------------------------ #
-    # Build the background data as a Dask array.
-    # We use dask.array.from_delayed on a single numpy chunk per (t, f, p)
-    # block to keep the fixture cheap — only the injected source pixels are
-    # dense numpy; everything else is lazy.
+    # Build the background as a truly lazy Dask array — no eager GB
+    # allocation.  Each chunk is generated on demand via da.random.
+    # Only the small source-injection patches are materialised as numpy.
     # ------------------------------------------------------------------ #
-    background_np = rng.uniform(
-        0.5 * BACKGROUND_JY, 1.5 * BACKGROUND_JY, (N_TIME, N_FREQ, N_POL, N_L, N_M)
+    dask_rng = da.random.RandomState(42)
+    sky_dask = dask_rng.uniform(
+        low=0.5 * BACKGROUND_JY,
+        high=1.5 * BACKGROUND_JY,
+        size=(N_TIME, N_FREQ, N_POL, N_L, N_M),
+        chunks=CHUNK,
     ).astype(np.float32)
 
-    # Inject the Cygnus A synthetic source
+    # Pre-compute source pixel indices for injection
     l_vals, m_vals, visible = _compute_lm_track(
         CYGA_RA_DEG, CYGA_DEC_DEG, mjd_times
     )
@@ -232,26 +233,64 @@ def production_dataset() -> xr.Dataset:
     n_visible = int(np.sum(visible))
     injected_times = []
 
+    # Build a dict mapping (time_idx, l_chunk_idx, m_chunk_idx) → injection
+    # info so we can apply patches lazily via da.map_blocks.
+    # Each spatial chunk is 1024×1024; we need to know which chunk(s) a
+    # source pixel falls into and the local offset within that chunk.
+    l_chunk_size = CHUNK[3]  # 1024
+    m_chunk_size = CHUNK[4]  # 1024
+
+    # injection_map: ti → (l_idx, m_idx) in global coordinates
+    injection_map: dict[int, tuple[int, int]] = {}
+
     for ti in range(N_TIME):
         if not visible[ti]:
             continue
-
-        # Nearest-neighbour pixel in the l/m grid
         l_idx = int(np.argmin(np.abs(l_coords - l_vals[ti])))
         m_idx = int(np.argmin(np.abs(m_coords - m_vals[ti])))
-
-        hw = SOURCE_INJECT_HALF_WIDTH
-        l_lo = max(0, l_idx - hw)
-        l_hi = min(N_L, l_idx + hw + 1)
-        m_lo = max(0, m_idx - hw)
-        m_hi = min(N_M, m_idx + hw + 1)
-
-        # Inject across all frequencies and the single polarization
-        background_np[ti, :, :, l_lo:l_hi, m_lo:m_hi] = CYGA_FLUX_JY
+        injection_map[ti] = (l_idx, m_idx)
         injected_times.append(ti)
 
-    # Convert the numpy array to a chunked Dask array.
-    sky_dask = da.from_array(background_np, chunks=CHUNK)
+    def _inject_source(block, block_info=None):
+        """map_blocks callback: inject source into affected chunks."""
+        if block_info is None or not injection_map:
+            return block
+        # block_info[0] gives the array-location of this block
+        info = block_info[0]
+        ti_start = info["array-location"][0][0]  # scalar — chunk is size 1
+        l_start = info["array-location"][3][0]
+        l_end = info["array-location"][3][1]
+        m_start = info["array-location"][4][0]
+        m_end = info["array-location"][4][1]
+
+        if ti_start not in injection_map:
+            return block
+
+        g_l, g_m = injection_map[ti_start]
+        hw = SOURCE_INJECT_HALF_WIDTH
+        # Global injection bounds
+        inj_l_lo = max(0, g_l - hw)
+        inj_l_hi = min(N_L, g_l + hw + 1)
+        inj_m_lo = max(0, g_m - hw)
+        inj_m_hi = min(N_M, g_m + hw + 1)
+
+        # Check if this spatial chunk overlaps the injection region
+        if inj_l_hi <= l_start or inj_l_lo >= l_end:
+            return block
+        if inj_m_hi <= m_start or inj_m_lo >= m_end:
+            return block
+
+        # Compute local offsets within this chunk
+        loc_l_lo = max(0, inj_l_lo - l_start)
+        loc_l_hi = min(l_end - l_start, inj_l_hi - l_start)
+        loc_m_lo = max(0, inj_m_lo - m_start)
+        loc_m_hi = min(m_end - m_start, inj_m_hi - m_start)
+
+        out = block.copy()
+        out[:, :, :, loc_l_lo:loc_l_hi, loc_m_lo:loc_m_hi] = CYGA_FLUX_JY
+        return out
+
+    sky_dask = sky_dask.map_blocks(_inject_source, dtype=np.float32)
 
     # ------------------------------------------------------------------ #
     # Build the WCS header.
