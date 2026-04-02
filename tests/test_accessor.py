@@ -3013,9 +3013,11 @@ class TestCelestialSingleTimeMethods:
     def test_spectrum_radec_returns_valid(
         self, valid_ovro_dataset_with_wcs: xr.Dataset
     ) -> None:
-        """spectrum(ra, dec, time_idx=0) returns valid spectrum."""
+        """spectrum(ra, dec) returns valid spectrum at a visible time step."""
+        # time_idx=1 because RA=180, Dec=45 is below the horizon at
+        # time_idx=0 (MJD 60000.0) for the OVRO-LWA location.
         spec = valid_ovro_dataset_with_wcs.radport.spectrum(
-            ra=180.0, dec=45.0, time_idx=0
+            ra=180.0, dec=45.0, time_idx=1
         )
         assert "frequency" in spec.dims
         assert spec.size > 0
@@ -3039,7 +3041,7 @@ class TestCelestialSingleTimeMethods:
     ) -> None:
         """spectral_index(ra, dec) returns a valid float."""
         alpha = valid_ovro_dataset_with_wcs.radport.spectral_index(
-            ra=180.0, dec=45.0
+            ra=180.0, dec=45.0, time_idx=1
         )
         assert isinstance(alpha, float)
 
@@ -3048,7 +3050,7 @@ class TestCelestialSingleTimeMethods:
     ) -> None:
         """integrated_flux(ra, dec) returns a valid float."""
         flux = valid_ovro_dataset_with_wcs.radport.integrated_flux(
-            ra=180.0, dec=45.0
+            ra=180.0, dec=45.0, time_idx=1
         )
         assert isinstance(flux, float)
 
@@ -3057,7 +3059,7 @@ class TestCelestialSingleTimeMethods:
     ) -> None:
         """cutout(ra_center, dec_center, dl, dm) returns valid 2D DataArray."""
         cutout = valid_ovro_dataset_with_wcs.radport.cutout(
-            ra_center=180.0, dec_center=45.0, dl=0.3, dm=0.3
+            ra_center=180.0, dec_center=45.0, dl=0.3, dm=0.3, time_idx=1
         )
         assert isinstance(cutout, xr.DataArray)
         assert set(cutout.dims) == {"l", "m"}

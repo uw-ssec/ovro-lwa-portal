@@ -235,7 +235,7 @@ def production_dataset() -> xr.Dataset:
 
     # Build a dict mapping (time_idx, l_chunk_idx, m_chunk_idx) → injection
     # info so we can apply patches lazily via da.map_blocks.
-    # Each spatial chunk is 1024×1024; we need to know which chunk(s) a
+    # Each spatial chunk is 1024x1024; we need to know which chunk(s) a
     # source pixel falls into and the local offset within that chunk.
     l_chunk_size = CHUNK[3]  # 1024
     m_chunk_size = CHUNK[4]  # 1024
@@ -626,6 +626,6 @@ class TestDatasetFixture:
         np.testing.assert_allclose(float(ds.coords["m"].min()), -1.0, atol=1e-6)
         np.testing.assert_allclose(float(ds.coords["m"].max()), 1.0, atol=1e-6)
 
-        # Frequencies span 27–88 MHz
+        # Frequencies span 27-88 MHz
         assert float(ds.coords["frequency"].min()) == pytest.approx(FREQ_START_HZ, rel=1e-6)
         assert float(ds.coords["frequency"].max()) == pytest.approx(FREQ_STOP_HZ, rel=1e-6)

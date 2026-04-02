@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 # Results smaller than this are eagerly loaded to avoid dask graph
 # scheduling overhead.  10 MB covers all realistic OVRO-LWA single-pixel
-# extractions (e.g. 1000 times × 1000 freqs × 8 bytes = 8 MB) while
+# extractions (e.g. 1000 times x 1000 freqs x 8 bytes = 8 MB) while
 # keeping pathologically large results lazy.
 _EAGER_LOAD_THRESHOLD = 10 * 1024 * 1024  # bytes
 
@@ -765,8 +765,6 @@ class RadportAccessor:
         elif freq_idx is None:
             freq_idx = 0
 
-        # Track whether user explicitly requested a specific time step
-        user_specified_time = time_idx is not None or time_mjd is not None
         if time_mjd is not None:
             time_idx = self.nearest_time_idx(time_mjd)
         elif time_idx is None:
@@ -825,14 +823,11 @@ class RadportAccessor:
                     "or (dl, dm) in direction cosines."
                 )
 
-            # Convert RA/Dec to pixel, then pixel to l/m coordinate value.
-            # Use time-aware SIN projection only when the user explicitly
-            # specified a time step; otherwise fall back to the static WCS
-            # (which is correct for the dataset's reference time).
-            c2p_kwargs: dict[str, Any] = {}
-            if user_specified_time:
-                c2p_kwargs["time_idx"] = time_idx
-            pix_l, pix_m = self.coords_to_pixel(ra_center, dec_center, **c2p_kwargs)
+            # Convert RA/Dec to pixel at the resolved time step so the
+            # cutout is centred on the correct frame.
+            pix_l, pix_m = self.coords_to_pixel(
+                ra_center, dec_center, time_idx=time_idx
+            )
             l_center = float(self._obj.coords["l"].values[pix_l])
             m_center = float(self._obj.coords["m"].values[pix_m])
         else:
@@ -1042,7 +1037,8 @@ class RadportAccessor:
                 ra_min = ra_c - dra_val
                 ra_max = ra_c + dra_val
 
-            extent = [ra_min, ra_max, dec_min, dec_max]
+            # RA increases to the left on sky images (reversed x-axis)
+            extent = [ra_max, ra_min, dec_min, dec_max]
 
             ax.set_xlabel("RA (degrees)")
             ax.set_ylabel("Dec (degrees)")
@@ -1208,7 +1204,7 @@ class RadportAccessor:
         # Extract per-time pixel values.
         # Each time step may map to a different (l, m) pixel, so we
         # select the exact pixel per time step rather than loading the
-        # full spatial grid (which would be e.g. 4096×4096 per step).
+        # full spatial grid (which would be e.g. 4096x4096 per step).
         vis_mask = visible
         if np.any(vis_mask):
             vis_times = np.where(vis_mask)[0]
@@ -2206,7 +2202,7 @@ class RadportAccessor:
             vis_m = m_indices[vis_mask]
 
             # Select the exact pixel per time step rather than loading
-            # the full spatial grid (which can be e.g. 4096×4096).
+            # the full spatial grid (which can be e.g. 4096x4096).
             pixel_arrays = [
                 data_var.isel(time=int(t), l=int(li), m=int(mi))
                 for t, li, mi in zip(vis_times, vis_l, vis_m)
@@ -2399,7 +2395,7 @@ class RadportAccessor:
         if ra is not None or dec is not None:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=ti)
         elif l is not None or m is not None:
             if l is None or m is None:
                 raise ValueError("Both l and m must be provided together.")
@@ -4564,7 +4560,7 @@ class RadportAccessor:
         if ra is not None or dec is not None:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=time_idx)
         elif l is not None or m is not None:
             if l is None or m is None:
                 raise ValueError("Both l and m must be provided together.")
@@ -4808,7 +4804,7 @@ class RadportAccessor:
         if ra is not None or dec is not None:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec)
+            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=time_idx)
         elif l is not None or m is not None:
             if l is None or m is None:
                 raise ValueError("Both l and m must be provided together.")
