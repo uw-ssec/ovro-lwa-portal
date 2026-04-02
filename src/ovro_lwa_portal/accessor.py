@@ -13,6 +13,7 @@ Example
 
 from __future__ import annotations
 
+import contextlib
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -22,7 +23,40 @@ import xarray as xr
 from scipy import interpolate
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from matplotlib.figure import Figure
+
+
+# Results smaller than this are eagerly loaded to avoid dask graph
+# scheduling overhead.  10 MB covers all realistic OVRO-LWA single-pixel
+# extractions (e.g. 1000 times × 1000 freqs × 8 bytes = 8 MB) while
+# keeping pathologically large results lazy.
+_EAGER_LOAD_THRESHOLD = 10 * 1024 * 1024  # bytes
+
+
+def _maybe_load(da: xr.DataArray) -> xr.DataArray:
+    """Eagerly load a dask-backed DataArray if it is below the size threshold."""
+    if hasattr(da, "nbytes") and da.nbytes < _EAGER_LOAD_THRESHOLD:
+        if hasattr(da, "load"):
+            da = da.load()
+    return da
+
+
+@contextlib.contextmanager
+def _dask_progress(label: str = "Computing") -> Generator[None, None, None]:
+    """Show a dask progress bar when dask is available.
+
+    Falls back to a simple print when dask.diagnostics is unavailable.
+    """
+    try:
+        from dask.diagnostics import ProgressBar
+
+        with ProgressBar(dt=1.0, minimum=2.0):
+            print(f"{label}...")  # noqa: T201
+            yield
+    except ImportError:
+        yield
 
 
 @xr.register_dataset_accessor("radport")
@@ -79,6 +113,7 @@ class RadportAccessor:
             If the dataset structure is invalid for OVRO-LWA data.
         """
         self._obj = xarray_obj
+        self._lst_cache: dict[tuple, np.ndarray] = {}
         self._validate_structure()
 
     def _validate_structure(self) -> None:
@@ -239,17 +274,26 @@ class RadportAccessor:
         # Handle scalar (single time step) by ensuring 1-d
         mjd_array = np.atleast_1d(mjd_array)
 
-        # Vectorized LST computation
+        # Vectorized LST computation — cached per (times, longitude) pair.
+        # The LST only depends on the MJD timestamps and the observatory
+        # longitude, so reuse across calls with different (RA, Dec).
         # Use bundled IERS-B data to avoid network downloads.
         # Mean sidereal time has ~1 arcsec error — negligible at
         # OVRO-LWA's ~6-arcmin beam resolution.
-        orig_auto_download = iers_conf.auto_download
-        try:
-            iers_conf.auto_download = False
-            t = Time(mjd_array, format="mjd", scale="utc")
-            lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
-        finally:
-            iers_conf.auto_download = orig_auto_download
+        lon_deg = float(observatory.lon.deg)
+        cache_key = (mjd_array.tobytes(), lon_deg)
+
+        if cache_key in self._lst_cache:
+            lst_deg = self._lst_cache[cache_key]
+        else:
+            orig_auto_download = iers_conf.auto_download
+            try:
+                iers_conf.auto_download = False
+                t = Time(mjd_array, format="mjd", scale="utc")
+                lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
+            finally:
+                iers_conf.auto_download = orig_auto_download
+            self._lst_cache[cache_key] = lst_deg
 
         # Closed-form SIN projection (vectorized)
         ha_rad = np.deg2rad(lst_deg - ra)
@@ -1125,9 +1169,12 @@ class RadportAccessor:
         )
 
         if isinstance(result, tuple) and len(result) == 2:
-            # Fixed pixel path (l/m)
+            # Fixed pixel path (l/m) — single pixel across all times/freqs.
+            # Eagerly load small results to avoid dask graph overhead.
             l_idx, m_idx = result
-            da = self._obj[var].isel(l=l_idx, m=m_idx, polarization=pol)
+            da = _maybe_load(
+                self._obj[var].isel(l=l_idx, m=m_idx, polarization=pol)
+            )
 
             if "time" in da.dims:
                 da = da.sortby("time")
@@ -1158,21 +1205,34 @@ class RadportAccessor:
         # Build output array, NaN-filled
         out = np.full((n_times, n_freqs), np.nan)
 
-        # Extract per-time pixel values
+        # Extract per-time pixel values.
+        # Each time step may map to a different (l, m) pixel, so we
+        # select the exact pixel per time step rather than loading the
+        # full spatial grid (which would be e.g. 4096×4096 per step).
         vis_mask = visible
         if np.any(vis_mask):
             vis_times = np.where(vis_mask)[0]
             vis_l = l_indices[vis_mask]
             vis_m = m_indices[vis_mask]
 
-            # Load only the visible time steps into memory to avoid
-            # building massive dask task graphs from per-time fancy indexing.
-            subset = data_var.isel(time=vis_times)
-            if hasattr(subset, "load"):
-                subset = subset.load()
+            # Build per-time-step pixel selections (each is shape n_freqs)
+            pixel_arrays = [
+                data_var.isel(time=int(t), l=int(li), m=int(mi))
+                for t, li, mi in zip(vis_times, vis_l, vis_m)
+            ]
 
-            for i, (ti, li, mi) in enumerate(zip(vis_times, vis_l, vis_m)):
-                out[ti] = subset.isel(time=i, l=int(li), m=int(mi)).values
+            # Compute all pixels in one pass — dask deduplicates
+            # shared chunk reads automatically.
+            if hasattr(data_var, "chunks") and data_var.chunks is not None:
+                import dask
+
+                with _dask_progress("Extracting tracked pixels"):
+                    results = dask.compute(*pixel_arrays)
+            else:
+                results = [p.values for p in pixel_arrays]
+
+            for i, ti in enumerate(vis_times):
+                out[ti] = np.asarray(results[i])
 
         da = xr.DataArray(
             out,
@@ -2110,10 +2170,12 @@ class RadportAccessor:
         freq_hz = float(self._obj.coords["frequency"].values[fi])
 
         if isinstance(result, tuple) and len(result) == 2:
-            # Fixed pixel path (l/m)
+            # Fixed pixel path (l/m) — eagerly load small results
             l_idx, m_idx = result
-            lc = self._obj[var].isel(
-                frequency=fi, polarization=pol, l=l_idx, m=m_idx
+            lc = _maybe_load(
+                self._obj[var].isel(
+                    frequency=fi, polarization=pol, l=l_idx, m=m_idx
+                )
             )
 
             l_val = float(self._obj.coords["l"].values[l_idx])
@@ -2143,14 +2205,23 @@ class RadportAccessor:
             vis_l = l_indices[vis_mask]
             vis_m = m_indices[vis_mask]
 
-            # Load only visible time steps into memory to avoid
-            # dask task graph explosion from per-time fancy indexing.
-            subset = data_var.isel(time=vis_times)
-            if hasattr(subset, "load"):
-                subset = subset.load()
+            # Select the exact pixel per time step rather than loading
+            # the full spatial grid (which can be e.g. 4096×4096).
+            pixel_arrays = [
+                data_var.isel(time=int(t), l=int(li), m=int(mi))
+                for t, li, mi in zip(vis_times, vis_l, vis_m)
+            ]
 
-            for i, (ti, li, mi) in enumerate(zip(vis_times, vis_l, vis_m)):
-                out[ti] = float(subset.isel(time=i, l=int(li), m=int(mi)).values)
+            if hasattr(data_var, "chunks") and data_var.chunks is not None:
+                import dask
+
+                with _dask_progress("Extracting tracked pixels"):
+                    results = dask.compute(*pixel_arrays)
+            else:
+                results = [p.values for p in pixel_arrays]
+
+            for i, ti in enumerate(vis_times):
+                out[ti] = float(results[i])
 
         time_coords = self._obj.coords["time"].values
         lc = xr.DataArray(
