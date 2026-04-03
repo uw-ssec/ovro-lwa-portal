@@ -712,8 +712,8 @@ class RadportAccessor:
         # Get coordinate extents for proper axis labeling
         l_vals = da.coords["l"].values
         m_vals = da.coords["m"].values
-        extent = [float(l_vals.min()), float(l_vals.max()),
-                  float(m_vals.min()), float(m_vals.max())]
+        extent = [float(l_vals[0]), float(l_vals[-1]),
+                  float(m_vals[0]), float(m_vals[-1])]
 
         # Plot the image.
         # Transpose: xarray dims are (l, m) where l=NAXIS1 (RA/x) and
@@ -1164,15 +1164,15 @@ class RadportAccessor:
             # since we can't reliably invert the SIN projection for
             # display extents.
             extent = [
-                float(l_vals.min()), float(l_vals.max()),
-                float(m_vals.min()), float(m_vals.max()),
+                float(l_vals[0]), float(l_vals[-1]),
+                float(m_vals[0]), float(m_vals[-1]),
             ]
             ax.set_xlabel("l (direction cosine)")
             ax.set_ylabel("m (direction cosine)")
         else:
             extent = [
-                float(l_vals.min()), float(l_vals.max()),
-                float(m_vals.min()), float(m_vals.max()),
+                float(l_vals[0]), float(l_vals[-1]),
+                float(m_vals[0]), float(m_vals[-1]),
             ]
             ax.set_xlabel("l (direction cosine)")
             ax.set_ylabel("m (direction cosine)")
@@ -1708,8 +1708,8 @@ class RadportAccessor:
         l_vals = diff.coords["l"].values
         m_vals = diff.coords["m"].values
         extent = [
-            float(l_vals.min()), float(l_vals.max()),
-            float(m_vals.min()), float(m_vals.max()),
+            float(l_vals[0]), float(l_vals[-1]),
+            float(m_vals[0]), float(m_vals[-1]),
         ]
 
         # Plot — transpose (l, m) to put l on x-axis and m on y-axis
@@ -2006,8 +2006,8 @@ class RadportAccessor:
             l_vals = da.coords["l"].values
             m_vals = da.coords["m"].values
             extent = [
-                float(l_vals.min()), float(l_vals.max()),
-                float(m_vals.min()), float(m_vals.max()),
+                float(l_vals[0]), float(l_vals[-1]),
+                float(m_vals[0]), float(m_vals[-1]),
             ]
 
             # Check if panel has data
@@ -2856,8 +2856,8 @@ class RadportAccessor:
         l_vals = avg.coords["l"].values
         m_vals = avg.coords["m"].values
         extent = [
-            float(l_vals.min()), float(l_vals.max()),
-            float(m_vals.min()), float(m_vals.max()),
+            float(l_vals[0]), float(l_vals[-1]),
+            float(m_vals[0]), float(m_vals[-1]),
         ]
 
         # Transpose (l, m) to put l on x-axis and m on y-axis
@@ -2991,8 +2991,8 @@ class RadportAccessor:
         l_vals = avg.coords["l"].values
         m_vals = avg.coords["m"].values
         extent = [
-            float(l_vals.min()), float(l_vals.max()),
-            float(m_vals.min()), float(m_vals.max()),
+            float(l_vals[0]), float(l_vals[-1]),
+            float(m_vals[0]), float(m_vals[-1]),
         ]
 
         # Transpose (l, m) to put l on x-axis and m on y-axis
