@@ -131,7 +131,7 @@ def _compute_lm_track(
     dec_rad = np.deg2rad(dec_deg)
     lat_rad = np.deg2rad(lat_deg)
 
-    l_vals = np.cos(dec_rad) * np.sin(ha_rad)
+    l_vals = -np.cos(dec_rad) * np.sin(ha_rad)
     m_vals = (
         np.sin(dec_rad) * np.cos(lat_rad)
         - np.cos(dec_rad) * np.sin(lat_rad) * np.cos(ha_rad)

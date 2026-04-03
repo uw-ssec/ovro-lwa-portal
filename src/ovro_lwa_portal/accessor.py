@@ -300,7 +300,7 @@ class RadportAccessor:
         dec_rad = np.deg2rad(dec)
         lat_rad = np.deg2rad(observatory.lat.deg)
 
-        l_vals = np.cos(dec_rad) * np.sin(ha_rad)
+        l_vals = -np.cos(dec_rad) * np.sin(ha_rad)
         m_vals = np.sin(dec_rad) * np.cos(lat_rad) - np.cos(dec_rad) * np.sin(
             lat_rad
         ) * np.cos(ha_rad)
@@ -456,7 +456,7 @@ class RadportAccessor:
         dec_rad = np.deg2rad(dec)
         lat_rad = np.deg2rad(observatory.lat.deg)
 
-        l_val = np.cos(dec_rad) * np.sin(ha_rad)
+        l_val = -np.cos(dec_rad) * np.sin(ha_rad)
         m_val = np.sin(dec_rad) * np.cos(lat_rad) - np.cos(dec_rad) * np.sin(
             lat_rad
         ) * np.cos(ha_rad)
