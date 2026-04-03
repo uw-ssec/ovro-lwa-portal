@@ -7,15 +7,16 @@ entries appear first within each section.
 
 ### 2026-04-03: Negate l in SIN projection to match RA direction (Accepted)
 
-- **Decision:** Changed the SIN projection l formula from `l = cos(δ)·sin(H)`
-  to `l = -cos(δ)·sin(H)` in both `_compute_pixel_track` and
+- **Decision:** Changed the SIN projection l formula from `l = cos(δ)·sin(H)` to
+  `l = -cos(δ)·sin(H)` in both `_compute_pixel_track` and
   `_compute_pixel_at_time`.
 - **Why:** Casey reported that increasing `ra_center` in `plot_cutout` moved the
-  source in the opposite direction. The standard SIN projection `l = cos(δ)·sin(H)`
-  gives l positive for sources *west* of the meridian (positive hour angle), but
-  the FITS WCS convention (CDELT1 < 0) defines l increasing *eastward* (with
-  increasing RA). The sign mismatch meant the RA→l conversion was inverted. Dec
-  was unaffected because m only depends on `cos(H)`, which is symmetric.
+  source in the opposite direction. The standard SIN projection
+  `l = cos(δ)·sin(H)` gives l positive for sources _west_ of the meridian
+  (positive hour angle), but the FITS WCS convention (CDELT1 < 0) defines l
+  increasing _eastward_ (with increasing RA). The sign mismatch meant the RA→l
+  conversion was inverted. Dec was unaffected because m only depends on
+  `cos(H)`, which is symmetric.
 - **Result:** RA shifts now move cutouts in the correct direction. The l/m and
   Dec paths were already correct (no projection involved for l/m; m formula is
   sign-symmetric in H). All 417 tests pass after fixing the same formula in the
@@ -34,8 +35,9 @@ entries appear first within each section.
 
 ### 2026-04-03: Transpose spatial data in imshow to align l→x, m→y (Accepted)
 
-- **Decision:** Added `.T` to all 6 spatial `imshow` calls (`plot`, `plot_cutout`,
-  `plot_diff`, `plot_grid`, `plot_time_average`, `plot_frequency_average`).
+- **Decision:** Added `.T` to all 6 spatial `imshow` calls (`plot`,
+  `plot_cutout`, `plot_diff`, `plot_grid`, `plot_time_average`,
+  `plot_frequency_average`).
 - **Why:** The xarray Dataset stores images as `(l, m)` where l=NAXIS1 (RA/x)
   and m=NAXIS2 (Dec/y). But `imshow` maps array axis 0→y and axis 1→x. Without
   `.T`, the l data ended up on the y-axis and m on the x-axis. The axis labels

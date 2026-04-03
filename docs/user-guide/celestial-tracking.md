@@ -17,11 +17,10 @@ l   = -cos(Dec) * sin(H)
 m   =  sin(Dec)*cos(lat) - cos(Dec)*sin(lat)*cos(H)
 ```
 
-!!! note "Sign convention"
-    The negative sign in the `l` formula ensures that `l` increases in the
-    direction of increasing RA (eastward), matching the direction-cosine
-    convention used in the FITS WCS / zarr data. Without the negation, `l`
-    would increase westward (with increasing hour angle).
+!!! note "Sign convention" The negative sign in the `l` formula ensures that `l`
+increases in the direction of increasing RA (eastward), matching the
+direction-cosine convention used in the FITS WCS / zarr data. Without the
+negation, `l` would increase westward (with increasing hour angle).
 
 where `lat` is the observatory geodetic latitude (37.2339° for OVRO-LWA).
 
