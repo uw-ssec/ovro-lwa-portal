@@ -715,9 +715,12 @@ class RadportAccessor:
         extent = [float(l_vals.min()), float(l_vals.max()),
                   float(m_vals.min()), float(m_vals.max())]
 
-        # Plot the image
+        # Plot the image.
+        # Transpose: xarray dims are (l, m) where l=NAXIS1 (RA/x) and
+        # m=NAXIS2 (Dec/y).  imshow maps axis 0→y, axis 1→x, so .T
+        # puts l on x and m on y.
         im = ax.imshow(
-            data,
+            data.T,
             origin="lower",
             cmap=cmap,
             vmin=vmin,
@@ -1174,9 +1177,9 @@ class RadportAccessor:
             ax.set_xlabel("l (direction cosine)")
             ax.set_ylabel("m (direction cosine)")
 
-        # Plot
+        # Plot — transpose (l, m) to put l on x-axis and m on y-axis
         im = ax.imshow(
-            data,
+            data.T,
             origin="lower",
             cmap=cmap,
             vmin=vmin,
@@ -1709,9 +1712,9 @@ class RadportAccessor:
             float(m_vals.min()), float(m_vals.max()),
         ]
 
-        # Plot
+        # Plot — transpose (l, m) to put l on x-axis and m on y-axis
         im = ax.imshow(
-            data,
+            data.T,
             origin="lower",
             cmap=cmap,
             vmin=vmin,
@@ -2012,7 +2015,7 @@ class RadportAccessor:
 
             if has_data:
                 im = ax.imshow(
-                    data,
+                    data.T,
                     origin="lower",
                     cmap=cmap,
                     vmin=vmin,
@@ -2857,8 +2860,9 @@ class RadportAccessor:
             float(m_vals.min()), float(m_vals.max()),
         ]
 
+        # Transpose (l, m) to put l on x-axis and m on y-axis
         im = ax.imshow(
-            data,
+            data.T,
             origin="lower",
             cmap=cmap,
             vmin=vmin,
@@ -2991,8 +2995,9 @@ class RadportAccessor:
             float(m_vals.min()), float(m_vals.max()),
         ]
 
+        # Transpose (l, m) to put l on x-axis and m on y-axis
         im = ax.imshow(
-            data,
+            data.T,
             origin="lower",
             cmap=cmap,
             vmin=vmin,

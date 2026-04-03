@@ -6,10 +6,10 @@ image due to Earth rotation.
 
 ## Overview
 
-OVRO-LWA images use a fixed (l, m) direction-cosine grid. A celestial source
-at constant (RA, Dec) maps to **different pixels at different times** because
-the hour angle changes as the Earth rotates. The tracking system computes
-this mapping using the closed-form SIN projection equations:
+OVRO-LWA images use a fixed (l, m) direction-cosine grid. A celestial source at
+constant (RA, Dec) maps to **different pixels at different times** because the
+hour angle changes as the Earth rotates. The tracking system computes this
+mapping using the closed-form SIN projection equations:
 
 ```
 H   = LST - RA                                    (hour angle)
@@ -21,7 +21,8 @@ where `lat` is the observatory geodetic latitude (37.2339° for OVRO-LWA).
 
 ## Basic Usage
 
-All spatial extraction methods accept either `(l, m)` or `(ra, dec)` coordinates:
+All spatial extraction methods accept either `(l, m)` or `(ra, dec)`
+coordinates:
 
 ```python
 import ovro_lwa_portal as ovro
@@ -47,25 +48,25 @@ When using `(ra, dec)`, the accessor:
 
 ### Per-time tracking (pixel changes with time)
 
-| Method | Description |
-|--------|-------------|
-| `dynamic_spectrum(ra=, dec=)` | Time-frequency waterfall following source |
-| `light_curve(ra=, dec=)` | Time series at one frequency following source |
+| Method                        | Description                                   |
+| ----------------------------- | --------------------------------------------- |
+| `dynamic_spectrum(ra=, dec=)` | Time-frequency waterfall following source     |
+| `light_curve(ra=, dec=)`      | Time series at one frequency following source |
 
 ### Single-time-step (pixel resolved at specific time)
 
-| Method | Description |
-|--------|-------------|
-| `spectrum(ra=, dec=, time_idx=)` | Frequency spectrum at one time |
-| `cutout(ra_center=, dec_center=)` | Spatial cutout centred on source |
-| `spectral_index(ra=, dec=)` | Power-law slope between two frequencies |
-| `integrated_flux(ra=, dec=)` | Band-integrated flux density |
-| `find_peaks()` | Includes RA/Dec in peak metadata when WCS is available |
+| Method                            | Description                                            |
+| --------------------------------- | ------------------------------------------------------ |
+| `spectrum(ra=, dec=, time_idx=)`  | Frequency spectrum at one time                         |
+| `cutout(ra_center=, dec_center=)` | Spatial cutout centred on source                       |
+| `spectral_index(ra=, dec=)`       | Power-law slope between two frequencies                |
+| `integrated_flux(ra=, dec=)`      | Band-integrated flux density                           |
+| `find_peaks()`                    | Includes RA/Dec in peak metadata when WCS is available |
 
-!!! note
-    Single-time methods resolve RA/Dec against the **requested time step**,
-    not the dataset's WCS reference epoch. This means `spectrum(ra=..., dec=...,
-    time_idx=5)` converts coordinates using the SIN projection at time step 5.
+!!! note Single-time methods resolve RA/Dec against the **requested time step**,
+not the dataset's WCS reference epoch. This means
+`spectrum(ra=..., dec=...,     time_idx=5)` converts coordinates using the SIN
+projection at time step 5.
 
 ## Visibility and Below-Horizon Handling
 
@@ -123,41 +124,41 @@ The tracked extraction path avoids loading the full spatial grid. Instead, it
 selects the exact pixel needed at each time step and uses `dask.compute()` to
 read only the required chunks:
 
-| Operation | 4096x4096 image, 10 time x 10 freq |
-|-----------|-------------------------------------|
-| `dynamic_spectrum(l=0, m=0)` | ~0.02s |
-| `dynamic_spectrum(ra=CygA)` | ~1.0s |
-| `light_curve(l=0, m=0)` | ~0.01s |
-| `light_curve(ra=CygA)` | ~1.0s |
+| Operation                    | 4096x4096 image, 10 time x 10 freq |
+| ---------------------------- | ---------------------------------- |
+| `dynamic_spectrum(l=0, m=0)` | ~0.02s                             |
+| `dynamic_spectrum(ra=CygA)`  | ~1.0s                              |
+| `light_curve(l=0, m=0)`      | ~0.01s                             |
+| `light_curve(ra=CygA)`       | ~1.0s                              |
 
 The ~1s for RA/Dec paths is dominated by astropy's one-time module
-initialization. Subsequent calls to different sources on the same dataset
-are nearly instant thanks to LST caching.
+initialization. Subsequent calls to different sources on the same dataset are
+nearly instant thanks to LST caching.
 
 ### LST caching
 
-The Local Sidereal Time computation is cached per `(timestamps, longitude)`
-pair on the accessor instance. This means:
+The Local Sidereal Time computation is cached per `(timestamps, longitude)` pair
+on the accessor instance. This means:
 
 ```python
 ds.radport.dynamic_spectrum(ra=299.868, dec=40.734)  # ~1.0s (cold)
 ds.radport.light_curve(ra=187.706, dec=12.391)        # ~0.005s (warm)
 ```
 
-The cache key is the raw bytes of the MJD array plus the observatory
-longitude, so it invalidates correctly when timestamps change.
+The cache key is the raw bytes of the MJD array plus the observatory longitude,
+so it invalidates correctly when timestamps change.
 
 ### Eager loading threshold
 
-For the `(l, m)` fixed-pixel path, small results (< 10 MB) are eagerly
-loaded into memory to avoid dask graph scheduling overhead. This threshold
-is set by `_EAGER_LOAD_THRESHOLD` in `accessor.py`.
+For the `(l, m)` fixed-pixel path, small results (< 10 MB) are eagerly loaded
+into memory to avoid dask graph scheduling overhead. This threshold is set by
+`_EAGER_LOAD_THRESHOLD` in `accessor.py`.
 
 ### Progress reporting
 
 Long-running dask computations show a progress bar via
-`dask.diagnostics.ProgressBar`. It activates automatically when extraction
-takes more than 2 seconds.
+`dask.diagnostics.ProgressBar`. It activates automatically when extraction takes
+more than 2 seconds.
 
 ## Observatory Location
 
