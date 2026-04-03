@@ -162,6 +162,8 @@ available whenever the original FITS files contained valid WCS headers.
 
 ## See Also
 
+- [Celestial Tracking](celestial-tracking.md) -- Per-time-step RA/Dec tracking
+  for sources that drift due to Earth rotation
 - [Coordinate Systems](../getting-started/coordinate-systems.md) -- Introduction
   to pixel (l, m) and celestial coordinate systems
 - [Visualization](visualization.md) -- General plotting methods

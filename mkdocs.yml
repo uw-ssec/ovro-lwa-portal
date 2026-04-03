@@ -40,6 +40,7 @@ nav:
       - Visualization: user-guide/visualization.md
       - Spectral Analysis: user-guide/spectral-analysis.md
       - Source Detection: user-guide/source-detection.md
+      - Celestial Tracking: user-guide/celestial-tracking.md
       - Dispersion Measure Correction: user-guide/dispersion-measure.md
       - Animations: user-guide/animations.md
       - WCS Coordinates: user-guide/wcs-coordinates.md
@@ -53,6 +54,8 @@ nav:
       - Data Loading: api/data-loading.md
       - FITS to Zarr (Low-Level): api/fits-to-zarr-xradio.md
       - Ingest Module: api/ingest.md
+  - Guides:
+      - Architecture Decisions: guides/architecture-decisions.md
   - Contributing:
       - Contributing: contributing/contributing.md
 

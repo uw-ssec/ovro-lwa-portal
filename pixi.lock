@@ -5353,8 +5353,8 @@ packages:
   timestamp: 1769556384749
 - pypi: ./
   name: ovro-lwa-portal
-  version: 0.1.dev56
-  sha256: 964502fa65400fe902e949f5e629aa7df57bfe3545638e10c40103bcc0428ed0
+  version: 0.1.dev63
+  sha256: 3df09fb381895a345b57ecfcb489b8fb6120b5af0bb7f5a9801eea0f8d840eab
   requires_dist:
   - astropy>=7.1.0,<8
   - dask>=2025.9.1,<2026
