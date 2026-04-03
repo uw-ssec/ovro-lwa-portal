@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/getting-started/installation/">
+        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/user-guide/celestial-tracking/">
       
       
-        <link rel="prev" href="../..">
+        <link rel="prev" href="../source-detection/">
       
       
-        <link rel="next" href="../loading-data/">
+        <link rel="next" href="../dispersion-measure/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Installation - OVRO-LWA Portal</title>
+        <title>Celestial Tracking - OVRO-LWA Portal</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#installation" class="md-skip">
+        <a href="#celestial-coordinate-tracking" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Installation
+              Celestial Tracking
             
           </span>
         </div>
@@ -244,13 +244,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
           
   
   
@@ -266,11 +264,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../user-guide/visualization/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../visualization/" class="md-tabs__link">
           
   
   
@@ -438,31 +438,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   
@@ -480,7 +475,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -495,37 +490,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Installation
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -541,137 +509,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prerequisites
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#for-users" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        For Users
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="For Users">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#optional-dependencies" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Optional Dependencies
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#for-developers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        For Developers
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="For Developers">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-clone-the-repository" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Clone the Repository
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-install-dependencies" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Install Dependencies
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-onboarding" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Onboarding
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-available-environments" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Available Environments
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#verifying-installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verifying Installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -684,7 +521,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../loading-data/" class="md-nav__link">
+      <a href="../../getting-started/loading-data/" class="md-nav__link">
         
   
   
@@ -712,7 +549,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../basic-plotting/" class="md-nav__link">
+      <a href="../../getting-started/basic-plotting/" class="md-nav__link">
         
   
   
@@ -740,7 +577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../coordinate-systems/" class="md-nav__link">
+      <a href="../../getting-started/coordinate-systems/" class="md-nav__link">
         
   
   
@@ -772,26 +609,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -809,7 +651,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -827,7 +669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/visualization/" class="md-nav__link">
+      <a href="../visualization/" class="md-nav__link">
         
   
   
@@ -855,7 +697,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/spectral-analysis/" class="md-nav__link">
+      <a href="../spectral-analysis/" class="md-nav__link">
         
   
   
@@ -883,7 +725,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/source-detection/" class="md-nav__link">
+      <a href="../source-detection/" class="md-nav__link">
         
   
   
@@ -908,10 +750,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../user-guide/celestial-tracking/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Celestial Tracking
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -927,6 +796,192 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods-supporting-radec-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods Supporting RA/Dec Tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Methods Supporting RA/Dec Tracking">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-time-tracking-pixel-changes-with-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-time tracking (pixel changes with time)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-time-step-pixel-resolved-at-specific-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single-time-step (pixel resolved at specific time)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visibility-and-below-horizon-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visibility and Below-Horizon Handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutouts-with-celestial-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutouts with Celestial Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dask-backed-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dask-backed data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lst-caching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LST caching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#eager-loading-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Eager loading threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#progress-reporting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress reporting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observatory-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observatory Location
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -939,7 +994,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/dispersion-measure/" class="md-nav__link">
+      <a href="../dispersion-measure/" class="md-nav__link">
         
   
   
@@ -967,7 +1022,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/animations/" class="md-nav__link">
+      <a href="../animations/" class="md-nav__link">
         
   
   
@@ -995,7 +1050,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/wcs-coordinates/" class="md-nav__link">
+      <a href="../wcs-coordinates/" class="md-nav__link">
         
   
   
@@ -1023,7 +1078,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/fits-to-zarr/" class="md-nav__link">
+      <a href="../fits-to-zarr/" class="md-nav__link">
         
   
   
@@ -1566,10 +1621,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prerequisites
+        Overview
       
     </span>
   </a>
@@ -1577,22 +1632,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#for-users" class="md-nav__link">
+  <a href="#basic-usage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        For Users
+        Basic Usage
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="For Users">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods-supporting-radec-tracking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods Supporting RA/Dec Tracking
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Methods Supporting RA/Dec Tracking">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#optional-dependencies" class="md-nav__link">
+  <a href="#per-time-tracking-pixel-changes-with-time" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Optional Dependencies
+        Per-time tracking (pixel changes with time)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#single-time-step-pixel-resolved-at-specific-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single-time-step (pixel resolved at specific time)
       
     </span>
   </a>
@@ -1605,22 +1682,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#for-developers" class="md-nav__link">
+  <a href="#visibility-and-below-horizon-handling" class="md-nav__link">
     <span class="md-ellipsis">
       
-        For Developers
+        Visibility and Below-Horizon Handling
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="For Developers">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutouts-with-celestial-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutouts with Celestial Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-clone-the-repository" class="md-nav__link">
+  <a href="#dask-backed-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Clone the Repository
+        Dask-backed data
       
     </span>
   </a>
@@ -1628,10 +1727,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-install-dependencies" class="md-nav__link">
+  <a href="#lst-caching" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Install Dependencies
+        LST caching
       
     </span>
   </a>
@@ -1639,10 +1738,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-onboarding" class="md-nav__link">
+  <a href="#eager-loading-threshold" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Onboarding
+        Eager loading threshold
       
     </span>
   </a>
@@ -1650,10 +1749,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-available-environments" class="md-nav__link">
+  <a href="#progress-reporting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Available Environments
+        Progress reporting
       
     </span>
   </a>
@@ -1666,10 +1765,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verifying-installation" class="md-nav__link">
+  <a href="#observatory-location" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verifying Installation
+        Observatory Location
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
       
     </span>
   </a>
@@ -1696,71 +1806,204 @@
   
 
 
-<h1 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h1>
-<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
-<p>This project uses <a href="https://pixi.sh">Pixi</a> for dependency management and task
-execution. Install Pixi by following the
-<a href="https://pixi.sh/latest/#installation">installation instructions</a>.</p>
-<h2 id="for-users">For Users<a class="headerlink" href="#for-users" title="Permanent link">&para;</a></h2>
-<p>Install the package using pip:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/uw-ssec/ovro-lwa-portal.git
+<h1 id="celestial-coordinate-tracking">Celestial Coordinate Tracking<a class="headerlink" href="#celestial-coordinate-tracking" title="Permanent link">&para;</a></h1>
+<p>The <code>radport</code> accessor supports per-time-step celestial coordinate tracking,
+allowing you to follow a source at a fixed (RA, Dec) as it drifts across the
+image due to Earth rotation.</p>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>OVRO-LWA images use a fixed (l, m) direction-cosine grid. A celestial source at
+constant (RA, Dec) maps to <strong>different pixels at different times</strong> because the
+hour angle changes as the Earth rotates. The tracking system computes this
+mapping using the closed-form SIN projection equations:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>H   = LST - RA                                     (hour angle)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>l   = -cos(Dec) * sin(H)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>m   =  sin(Dec)*cos(lat) - cos(Dec)*sin(lat)*cos(H)
 </code></pre></div>
-<p>Or install from a local clone:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>.
+<p>!!! note "Sign convention" The negative sign in the <code>l</code> formula ensures that <code>l</code>
+increases in the direction of increasing RA (eastward), matching the
+direction-cosine convention used in the FITS WCS / zarr data. Without the
+negation, <code>l</code> would increase westward (with increasing hour angle).</p>
+<p>where <code>lat</code> is the observatory geodetic latitude (37.2339° for OVRO-LWA).</p>
+<h2 id="basic-usage">Basic Usage<a class="headerlink" href="#basic-usage" title="Permanent link">&para;</a></h2>
+<p>All spatial extraction methods accept either <code>(l, m)</code> or <code>(ra, dec)</code>
+coordinates:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ovro</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;path/to/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Fixed pixel (same pixel at every time step)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">dynspec</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">dynamic_spectrum</span><span class="p">(</span><span class="n">l</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># Tracked source (different pixel at each time step)</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">dynspec</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">dynamic_spectrum</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">299.868</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="mf">40.734</span><span class="p">)</span>  <span class="c1"># Cygnus A</span>
 </code></pre></div>
-<h3 id="optional-dependencies">Optional Dependencies<a class="headerlink" href="#optional-dependencies" title="Permanent link">&para;</a></h3>
-<p>For remote data access (S3, GCS, HTTP):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;ovro_lwa_portal[remote]&#39;</span>
+<p>When using <code>(ra, dec)</code>, the accessor:</p>
+<ol>
+<li>Computes LST at each MJD timestamp</li>
+<li>Projects (RA, Dec) to (l, m) at each time step via SIN projection</li>
+<li>Finds the nearest pixel at each step</li>
+<li>Extracts the per-time pixel values</li>
+<li>NaN-fills time steps where the source is below the horizon</li>
+</ol>
+<h2 id="methods-supporting-radec-tracking">Methods Supporting RA/Dec Tracking<a class="headerlink" href="#methods-supporting-radec-tracking" title="Permanent link">&para;</a></h2>
+<h3 id="per-time-tracking-pixel-changes-with-time">Per-time tracking (pixel changes with time)<a class="headerlink" href="#per-time-tracking-pixel-changes-with-time" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dynamic_spectrum(ra=, dec=)</code></td>
+<td>Time-frequency waterfall following source</td>
+</tr>
+<tr>
+<td><code>light_curve(ra=, dec=)</code></td>
+<td>Time series at one frequency following source</td>
+</tr>
+</tbody>
+</table>
+<h3 id="single-time-step-pixel-resolved-at-specific-time">Single-time-step (pixel resolved at specific time)<a class="headerlink" href="#single-time-step-pixel-resolved-at-specific-time" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spectrum(ra=, dec=, time_idx=)</code></td>
+<td>Frequency spectrum at one time</td>
+</tr>
+<tr>
+<td><code>cutout(ra_center=, dec_center=)</code></td>
+<td>Spatial cutout centred on source</td>
+</tr>
+<tr>
+<td><code>spectral_index(ra=, dec=)</code></td>
+<td>Power-law slope between two frequencies</td>
+</tr>
+<tr>
+<td><code>integrated_flux(ra=, dec=)</code></td>
+<td>Band-integrated flux density</td>
+</tr>
+<tr>
+<td><code>find_peaks()</code></td>
+<td>Includes RA/Dec in peak metadata when WCS is available</td>
+</tr>
+</tbody>
+</table>
+<p>!!! note Single-time methods resolve RA/Dec against the <strong>requested time step</strong>,
+not the dataset's WCS reference epoch. This means
+<code>spectrum(ra=..., dec=...,     time_idx=5)</code> converts coordinates using the SIN
+projection at time step 5.</p>
+<h2 id="visibility-and-below-horizon-handling">Visibility and Below-Horizon Handling<a class="headerlink" href="#visibility-and-below-horizon-handling" title="Permanent link">&para;</a></h2>
+<p>A source is considered visible when <code>sin(altitude) &gt; 0</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sin(alt) = sin(Dec)*sin(lat) + cos(Dec)*cos(lat)*cos(H)
 </code></pre></div>
-<p>For Prefect workflow orchestration:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;ovro_lwa_portal[prefect]&#39;</span>
+<p>For per-time tracking methods, below-horizon time steps are NaN-filled:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">lc</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">light_curve</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">180.0</span><span class="p">,</span> <span class="n">dec</span><span class="o">=-</span><span class="mf">60.0</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># Time steps where the source is below the horizon will be NaN</span>
 </code></pre></div>
-<h2 id="for-developers">For Developers<a class="headerlink" href="#for-developers" title="Permanent link">&para;</a></h2>
-<p>For detailed developer setup and workflow instructions, see
-<a href="https://github.com/uw-ssec/ovro-lwa-portal/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>
-on GitHub.</p>
-<h3 id="1-clone-the-repository">1. Clone the Repository<a class="headerlink" href="#1-clone-the-repository" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/uw-ssec/ovro-lwa-portal.git
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">cd</span><span class="w"> </span>ovro-lwa-portal
+<p>If the source is <strong>never</strong> visible during the observation, a <code>UserWarning</code> is
+issued and the output is all-NaN.</p>
+<p>For single-time methods, requesting a below-horizon source raises a
+<code>ValueError</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Raises ValueError if Cyg A is below horizon at time_idx=0</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">spectrum</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">299.868</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="mf">40.734</span><span class="p">,</span> <span class="n">time_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 </code></pre></div>
-<h3 id="2-install-dependencies">2. Install Dependencies<a class="headerlink" href="#2-install-dependencies" title="Permanent link">&para;</a></h3>
-<p>Install dependencies using Pixi:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pixi<span class="w"> </span>install
+<h2 id="cutouts-with-celestial-coordinates">Cutouts with Celestial Coordinates<a class="headerlink" href="#cutouts-with-celestial-coordinates" title="Permanent link">&para;</a></h2>
+<p>Cutouts support both <code>(l_center, m_center, dl, dm)</code> and
+<code>(ra_center, dec_center, dra, ddec)</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Cutout in direction cosines</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">cutout</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">cutout</span><span class="p">(</span><span class="n">l_center</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">m_center</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">dl</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">dm</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Cutout in celestial coordinates (degrees)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">cutout</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">cutout</span><span class="p">(</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">ra_center</span><span class="o">=</span><span class="mf">299.868</span><span class="p">,</span> <span class="n">dec_center</span><span class="o">=</span><span class="mf">40.734</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">dra</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span> <span class="n">ddec</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">time_idx</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
 </code></pre></div>
-<p>Pixi will automatically create the environment and install all required
-dependencies.</p>
-<h3 id="3-onboarding">3. Onboarding<a class="headerlink" href="#3-onboarding" title="Permanent link">&para;</a></h3>
-<p>For first-time setup, use the onboarding environment to configure your
-development environment:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>onboard<span class="w"> </span>onboard
+<p>When using <code>dra</code>/<code>ddec</code>, the angular extent is converted to direction cosines
+using the SIN projection at the centre declination. Near the celestial poles
+(|Dec| &gt; ~85°), the RA extent degenerates to near-zero in <code>l</code> — use <code>dl</code>/<code>dm</code>
+directly for polar cutouts.</p>
+<h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
+<h3 id="dask-backed-data">Dask-backed data<a class="headerlink" href="#dask-backed-data" title="Permanent link">&para;</a></h3>
+<p>The tracked extraction path avoids loading the full spatial grid. Instead, it
+selects the exact pixel needed at each time step and uses <code>dask.compute()</code> to
+read only the required chunks:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>4096x4096 image, 10 time x 10 freq</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dynamic_spectrum(l=0, m=0)</code></td>
+<td>~0.02s</td>
+</tr>
+<tr>
+<td><code>dynamic_spectrum(ra=CygA)</code></td>
+<td>~1.0s</td>
+</tr>
+<tr>
+<td><code>light_curve(l=0, m=0)</code></td>
+<td>~0.01s</td>
+</tr>
+<tr>
+<td><code>light_curve(ra=CygA)</code></td>
+<td>~1.0s</td>
+</tr>
+</tbody>
+</table>
+<p>The ~1s for RA/Dec paths is dominated by astropy's one-time module
+initialization. Subsequent calls to different sources on the same dataset are
+nearly instant thanks to LST caching.</p>
+<h3 id="lst-caching">LST caching<a class="headerlink" href="#lst-caching" title="Permanent link">&para;</a></h3>
+<p>The Local Sidereal Time computation is cached per <code>(timestamps, longitude)</code> pair
+on the accessor instance. This means:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">dynamic_spectrum</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">299.868</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="mf">40.734</span><span class="p">)</span>  <span class="c1"># ~1.0s (cold)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">light_curve</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">187.706</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="mf">12.391</span><span class="p">)</span>        <span class="c1"># ~0.005s (warm)</span>
 </code></pre></div>
-<p>This will:</p>
+<p>The cache key is the raw bytes of the MJD array plus the observatory longitude,
+so it invalidates correctly when timestamps change.</p>
+<h3 id="eager-loading-threshold">Eager loading threshold<a class="headerlink" href="#eager-loading-threshold" title="Permanent link">&para;</a></h3>
+<p>For the <code>(l, m)</code> fixed-pixel path, small results (&lt; 10 MB) are eagerly loaded
+into memory to avoid dask graph scheduling overhead. This threshold is set by
+<code>_EAGER_LOAD_THRESHOLD</code> in <code>accessor.py</code>.</p>
+<h3 id="progress-reporting">Progress reporting<a class="headerlink" href="#progress-reporting" title="Permanent link">&para;</a></h3>
+<p>Long-running dask computations show a progress bar via
+<code>dask.diagnostics.ProgressBar</code>. It activates automatically when extraction takes
+more than 2 seconds.</p>
+<h2 id="observatory-location">Observatory Location<a class="headerlink" href="#observatory-location" title="Permanent link">&para;</a></h2>
+<p>The default observatory is OVRO-LWA:</p>
 <ul>
-<li>Install pre-commit hooks in your git repository</li>
-<li>Set up shell completion for ssec-cli</li>
-<li>Run the SSEC onboarding process</li>
+<li><strong>Latitude:</strong> 37.2339° N</li>
+<li><strong>Longitude:</strong> 118.2817° W</li>
+<li><strong>Height:</strong> 1222 m</li>
 </ul>
-<h3 id="4-available-environments">4. Available Environments<a class="headerlink" href="#4-available-environments" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong><code>default</code></strong>: Standard development environment with pre-commit hooks and
-  GitHub CLI</li>
-<li><strong><code>onboard</code></strong>: Extended environment including onboarding tools</li>
-</ul>
-<p>Switch between environments as needed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Use default environment</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>pixi<span class="w"> </span>shell
+<p>Override with a custom <code>astropy.coordinates.EarthLocation</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">astropy.coordinates</span><span class="w"> </span><span class="kn">import</span> <span class="n">EarthLocation</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">astropy</span><span class="w"> </span><span class="kn">import</span> <span class="n">units</span> <span class="k">as</span> <span class="n">u</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Use onboard environment</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>pixi<span class="w"> </span>shell<span class="w"> </span>-e<span class="w"> </span>onboard
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">vla</span> <span class="o">=</span> <span class="n">EarthLocation</span><span class="p">(</span><span class="n">lat</span><span class="o">=</span><span class="mf">34.0784</span><span class="o">*</span><span class="n">u</span><span class="o">.</span><span class="n">deg</span><span class="p">,</span> <span class="n">lon</span><span class="o">=-</span><span class="mf">107.6184</span><span class="o">*</span><span class="n">u</span><span class="o">.</span><span class="n">deg</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">2124</span><span class="o">*</span><span class="n">u</span><span class="o">.</span><span class="n">m</span><span class="p">)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">dynspec</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">dynamic_spectrum</span><span class="p">(</span><span class="n">ra</span><span class="o">=</span><span class="mf">299.868</span><span class="p">,</span> <span class="n">dec</span><span class="o">=</span><span class="mf">40.734</span><span class="p">,</span> <span class="n">observatory</span><span class="o">=</span><span class="n">vla</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="verifying-installation">Verifying Installation<a class="headerlink" href="#verifying-installation" title="Permanent link">&para;</a></h2>
-<p>Test your installation:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span>
-</code></pre></div>
-<p>Or from the command line:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>ovro-ingest<span class="w"> </span>--help
-</code></pre></div>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../wcs-coordinates/">WCS Coordinates</a> -- Static WCS pixel-to-sky conversion</li>
+<li><a href="../../getting-started/coordinate-systems/">Coordinate Systems</a> -- Overview of
+  (l, m) and celestial coordinate systems</li>
+<li><a href="../spectral-analysis/">Spectral Analysis</a> -- <code>spectrum()</code> and
+  <code>spectral_index()</code> usage</li>
+</ul>
 
 
 
