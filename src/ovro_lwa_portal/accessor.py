@@ -5594,3 +5594,94 @@ class RadportAccessor:
 
         fig.tight_layout()
         return fig
+
+    # ------------------------------------------------------------------
+    # Interactive visualization (requires optional [visualization] deps)
+    # ------------------------------------------------------------------
+
+    def explore(self, **kwargs: Any) -> Any:
+        """Launch an interactive exploration dashboard.
+
+        Combines image, dynamic spectrum, and cutout explorers in a
+        tabbed Panel layout. Requires the ``[visualization]`` optional
+        dependencies (Panel, HoloViews, Bokeh).
+
+        Install with::
+
+            pip install 'ovro_lwa_portal[visualization]'
+
+        Parameters
+        ----------
+        **kwargs
+            Passed to :func:`~ovro_lwa_portal.viz.create_exploration_dashboard`.
+
+        Returns
+        -------
+        panel.Tabs
+            Interactive tabbed dashboard.
+        """
+        from ovro_lwa_portal.viz import create_exploration_dashboard
+
+        return create_exploration_dashboard(self._obj, **kwargs)
+
+    def explore_image(self, **kwargs: Any) -> Any:
+        """Launch an interactive image explorer.
+
+        Provides sliders for time, frequency, and polarization with
+        live image updates. Requires ``[visualization]`` dependencies.
+
+        Parameters
+        ----------
+        **kwargs
+            Passed to :class:`~ovro_lwa_portal.viz.explorers.ImageExplorer`.
+
+        Returns
+        -------
+        panel.viewable.Viewable
+            Interactive Panel layout.
+        """
+        from ovro_lwa_portal.viz import ImageExplorer
+
+        return ImageExplorer(self._obj, **kwargs).panel()
+
+    def explore_dynamic_spectrum(self, **kwargs: Any) -> Any:
+        """Launch an interactive dynamic spectrum explorer.
+
+        Displays a time-frequency waterfall with linked spectrum and
+        light curve views. Requires ``[visualization]`` dependencies.
+
+        Parameters
+        ----------
+        **kwargs
+            Passed to :class:`~ovro_lwa_portal.viz.explorers.DynamicSpectrumExplorer`.
+
+        Returns
+        -------
+        panel.viewable.Viewable
+            Interactive Panel layout with linked views.
+        """
+        from ovro_lwa_portal.viz import DynamicSpectrumExplorer
+
+        return DynamicSpectrumExplorer(self._obj, **kwargs).panel()
+
+    def explore_sky(self, **kwargs: Any) -> Any:
+        """Launch an interactive sky viewer with Aladin Lite.
+
+        Overlays OVRO-LWA data on astronomical survey backgrounds
+        (DSS, WISE, Planck, etc.) with real-time panning, zooming,
+        and coordinate exploration. Requires ``[visualization]``
+        dependencies and WCS header in the dataset.
+
+        Parameters
+        ----------
+        **kwargs
+            Passed to :class:`~ovro_lwa_portal.viz.sky_viewer.SkyViewer`.
+
+        Returns
+        -------
+        panel.viewable.Viewable
+            Interactive Panel layout with Aladin sky viewer.
+        """
+        from ovro_lwa_portal.viz import SkyViewer
+
+        return SkyViewer(self._obj, **kwargs).panel()
