@@ -11,6 +11,9 @@ GitHub.
 
 - **Unified Data Loading**: Load OVRO-LWA data from local paths, remote URLs
   (S3, HTTPS), or DOI identifiers with a single `open_dataset()` function
+- **Interactive Visualization**: Panel/HoloViews explorers with linked views,
+  sky overlay via Aladin Lite, and click-to-inspect interactions
+  ([guide](user-guide/interactive-visualization.md))
 - **FITS to Zarr Conversion**: Convert OVRO-LWA FITS image files to
   cloud-optimized Zarr format
 - **Command-Line Interface**: User-friendly `ovro-ingest` CLI with progress

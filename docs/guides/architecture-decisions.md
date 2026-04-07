@@ -3,6 +3,30 @@
 Technical decisions made during development, with rationale and outcomes. Newest
 entries appear first within each section.
 
+## Interactive Visualization Framework
+
+### 2026-04-07: Panel/HoloViews with lazy PreloadedCube for interactive explorers (Accepted)
+
+- **Decision:** Built the `viz` subpackage using Panel + HoloViews + Bokeh as
+  the interactive visualization stack, with a `PreloadedCube` class that
+  stride-downsamples (4096x4096 to 512x512) and LRU-caches individual 2D
+  slices on demand.
+- **Why:** The existing matplotlib-based `radport` accessor produces static
+  images. Researchers need to scrub through time/frequency/polarization
+  interactively, click on features to inspect spectra and light curves, and
+  overlay data on sky surveys. Panel/HoloViews integrates natively with Jupyter
+  and can be served as standalone web apps. HoloViews' `DynamicMap` with
+  `param` dependency tracking enables declarative reactive UIs. The
+  PreloadedCube avoids loading the full data cube (which can be >3 GB for
+  production 4096x4096 data) by fetching one slice per slider change and
+  caching 32 recent slices.
+- **Result:** Four explorer classes (ImageExplorer, DynamicSpectrumExplorer,
+  CutoutExplorer, SkyViewer) accessible via `ds.radport.explore*()` methods.
+  All viz deps are optional (`[visualization]` extra). The SkyViewer uses
+  ipyaladin to overlay FITS data on survey backgrounds with proper WCS
+  projection. The DynamicSpectrumExplorer delegates to the accessor's batched
+  `dask.compute()` path for efficient waterfall generation.
+
 ## Celestial Coordinate Tracking
 
 ### 2026-04-03: Negate l in SIN projection to match RA direction (Accepted)
