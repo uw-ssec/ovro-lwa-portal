@@ -22,6 +22,8 @@ class TestCreateExplorationDashboard:
 
     def test_tab_names(self, viz_dataset):
         dashboard = create_exploration_dashboard(viz_dataset)
+        # Panel Tabs does not expose tab names via a public API —
+        # _names is the only way to retrieve them.
         names = dashboard._names
         assert "Image" in names
         assert "Dynamic Spectrum" in names

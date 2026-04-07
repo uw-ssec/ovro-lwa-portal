@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import NoReturn
+
 _VIZ_DEPS_CHECKED: bool | None = None
 
 
@@ -33,7 +35,7 @@ def check_viz_deps() -> None:
     _VIZ_DEPS_CHECKED = True
 
 
-def _raise_missing(missing: list[str] | None = None) -> None:
+def _raise_missing(missing: list[str] | None = None) -> NoReturn:
     msg = (
         "Interactive visualization requires additional dependencies"
         + (f" ({', '.join(missing)})" if missing else "")

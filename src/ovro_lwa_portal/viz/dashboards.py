@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
-def create_exploration_dashboard(ds: xr.Dataset, **kwargs: Any) -> pn.Tabs:
+def create_exploration_dashboard(ds: xr.Dataset) -> pn.Tabs:
     """Create a comprehensive exploration dashboard.
 
     Parameters

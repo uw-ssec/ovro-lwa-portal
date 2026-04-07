@@ -5599,7 +5599,7 @@ class RadportAccessor:
     # Interactive visualization (requires optional [visualization] deps)
     # ------------------------------------------------------------------
 
-    def explore(self, **kwargs: Any) -> Any:
+    def explore(self) -> Any:
         """Launch an interactive exploration dashboard.
 
         Combines image, dynamic spectrum, and cutout explorers in a
@@ -5610,11 +5610,6 @@ class RadportAccessor:
 
             pip install 'ovro_lwa_portal[visualization]'
 
-        Parameters
-        ----------
-        **kwargs
-            Passed to :func:`~ovro_lwa_portal.viz.create_exploration_dashboard`.
-
         Returns
         -------
         panel.Tabs
@@ -5622,7 +5617,7 @@ class RadportAccessor:
         """
         from ovro_lwa_portal.viz import create_exploration_dashboard
 
-        return create_exploration_dashboard(self._obj, **kwargs)
+        return create_exploration_dashboard(self._obj)
 
     def explore_image(self, **kwargs: Any) -> Any:
         """Launch an interactive image explorer.
@@ -5670,7 +5665,8 @@ class RadportAccessor:
         Overlays OVRO-LWA data on astronomical survey backgrounds
         (DSS, WISE, Planck, etc.) with real-time panning, zooming,
         and coordinate exploration. Requires ``[visualization]``
-        dependencies and WCS header in the dataset.
+        dependencies and a WCS header (``fits_wcs_header`` attribute)
+        in the dataset.
 
         Parameters
         ----------
@@ -5681,7 +5677,19 @@ class RadportAccessor:
         -------
         panel.viewable.Viewable
             Interactive Panel layout with Aladin sky viewer.
+
+        Raises
+        ------
+        ValueError
+            If the dataset does not contain a WCS header.
         """
+        if not self.has_wcs:
+            msg = (
+                "explore_sky() requires a WCS header in the dataset "
+                "(fits_wcs_header attribute). Use explore_image() for "
+                "datasets without celestial coordinates."
+            )
+            raise ValueError(msg)
         from ovro_lwa_portal.viz import SkyViewer
 
         return SkyViewer(self._obj, **kwargs).panel()

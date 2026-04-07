@@ -82,8 +82,8 @@ def _build_fits_hdu(
     # Downsample large images for Aladin overlay performance
     max_size = 512
     n_l, n_m = da.sizes.get("l", 0), da.sizes.get("m", 0)
-    factor_l = max(1, n_l // max_size)
-    factor_m = max(1, n_m // max_size)
+    factor_l = max(1, -(-n_l // max_size))
+    factor_m = max(1, -(-n_m // max_size))
     if factor_l > 1 or factor_m > 1:
         trim_l = (n_l // factor_l) * factor_l
         trim_m = (n_m // factor_m) * factor_m
@@ -198,10 +198,8 @@ class SkyViewer(param.Parameterized):
     )
 
     def __init__(self, ds: xr.Dataset, **params: Any) -> None:
-        super().__init__(**params)
-        self._ds = ds
-
-        # Set bounds from dataset dimensions
+        # Set bounds before super().__init__ so incoming params validate
+        # against dataset-derived ranges.
         n_times = ds.sizes["time"]
         n_freqs = ds.sizes["frequency"]
         n_pols = ds.sizes["polarization"]
@@ -213,7 +211,10 @@ class SkyViewer(param.Parameterized):
         available_vars = [v for v in ["SKY", "BEAM"] if v in ds.data_vars]
         self.param.var.objects = available_vars
         if available_vars:
-            self.var = available_vars[0]
+            params.setdefault("var", available_vars[0])
+
+        super().__init__(**params)
+        self._ds = ds
 
         # Precompute display labels
         self._time_labels = {
@@ -273,9 +274,9 @@ class SkyViewer(param.Parameterized):
         except ValueError:
             return  # No WCS header — skip overlay
 
-        time_label = self._time_labels.get(self.time_idx, "?")
-        freq_label = self._freq_labels.get(self.freq_idx, "?")
-        overlay_name = f"OVRO-LWA {self.var} t={time_label} f={freq_label}"
+        # Use a static name so add_fits replaces the existing layer
+        # instead of accumulating new ones on each parameter change.
+        overlay_name = "OVRO-LWA overlay"
 
         self._aladin.add_fits(
             hdul,

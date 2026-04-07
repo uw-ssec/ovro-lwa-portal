@@ -42,8 +42,9 @@ def ImageExplorer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
 
     Returns
     -------
-    panel.viewable.Viewable
-        Panel layout with interactive controls.
+    ovro_lwa_portal.viz.explorers.ImageExplorer
+        Explorer instance. Call ``.panel()`` to get a
+        ``panel.viewable.Viewable`` layout.
     """
     check_viz_deps()
     from ovro_lwa_portal.viz.explorers import ImageExplorer as _IE
@@ -63,8 +64,9 @@ def DynamicSpectrumExplorer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
 
     Returns
     -------
-    panel.viewable.Viewable
-        Panel layout with interactive controls.
+    ovro_lwa_portal.viz.explorers.DynamicSpectrumExplorer
+        Explorer instance. Call ``.panel()`` to get a
+        ``panel.viewable.Viewable`` layout.
     """
     check_viz_deps()
     from ovro_lwa_portal.viz.explorers import DynamicSpectrumExplorer as _DSE
@@ -84,8 +86,9 @@ def CutoutExplorer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
 
     Returns
     -------
-    panel.viewable.Viewable
-        Panel layout with interactive controls.
+    ovro_lwa_portal.viz.explorers.CutoutExplorer
+        Explorer instance. Call ``.panel()`` to get a
+        ``panel.viewable.Viewable`` layout.
     """
     check_viz_deps()
     from ovro_lwa_portal.viz.explorers import CutoutExplorer as _CE
@@ -109,8 +112,9 @@ def SkyViewer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
 
     Returns
     -------
-    panel.viewable.Viewable
-        Panel layout with Aladin sky viewer.
+    ovro_lwa_portal.viz.sky_viewer.SkyViewer
+        Sky viewer instance. Call ``.panel()`` to get a
+        ``panel.viewable.Viewable`` layout.
     """
     check_viz_deps()
     from ovro_lwa_portal.viz.sky_viewer import SkyViewer as _SV
@@ -118,7 +122,7 @@ def SkyViewer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
     return _SV(ds, **kwargs)
 
 
-def create_exploration_dashboard(ds: xr.Dataset, **kwargs: Any) -> Any:
+def create_exploration_dashboard(ds: xr.Dataset) -> Any:
     """Create a comprehensive exploration dashboard.
 
     Combines image, dynamic spectrum, and cutout explorers into a
@@ -128,8 +132,6 @@ def create_exploration_dashboard(ds: xr.Dataset, **kwargs: Any) -> Any:
     ----------
     ds : xr.Dataset
         OVRO-LWA dataset to explore.
-    **kwargs
-        Passed to dashboard factory.
 
     Returns
     -------
@@ -139,4 +141,4 @@ def create_exploration_dashboard(ds: xr.Dataset, **kwargs: Any) -> Any:
     check_viz_deps()
     from ovro_lwa_portal.viz.dashboards import create_exploration_dashboard as _ced
 
-    return _ced(ds, **kwargs)
+    return _ced(ds)

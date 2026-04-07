@@ -76,8 +76,8 @@ class PreloadedCube:
         # Compute stride factors
         n_l = ds.sizes["l"]
         n_m = ds.sizes["m"]
-        self.stride_l = max(1, n_l // max_size)
-        self.stride_m = max(1, n_m // max_size)
+        self.stride_l = max(1, -(-n_l // max_size))
+        self.stride_m = max(1, -(-n_m // max_size))
 
         # Cache coordinate arrays (strided to match display resolution)
         self.l_vals = ds.coords["l"].values[::self.stride_l]
@@ -91,6 +91,11 @@ class PreloadedCube:
         # Dynamic spectrum cache (lazily computed)
         self._dynspec_cache: dict[tuple[int, int], np.ndarray] = {}
 
+        # Per-instance LRU cache for _load_slice (avoids caching self
+        # in a module-level lru_cache, which would pin the instance and
+        # prevent garbage collection).
+        self._load_slice = lru_cache(maxsize=_CACHE_SIZE)(self._load_slice_impl)
+
         print(  # noqa: T201
             f"PreloadedCube ready: {var} "
             f"({self.n_times}t x {self.n_freqs}f, "
@@ -98,9 +103,8 @@ class PreloadedCube:
             f"from {n_l}x{n_m}, stride {self.stride_l}x{self.stride_m})"
         )
 
-    @lru_cache(maxsize=_CACHE_SIZE)  # noqa: B019
-    def _load_slice(self, time_idx: int, freq_idx: int) -> np.ndarray:
-        """Load and downsample a single (l, m) slice. Cached via LRU.
+    def _load_slice_impl(self, time_idx: int, freq_idx: int) -> np.ndarray:
+        """Load and downsample a single (l, m) slice.
 
         Returns
         -------

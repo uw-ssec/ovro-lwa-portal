@@ -61,9 +61,8 @@ class ImageExplorer(param.Parameterized):
     robust = param.Boolean(default=True, doc="Use robust (percentile) color scaling")
 
     def __init__(self, ds: xr.Dataset, **params: Any) -> None:
-        super().__init__(**params)
-        self._ds = ds
-
+        # Set bounds before super().__init__ so incoming params validate
+        # against dataset-derived ranges, not stale defaults.
         n_times = ds.sizes["time"]
         n_freqs = ds.sizes["frequency"]
         n_pols = ds.sizes["polarization"]
@@ -75,10 +74,16 @@ class ImageExplorer(param.Parameterized):
         available_vars = [v for v in ["SKY", "BEAM"] if v in ds.data_vars]
         self.param.var.objects = available_vars
         if available_vars:
-            self.var = available_vars[0]
+            params.setdefault("var", available_vars[0])
 
-        # LRU-cached cube — no upfront load, fetches one slice at a time
-        self._cube = PreloadedCube(ds, var=self.var, pol=self.pol)
+        super().__init__(**params)
+        self._ds = ds
+
+        # LRU-cached cube — no upfront load, fetches one slice at a time.
+        # Recreated when var or pol changes via _get_cube().
+        self._cube: PreloadedCube | None = None
+        self._cube_var: str | None = None
+        self._cube_pol: int | None = None
 
         self._time_labels = {
             i: f"{float(ds.coords['time'].values[i]):.4f}"
@@ -89,10 +94,18 @@ class ImageExplorer(param.Parameterized):
             for i in range(n_freqs)
         }
 
-    @param.depends("time_idx", "freq_idx", "cmap", "robust")
+    def _get_cube(self) -> PreloadedCube:
+        """Get or create a PreloadedCube for the current var/pol."""
+        if self._cube is None or self._cube_var != self.var or self._cube_pol != self.pol:
+            self._cube = PreloadedCube(self._ds, var=self.var, pol=self.pol)
+            self._cube_var = self.var
+            self._cube_pol = self.pol
+        return self._cube
+
+    @param.depends("time_idx", "freq_idx", "var", "pol", "cmap", "robust")
     def _image_view(self) -> hv.Image:
         img = sky_image_element(
-            self._cube,
+            self._get_cube(),
             time_idx=self.time_idx,
             freq_idx=self.freq_idx,
             robust=self.robust,
@@ -118,6 +131,8 @@ class ImageExplorer(param.Parameterized):
             time_label,
             pn.widgets.IntSlider.from_param(self.param.freq_idx, name="Frequency Channel"),
             freq_label,
+            pn.widgets.Select.from_param(self.param.var, name="Variable"),
+            pn.widgets.IntSlider.from_param(self.param.pol, name="Polarization"),
             pn.widgets.Select.from_param(self.param.cmap, name="Colormap"),
             pn.widgets.Checkbox.from_param(self.param.robust, name="Robust Scaling"),
             width=280,
@@ -157,10 +172,8 @@ class DynamicSpectrumExplorer(param.Parameterized):
         m: float | None = None,
         **params: Any,
     ) -> None:
-        super().__init__(**params)
-        self._ds = ds
-
-        # Set l/m bounds from coordinate range
+        # Set bounds before super().__init__ so incoming params validate
+        # against dataset-derived ranges.
         l_vals = ds.coords["l"].values
         m_vals = ds.coords["m"].values
         self.param.l_val.bounds = (
@@ -173,9 +186,12 @@ class DynamicSpectrumExplorer(param.Parameterized):
         )
 
         if l is not None:
-            self.l_val = l
+            params["l_val"] = l
         if m is not None:
-            self.m_val = m
+            params["m_val"] = m
+
+        super().__init__(**params)
+        self._ds = ds
 
         self._tap = hv.streams.Tap(x=None, y=None)
 
@@ -347,13 +363,15 @@ class CutoutExplorer(param.Parameterized):
     robust = param.Boolean(default=True, doc="Robust scaling")
 
     def __init__(self, ds: xr.Dataset, **params: Any) -> None:
-        super().__init__(**params)
-        self._ds = ds
-
+        # Set bounds before super().__init__ so incoming params validate
+        # against dataset-derived ranges.
         n_times = ds.sizes["time"]
         n_freqs = ds.sizes["frequency"]
         self.param.time_idx.bounds = (0, max(0, n_times - 1))
         self.param.freq_idx.bounds = (0, max(0, n_freqs - 1))
+
+        super().__init__(**params)
+        self._ds = ds
 
         var = "SKY" if "SKY" in ds.data_vars else list(ds.data_vars)[0]
         self._cube = PreloadedCube(ds, var=var, pol=0)
