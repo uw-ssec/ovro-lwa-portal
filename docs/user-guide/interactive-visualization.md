@@ -53,12 +53,12 @@ ds.radport.explore_image()
 
 **Controls:**
 
-| Control | Description |
-|---------|-------------|
-| Time Step | Slider to select the time index |
-| Frequency Channel | Slider to select the frequency index |
-| Colormap | Dropdown with radio-astronomy-friendly colormaps |
-| Robust Scaling | Toggle 2nd/98th percentile color clipping |
+| Control           | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| Time Step         | Slider to select the time index                  |
+| Frequency Channel | Slider to select the frequency index             |
+| Colormap          | Dropdown with radio-astronomy-friendly colormaps |
+| Robust Scaling    | Toggle 2nd/98th percentile color clipping        |
 
 **Features:**
 
@@ -90,22 +90,22 @@ ds.radport.explore_dynamic_spectrum(l=0.3, m=-0.1)
 
 **Controls:**
 
-| Control | Description |
-|---------|-------------|
-| l | Direction cosine slider for the spatial position |
-| m | Direction cosine slider for the spatial position |
-| Colormap | Dropdown colormap selector |
-| Robust Scaling | Toggle percentile clipping |
+| Control        | Description                                      |
+| -------------- | ------------------------------------------------ |
+| l              | Direction cosine slider for the spatial position |
+| m              | Direction cosine slider for the spatial position |
+| Colormap       | Dropdown colormap selector                       |
+| Robust Scaling | Toggle percentile clipping                       |
 
 **Linked views:**
 
 - **Click on the waterfall** to show the spectrum at that time step and the
   light curve at that frequency in the right panel
 
-!!! tip "Performance"
-    The initial load fetches pixel data across all time/frequency slices using
-    the accessor's batched `dask.compute()`. For remote data, this is much
-    faster than sequential access. Click-linked views only read one chunk each.
+!!! tip "Performance" The initial load fetches pixel data across all
+time/frequency slices using the accessor's batched `dask.compute()`. For remote
+data, this is much faster than sequential access. Click-linked views only read
+one chunk each.
 
 ## Cutout Explorer
 
@@ -120,14 +120,14 @@ explorer.panel()
 
 **Controls:**
 
-| Control | Description |
-|---------|-------------|
-| l center / m center | Spatial center of the cutout |
-| dl / dm | Half-extent of the cutout region |
-| Time Step | Time index slider |
-| Frequency | Frequency channel slider |
-| Colormap | Dropdown selector |
-| Robust Scaling | Toggle percentile clipping |
+| Control             | Description                      |
+| ------------------- | -------------------------------- |
+| l center / m center | Spatial center of the cutout     |
+| dl / dm             | Half-extent of the cutout region |
+| Time Step           | Time index slider                |
+| Frequency           | Frequency channel slider         |
+| Colormap            | Dropdown selector                |
+| Robust Scaling      | Toggle percentile clipping       |
 
 **Linked views:**
 
@@ -136,46 +136,46 @@ explorer.panel()
 ## Sky Viewer
 
 Overlay OVRO-LWA data on astronomical survey backgrounds (DSS, WISE, Planck,
-etc.) with real-time panning, zooming, and coordinate grid display. Requires
-WCS metadata in the dataset.
+etc.) with real-time panning, zooming, and coordinate grid display. Requires WCS
+metadata in the dataset.
 
 ```python
 ds.radport.explore_sky()
 ```
 
-!!! warning "Requirements"
-    The sky viewer requires a WCS header in the dataset (`fits_wcs_header`
-    attribute) and the `ipyaladin` package. It works best in JupyterLab.
+!!! warning "Requirements" The sky viewer requires a WCS header in the dataset
+(`fits_wcs_header` attribute) and the `ipyaladin` package. It works best in
+JupyterLab.
 
 **Controls:**
 
-| Control | Description |
-|---------|-------------|
-| Time Step | Time index for the overlay image |
-| Frequency | Frequency channel for the overlay |
+| Control           | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| Time Step         | Time index for the overlay image                 |
+| Frequency         | Frequency channel for the overlay                |
 | Background Survey | Select from DSS, 2MASS, WISE, Planck, SDSS, etc. |
-| Overlay Opacity | Transparency of the OVRO-LWA overlay (0-1) |
-| Colormap | Color mapping for the overlay |
-| Stretch | Color stretch function (linear, log, sqrt, pow2) |
-| Robust Clipping | Toggle percentile clipping |
-| Field of View | FOV in degrees (0.1-180) |
+| Overlay Opacity   | Transparency of the OVRO-LWA overlay (0-1)       |
+| Colormap          | Color mapping for the overlay                    |
+| Stretch           | Color stretch function (linear, log, sqrt, pow2) |
+| Robust Clipping   | Toggle percentile clipping                       |
+| Field of View     | FOV in degrees (0.1-180)                         |
 
 **Available survey backgrounds:**
 
-| Name | Description |
-|------|-------------|
-| DSS Color | Digitized Sky Survey |
-| 2MASS Color | Two Micron All Sky Survey |
-| AllWISE Color | Wide-field Infrared Survey Explorer |
-| Planck HFI Color | Planck High Frequency Instrument |
-| SDSS9 Color | Sloan Digital Sky Survey |
-| Mellinger Color | Optical all-sky mosaic |
-| Fermi Color | Fermi Gamma-ray Space Telescope |
-| RASS Soft | ROSAT All-Sky Survey (X-ray) |
-| Haslam 408 MHz | 408 MHz all-sky radio survey |
+| Name             | Description                         |
+| ---------------- | ----------------------------------- |
+| DSS Color        | Digitized Sky Survey                |
+| 2MASS Color      | Two Micron All Sky Survey           |
+| AllWISE Color    | Wide-field Infrared Survey Explorer |
+| Planck HFI Color | Planck High Frequency Instrument    |
+| SDSS9 Color      | Sloan Digital Sky Survey            |
+| Mellinger Color  | Optical all-sky mosaic              |
+| Fermi Color      | Fermi Gamma-ray Space Telescope     |
+| RASS Soft        | ROSAT All-Sky Survey (X-ray)        |
+| Haslam 408 MHz   | 408 MHz all-sky radio survey        |
 
-The viewer constructs FITS HDUs from the dataset's numpy arrays and WCS
-headers, downsampling large images to 512x512 for overlay performance.
+The viewer constructs FITS HDUs from the dataset's numpy arrays and WCS headers,
+downsampling large images to 512x512 for overlay performance.
 
 ## Exploration Dashboard
 
@@ -211,15 +211,15 @@ graph TD
   downsampling (4096x4096 to 512x512) and an LRU cache of 32 slices. First
   access reads one chunk; repeated access is instant.
 - **DynamicSpectrumExplorer**: Uses the accessor's `dynamic_spectrum()` for the
-  waterfall (batched `dask.compute()`) and single-frame methods for linked
-  views (one chunk read each).
+  waterfall (batched `dask.compute()`) and single-frame methods for linked views
+  (one chunk read each).
 - **SkyViewer**: Builds FITS HDUs with proper WCS, downsampled to 512x512 for
   Aladin overlay performance.
 
 ### Display Resolution
 
-All explorers downsample images to a maximum of 512x512 pixels for display.
-This keeps interactive controls responsive even with 4096x4096 production data.
+All explorers downsample images to a maximum of 512x512 pixels for display. This
+keeps interactive controls responsive even with 4096x4096 production data.
 
 ### Remote Data
 
