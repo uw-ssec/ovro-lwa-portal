@@ -55,3 +55,4 @@ EOF
 - Scope is optional but preferred when changes are localized
 - Never skip hooks (`--no-verify`)
 - Never amend unless explicitly asked
+- NEVER add `Co-Authored-By` trailers or any AI attribution to commit messages
