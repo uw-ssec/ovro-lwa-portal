@@ -38,6 +38,7 @@ nav:
       - Coordinate Systems: getting-started/coordinate-systems.md
   - User Guide:
       - Visualization: user-guide/visualization.md
+      - Interactive Visualization: user-guide/interactive-visualization.md
       - Spectral Analysis: user-guide/spectral-analysis.md
       - Source Detection: user-guide/source-detection.md
       - Celestial Tracking: user-guide/celestial-tracking.md
@@ -51,6 +52,7 @@ nav:
       - Spectral Mapping: tutorials/spectral-mapping.md
   - API Reference:
       - radport Accessor: api/radport-accessor.md
+      - Visualization Module: api/viz-module.md
       - Data Loading: api/data-loading.md
       - FITS to Zarr (Low-Level): api/fits-to-zarr-xradio.md
       - Ingest Module: api/ingest.md

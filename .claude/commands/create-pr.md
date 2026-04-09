@@ -54,3 +54,5 @@ Use the same conventional commit types as /commit:
 - Never create a PR from `main` to `main`
 - If the branch name contains a hint (e.g., `feat/`, `fix/`), use that as the
   commit type
+- NEVER add `Co-Authored-By` trailers, AI attribution, or "Generated with" lines
+  to PR titles, bodies, or commit messages
