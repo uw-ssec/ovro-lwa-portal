@@ -16,7 +16,7 @@
         <link rel="prev" href="../../tutorials/spectral-mapping/">
       
       
-        <link rel="next" href="../data-loading/">
+        <link rel="next" href="../viz-module/">
       
       
         
@@ -672,6 +672,34 @@
     
   
     Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/interactive-visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactive Visualization
   
 
     
@@ -1930,6 +1958,50 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_dynamic_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_dynamic_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_sky" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_sky
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1939,6 +2011,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../viz-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3005,6 +3105,50 @@
     <span class="md-ellipsis">
       
         plot_dynamic_spectrum_dedispersed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_dynamic_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_dynamic_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_sky" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        explore_sky
       
     </span>
   </a>
@@ -8749,7 +8893,115 @@ ds.radport.plot()</p>
 <span class="normal"><a href="#__codelineno-0-5593">5593</a></span>
 <span class="normal"><a href="#__codelineno-0-5594">5594</a></span>
 <span class="normal"><a href="#__codelineno-0-5595">5595</a></span>
-<span class="normal"><a href="#__codelineno-0-5596">5596</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="nd">@xr</span><span class="o">.</span><span class="n">register_dataset_accessor</span><span class="p">(</span><span class="s2">&quot;radport&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-5596">5596</a></span>
+<span class="normal"><a href="#__codelineno-0-5597">5597</a></span>
+<span class="normal"><a href="#__codelineno-0-5598">5598</a></span>
+<span class="normal"><a href="#__codelineno-0-5599">5599</a></span>
+<span class="normal"><a href="#__codelineno-0-5600">5600</a></span>
+<span class="normal"><a href="#__codelineno-0-5601">5601</a></span>
+<span class="normal"><a href="#__codelineno-0-5602">5602</a></span>
+<span class="normal"><a href="#__codelineno-0-5603">5603</a></span>
+<span class="normal"><a href="#__codelineno-0-5604">5604</a></span>
+<span class="normal"><a href="#__codelineno-0-5605">5605</a></span>
+<span class="normal"><a href="#__codelineno-0-5606">5606</a></span>
+<span class="normal"><a href="#__codelineno-0-5607">5607</a></span>
+<span class="normal"><a href="#__codelineno-0-5608">5608</a></span>
+<span class="normal"><a href="#__codelineno-0-5609">5609</a></span>
+<span class="normal"><a href="#__codelineno-0-5610">5610</a></span>
+<span class="normal"><a href="#__codelineno-0-5611">5611</a></span>
+<span class="normal"><a href="#__codelineno-0-5612">5612</a></span>
+<span class="normal"><a href="#__codelineno-0-5613">5613</a></span>
+<span class="normal"><a href="#__codelineno-0-5614">5614</a></span>
+<span class="normal"><a href="#__codelineno-0-5615">5615</a></span>
+<span class="normal"><a href="#__codelineno-0-5616">5616</a></span>
+<span class="normal"><a href="#__codelineno-0-5617">5617</a></span>
+<span class="normal"><a href="#__codelineno-0-5618">5618</a></span>
+<span class="normal"><a href="#__codelineno-0-5619">5619</a></span>
+<span class="normal"><a href="#__codelineno-0-5620">5620</a></span>
+<span class="normal"><a href="#__codelineno-0-5621">5621</a></span>
+<span class="normal"><a href="#__codelineno-0-5622">5622</a></span>
+<span class="normal"><a href="#__codelineno-0-5623">5623</a></span>
+<span class="normal"><a href="#__codelineno-0-5624">5624</a></span>
+<span class="normal"><a href="#__codelineno-0-5625">5625</a></span>
+<span class="normal"><a href="#__codelineno-0-5626">5626</a></span>
+<span class="normal"><a href="#__codelineno-0-5627">5627</a></span>
+<span class="normal"><a href="#__codelineno-0-5628">5628</a></span>
+<span class="normal"><a href="#__codelineno-0-5629">5629</a></span>
+<span class="normal"><a href="#__codelineno-0-5630">5630</a></span>
+<span class="normal"><a href="#__codelineno-0-5631">5631</a></span>
+<span class="normal"><a href="#__codelineno-0-5632">5632</a></span>
+<span class="normal"><a href="#__codelineno-0-5633">5633</a></span>
+<span class="normal"><a href="#__codelineno-0-5634">5634</a></span>
+<span class="normal"><a href="#__codelineno-0-5635">5635</a></span>
+<span class="normal"><a href="#__codelineno-0-5636">5636</a></span>
+<span class="normal"><a href="#__codelineno-0-5637">5637</a></span>
+<span class="normal"><a href="#__codelineno-0-5638">5638</a></span>
+<span class="normal"><a href="#__codelineno-0-5639">5639</a></span>
+<span class="normal"><a href="#__codelineno-0-5640">5640</a></span>
+<span class="normal"><a href="#__codelineno-0-5641">5641</a></span>
+<span class="normal"><a href="#__codelineno-0-5642">5642</a></span>
+<span class="normal"><a href="#__codelineno-0-5643">5643</a></span>
+<span class="normal"><a href="#__codelineno-0-5644">5644</a></span>
+<span class="normal"><a href="#__codelineno-0-5645">5645</a></span>
+<span class="normal"><a href="#__codelineno-0-5646">5646</a></span>
+<span class="normal"><a href="#__codelineno-0-5647">5647</a></span>
+<span class="normal"><a href="#__codelineno-0-5648">5648</a></span>
+<span class="normal"><a href="#__codelineno-0-5649">5649</a></span>
+<span class="normal"><a href="#__codelineno-0-5650">5650</a></span>
+<span class="normal"><a href="#__codelineno-0-5651">5651</a></span>
+<span class="normal"><a href="#__codelineno-0-5652">5652</a></span>
+<span class="normal"><a href="#__codelineno-0-5653">5653</a></span>
+<span class="normal"><a href="#__codelineno-0-5654">5654</a></span>
+<span class="normal"><a href="#__codelineno-0-5655">5655</a></span>
+<span class="normal"><a href="#__codelineno-0-5656">5656</a></span>
+<span class="normal"><a href="#__codelineno-0-5657">5657</a></span>
+<span class="normal"><a href="#__codelineno-0-5658">5658</a></span>
+<span class="normal"><a href="#__codelineno-0-5659">5659</a></span>
+<span class="normal"><a href="#__codelineno-0-5660">5660</a></span>
+<span class="normal"><a href="#__codelineno-0-5661">5661</a></span>
+<span class="normal"><a href="#__codelineno-0-5662">5662</a></span>
+<span class="normal"><a href="#__codelineno-0-5663">5663</a></span>
+<span class="normal"><a href="#__codelineno-0-5664">5664</a></span>
+<span class="normal"><a href="#__codelineno-0-5665">5665</a></span>
+<span class="normal"><a href="#__codelineno-0-5666">5666</a></span>
+<span class="normal"><a href="#__codelineno-0-5667">5667</a></span>
+<span class="normal"><a href="#__codelineno-0-5668">5668</a></span>
+<span class="normal"><a href="#__codelineno-0-5669">5669</a></span>
+<span class="normal"><a href="#__codelineno-0-5670">5670</a></span>
+<span class="normal"><a href="#__codelineno-0-5671">5671</a></span>
+<span class="normal"><a href="#__codelineno-0-5672">5672</a></span>
+<span class="normal"><a href="#__codelineno-0-5673">5673</a></span>
+<span class="normal"><a href="#__codelineno-0-5674">5674</a></span>
+<span class="normal"><a href="#__codelineno-0-5675">5675</a></span>
+<span class="normal"><a href="#__codelineno-0-5676">5676</a></span>
+<span class="normal"><a href="#__codelineno-0-5677">5677</a></span>
+<span class="normal"><a href="#__codelineno-0-5678">5678</a></span>
+<span class="normal"><a href="#__codelineno-0-5679">5679</a></span>
+<span class="normal"><a href="#__codelineno-0-5680">5680</a></span>
+<span class="normal"><a href="#__codelineno-0-5681">5681</a></span>
+<span class="normal"><a href="#__codelineno-0-5682">5682</a></span>
+<span class="normal"><a href="#__codelineno-0-5683">5683</a></span>
+<span class="normal"><a href="#__codelineno-0-5684">5684</a></span>
+<span class="normal"><a href="#__codelineno-0-5685">5685</a></span>
+<span class="normal"><a href="#__codelineno-0-5686">5686</a></span>
+<span class="normal"><a href="#__codelineno-0-5687">5687</a></span>
+<span class="normal"><a href="#__codelineno-0-5688">5688</a></span>
+<span class="normal"><a href="#__codelineno-0-5689">5689</a></span>
+<span class="normal"><a href="#__codelineno-0-5690">5690</a></span>
+<span class="normal"><a href="#__codelineno-0-5691">5691</a></span>
+<span class="normal"><a href="#__codelineno-0-5692">5692</a></span>
+<span class="normal"><a href="#__codelineno-0-5693">5693</a></span>
+<span class="normal"><a href="#__codelineno-0-5694">5694</a></span>
+<span class="normal"><a href="#__codelineno-0-5695">5695</a></span>
+<span class="normal"><a href="#__codelineno-0-5696">5696</a></span>
+<span class="normal"><a href="#__codelineno-0-5697">5697</a></span>
+<span class="normal"><a href="#__codelineno-0-5698">5698</a></span>
+<span class="normal"><a href="#__codelineno-0-5699">5699</a></span>
+<span class="normal"><a href="#__codelineno-0-5700">5700</a></span>
+<span class="normal"><a href="#__codelineno-0-5701">5701</a></span>
+<span class="normal"><a href="#__codelineno-0-5702">5702</a></span>
+<span class="normal"><a href="#__codelineno-0-5703">5703</a></span>
+<span class="normal"><a href="#__codelineno-0-5704">5704</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="nd">@xr</span><span class="o">.</span><span class="n">register_dataset_accessor</span><span class="p">(</span><span class="s2">&quot;radport&quot;</span><span class="p">)</span>
 <a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="k">class</span><span class="w"> </span><span class="nc">RadportAccessor</span><span class="p">:</span>
 <a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;xarray accessor for OVRO-LWA radio astronomy datasets.</span>
 <a id="__codelineno-0-65" name="__codelineno-0-65"></a>
@@ -14284,6 +14536,114 @@ ds.radport.plot()</p>
 <a id="__codelineno-0-5594" name="__codelineno-0-5594"></a>
 <a id="__codelineno-0-5595" name="__codelineno-0-5595"></a>        <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
 <a id="__codelineno-0-5596" name="__codelineno-0-5596"></a>        <span class="k">return</span> <span class="n">fig</span>
+<a id="__codelineno-0-5597" name="__codelineno-0-5597"></a>
+<a id="__codelineno-0-5598" name="__codelineno-0-5598"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-5599" name="__codelineno-0-5599"></a>    <span class="c1"># Interactive visualization (requires optional [visualization] deps)</span>
+<a id="__codelineno-0-5600" name="__codelineno-0-5600"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+<a id="__codelineno-0-5601" name="__codelineno-0-5601"></a>
+<a id="__codelineno-0-5602" name="__codelineno-0-5602"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">explore</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">512</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5603" name="__codelineno-0-5603"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Launch an interactive exploration dashboard.</span>
+<a id="__codelineno-0-5604" name="__codelineno-0-5604"></a>
+<a id="__codelineno-0-5605" name="__codelineno-0-5605"></a><span class="sd">        Combines image, dynamic spectrum, and cutout explorers in a</span>
+<a id="__codelineno-0-5606" name="__codelineno-0-5606"></a><span class="sd">        tabbed Panel layout. Requires the ``[visualization]`` optional</span>
+<a id="__codelineno-0-5607" name="__codelineno-0-5607"></a><span class="sd">        dependencies (Panel, HoloViews, Bokeh).</span>
+<a id="__codelineno-0-5608" name="__codelineno-0-5608"></a>
+<a id="__codelineno-0-5609" name="__codelineno-0-5609"></a><span class="sd">        Install with::</span>
+<a id="__codelineno-0-5610" name="__codelineno-0-5610"></a>
+<a id="__codelineno-0-5611" name="__codelineno-0-5611"></a><span class="sd">            pip install &#39;ovro_lwa_portal[visualization]&#39;</span>
+<a id="__codelineno-0-5612" name="__codelineno-0-5612"></a>
+<a id="__codelineno-0-5613" name="__codelineno-0-5613"></a><span class="sd">        Parameters</span>
+<a id="__codelineno-0-5614" name="__codelineno-0-5614"></a><span class="sd">        ----------</span>
+<a id="__codelineno-0-5615" name="__codelineno-0-5615"></a><span class="sd">        max_size : int, optional</span>
+<a id="__codelineno-0-5616" name="__codelineno-0-5616"></a><span class="sd">            Maximum pixels per spatial side after downsampling. Lower</span>
+<a id="__codelineno-0-5617" name="__codelineno-0-5617"></a><span class="sd">            values are faster but coarser. Default 512.</span>
+<a id="__codelineno-0-5618" name="__codelineno-0-5618"></a>
+<a id="__codelineno-0-5619" name="__codelineno-0-5619"></a><span class="sd">        Returns</span>
+<a id="__codelineno-0-5620" name="__codelineno-0-5620"></a><span class="sd">        -------</span>
+<a id="__codelineno-0-5621" name="__codelineno-0-5621"></a><span class="sd">        panel.Tabs</span>
+<a id="__codelineno-0-5622" name="__codelineno-0-5622"></a><span class="sd">            Interactive tabbed dashboard.</span>
+<a id="__codelineno-0-5623" name="__codelineno-0-5623"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5624" name="__codelineno-0-5624"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_exploration_dashboard</span>
+<a id="__codelineno-0-5625" name="__codelineno-0-5625"></a>
+<a id="__codelineno-0-5626" name="__codelineno-0-5626"></a>        <span class="k">return</span> <span class="n">create_exploration_dashboard</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="n">max_size</span><span class="p">)</span>
+<a id="__codelineno-0-5627" name="__codelineno-0-5627"></a>
+<a id="__codelineno-0-5628" name="__codelineno-0-5628"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">explore_image</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">512</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5629" name="__codelineno-0-5629"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Launch an interactive image explorer.</span>
+<a id="__codelineno-0-5630" name="__codelineno-0-5630"></a>
+<a id="__codelineno-0-5631" name="__codelineno-0-5631"></a><span class="sd">        Provides sliders for time, frequency, and polarization with</span>
+<a id="__codelineno-0-5632" name="__codelineno-0-5632"></a><span class="sd">        live image updates. Requires ``[visualization]`` dependencies.</span>
+<a id="__codelineno-0-5633" name="__codelineno-0-5633"></a>
+<a id="__codelineno-0-5634" name="__codelineno-0-5634"></a><span class="sd">        Parameters</span>
+<a id="__codelineno-0-5635" name="__codelineno-0-5635"></a><span class="sd">        ----------</span>
+<a id="__codelineno-0-5636" name="__codelineno-0-5636"></a><span class="sd">        max_size : int, optional</span>
+<a id="__codelineno-0-5637" name="__codelineno-0-5637"></a><span class="sd">            Maximum pixels per spatial side after downsampling. Lower</span>
+<a id="__codelineno-0-5638" name="__codelineno-0-5638"></a><span class="sd">            values are faster but coarser. Default 512.</span>
+<a id="__codelineno-0-5639" name="__codelineno-0-5639"></a><span class="sd">        **kwargs</span>
+<a id="__codelineno-0-5640" name="__codelineno-0-5640"></a><span class="sd">            Passed to :class:`~ovro_lwa_portal.viz.explorers.ImageExplorer`.</span>
+<a id="__codelineno-0-5641" name="__codelineno-0-5641"></a>
+<a id="__codelineno-0-5642" name="__codelineno-0-5642"></a><span class="sd">        Returns</span>
+<a id="__codelineno-0-5643" name="__codelineno-0-5643"></a><span class="sd">        -------</span>
+<a id="__codelineno-0-5644" name="__codelineno-0-5644"></a><span class="sd">        panel.viewable.Viewable</span>
+<a id="__codelineno-0-5645" name="__codelineno-0-5645"></a><span class="sd">            Interactive Panel layout.</span>
+<a id="__codelineno-0-5646" name="__codelineno-0-5646"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5647" name="__codelineno-0-5647"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageExplorer</span>
+<a id="__codelineno-0-5648" name="__codelineno-0-5648"></a>
+<a id="__codelineno-0-5649" name="__codelineno-0-5649"></a>        <span class="k">return</span> <span class="n">ImageExplorer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="n">max_size</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
+<a id="__codelineno-0-5650" name="__codelineno-0-5650"></a>
+<a id="__codelineno-0-5651" name="__codelineno-0-5651"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">explore_dynamic_spectrum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5652" name="__codelineno-0-5652"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Launch an interactive dynamic spectrum explorer.</span>
+<a id="__codelineno-0-5653" name="__codelineno-0-5653"></a>
+<a id="__codelineno-0-5654" name="__codelineno-0-5654"></a><span class="sd">        Displays a time-frequency waterfall with linked spectrum and</span>
+<a id="__codelineno-0-5655" name="__codelineno-0-5655"></a><span class="sd">        light curve views. Requires ``[visualization]`` dependencies.</span>
+<a id="__codelineno-0-5656" name="__codelineno-0-5656"></a>
+<a id="__codelineno-0-5657" name="__codelineno-0-5657"></a><span class="sd">        Parameters</span>
+<a id="__codelineno-0-5658" name="__codelineno-0-5658"></a><span class="sd">        ----------</span>
+<a id="__codelineno-0-5659" name="__codelineno-0-5659"></a><span class="sd">        **kwargs</span>
+<a id="__codelineno-0-5660" name="__codelineno-0-5660"></a><span class="sd">            Passed to :class:`~ovro_lwa_portal.viz.explorers.DynamicSpectrumExplorer`.</span>
+<a id="__codelineno-0-5661" name="__codelineno-0-5661"></a>
+<a id="__codelineno-0-5662" name="__codelineno-0-5662"></a><span class="sd">        Returns</span>
+<a id="__codelineno-0-5663" name="__codelineno-0-5663"></a><span class="sd">        -------</span>
+<a id="__codelineno-0-5664" name="__codelineno-0-5664"></a><span class="sd">        panel.viewable.Viewable</span>
+<a id="__codelineno-0-5665" name="__codelineno-0-5665"></a><span class="sd">            Interactive Panel layout with linked views.</span>
+<a id="__codelineno-0-5666" name="__codelineno-0-5666"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5667" name="__codelineno-0-5667"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">DynamicSpectrumExplorer</span>
+<a id="__codelineno-0-5668" name="__codelineno-0-5668"></a>
+<a id="__codelineno-0-5669" name="__codelineno-0-5669"></a>        <span class="k">return</span> <span class="n">DynamicSpectrumExplorer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
+<a id="__codelineno-0-5670" name="__codelineno-0-5670"></a>
+<a id="__codelineno-0-5671" name="__codelineno-0-5671"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">explore_sky</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5672" name="__codelineno-0-5672"></a><span class="w">        </span><span class="sd">&quot;&quot;&quot;Launch an interactive sky viewer with Aladin Lite.</span>
+<a id="__codelineno-0-5673" name="__codelineno-0-5673"></a>
+<a id="__codelineno-0-5674" name="__codelineno-0-5674"></a><span class="sd">        Overlays OVRO-LWA data on astronomical survey backgrounds</span>
+<a id="__codelineno-0-5675" name="__codelineno-0-5675"></a><span class="sd">        (DSS, WISE, Planck, etc.) with real-time panning, zooming,</span>
+<a id="__codelineno-0-5676" name="__codelineno-0-5676"></a><span class="sd">        and coordinate exploration. Requires ``[visualization]``</span>
+<a id="__codelineno-0-5677" name="__codelineno-0-5677"></a><span class="sd">        dependencies and a WCS header (``fits_wcs_header`` attribute)</span>
+<a id="__codelineno-0-5678" name="__codelineno-0-5678"></a><span class="sd">        in the dataset.</span>
+<a id="__codelineno-0-5679" name="__codelineno-0-5679"></a>
+<a id="__codelineno-0-5680" name="__codelineno-0-5680"></a><span class="sd">        Parameters</span>
+<a id="__codelineno-0-5681" name="__codelineno-0-5681"></a><span class="sd">        ----------</span>
+<a id="__codelineno-0-5682" name="__codelineno-0-5682"></a><span class="sd">        **kwargs</span>
+<a id="__codelineno-0-5683" name="__codelineno-0-5683"></a><span class="sd">            Passed to :class:`~ovro_lwa_portal.viz.sky_viewer.SkyViewer`.</span>
+<a id="__codelineno-0-5684" name="__codelineno-0-5684"></a>
+<a id="__codelineno-0-5685" name="__codelineno-0-5685"></a><span class="sd">        Returns</span>
+<a id="__codelineno-0-5686" name="__codelineno-0-5686"></a><span class="sd">        -------</span>
+<a id="__codelineno-0-5687" name="__codelineno-0-5687"></a><span class="sd">        panel.viewable.Viewable</span>
+<a id="__codelineno-0-5688" name="__codelineno-0-5688"></a><span class="sd">            Interactive Panel layout with Aladin sky viewer.</span>
+<a id="__codelineno-0-5689" name="__codelineno-0-5689"></a>
+<a id="__codelineno-0-5690" name="__codelineno-0-5690"></a><span class="sd">        Raises</span>
+<a id="__codelineno-0-5691" name="__codelineno-0-5691"></a><span class="sd">        ------</span>
+<a id="__codelineno-0-5692" name="__codelineno-0-5692"></a><span class="sd">        ValueError</span>
+<a id="__codelineno-0-5693" name="__codelineno-0-5693"></a><span class="sd">            If the dataset does not contain a WCS header.</span>
+<a id="__codelineno-0-5694" name="__codelineno-0-5694"></a><span class="sd">        &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5695" name="__codelineno-0-5695"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_wcs</span><span class="p">:</span>
+<a id="__codelineno-0-5696" name="__codelineno-0-5696"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-5697" name="__codelineno-0-5697"></a>                <span class="s2">&quot;explore_sky() requires a WCS header in the dataset &quot;</span>
+<a id="__codelineno-0-5698" name="__codelineno-0-5698"></a>                <span class="s2">&quot;(fits_wcs_header attribute). Use explore_image() for &quot;</span>
+<a id="__codelineno-0-5699" name="__codelineno-0-5699"></a>                <span class="s2">&quot;datasets without celestial coordinates.&quot;</span>
+<a id="__codelineno-0-5700" name="__codelineno-0-5700"></a>            <span class="p">)</span>
+<a id="__codelineno-0-5701" name="__codelineno-0-5701"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-5702" name="__codelineno-0-5702"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">SkyViewer</span>
+<a id="__codelineno-0-5703" name="__codelineno-0-5703"></a>
+<a id="__codelineno-0-5704" name="__codelineno-0-5704"></a>        <span class="k">return</span> <span class="n">SkyViewer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
               </details>
 
@@ -34073,6 +34433,562 @@ time and frequency after correcting for interstellar dispersion.</p>
 <a id="__codelineno-0-5594" name="__codelineno-0-5594"></a>
 <a id="__codelineno-0-5595" name="__codelineno-0-5595"></a>    <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
 <a id="__codelineno-0-5596" name="__codelineno-0-5596"></a>    <span class="k">return</span> <span class="n">fig</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="ovro_lwa_portal.accessor.RadportAccessor.explore" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explore</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="mi">512</span><span class="p">)</span></code>
+
+<a href="#ovro_lwa_portal.accessor.RadportAccessor.explore" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Launch an interactive exploration dashboard.</p>
+<p>Combines image, dynamic spectrum, and cutout explorers in a
+tabbed Panel layout. Requires the <code>[visualization]</code> optional
+dependencies (Panel, HoloViews, Bokeh).</p>
+<p>Install with::</p>
+<div class="highlight"><pre><span></span><code>pip install &#39;ovro_lwa_portal[visualization]&#39;
+</code></pre></div>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum pixels per spatial side after downsampling. Lower
+values are faster but coarser. Default 512.</p>
+              </div>
+            </td>
+            <td>
+                  <code>512</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="panel.Tabs">Tabs</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Interactive tabbed dashboard.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/ovro_lwa_portal/accessor.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-5602">5602</a></span>
+<span class="normal"><a href="#__codelineno-0-5603">5603</a></span>
+<span class="normal"><a href="#__codelineno-0-5604">5604</a></span>
+<span class="normal"><a href="#__codelineno-0-5605">5605</a></span>
+<span class="normal"><a href="#__codelineno-0-5606">5606</a></span>
+<span class="normal"><a href="#__codelineno-0-5607">5607</a></span>
+<span class="normal"><a href="#__codelineno-0-5608">5608</a></span>
+<span class="normal"><a href="#__codelineno-0-5609">5609</a></span>
+<span class="normal"><a href="#__codelineno-0-5610">5610</a></span>
+<span class="normal"><a href="#__codelineno-0-5611">5611</a></span>
+<span class="normal"><a href="#__codelineno-0-5612">5612</a></span>
+<span class="normal"><a href="#__codelineno-0-5613">5613</a></span>
+<span class="normal"><a href="#__codelineno-0-5614">5614</a></span>
+<span class="normal"><a href="#__codelineno-0-5615">5615</a></span>
+<span class="normal"><a href="#__codelineno-0-5616">5616</a></span>
+<span class="normal"><a href="#__codelineno-0-5617">5617</a></span>
+<span class="normal"><a href="#__codelineno-0-5618">5618</a></span>
+<span class="normal"><a href="#__codelineno-0-5619">5619</a></span>
+<span class="normal"><a href="#__codelineno-0-5620">5620</a></span>
+<span class="normal"><a href="#__codelineno-0-5621">5621</a></span>
+<span class="normal"><a href="#__codelineno-0-5622">5622</a></span>
+<span class="normal"><a href="#__codelineno-0-5623">5623</a></span>
+<span class="normal"><a href="#__codelineno-0-5624">5624</a></span>
+<span class="normal"><a href="#__codelineno-0-5625">5625</a></span>
+<span class="normal"><a href="#__codelineno-0-5626">5626</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-5602" name="__codelineno-0-5602"></a><span class="k">def</span><span class="w"> </span><span class="nf">explore</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">512</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5603" name="__codelineno-0-5603"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Launch an interactive exploration dashboard.</span>
+<a id="__codelineno-0-5604" name="__codelineno-0-5604"></a>
+<a id="__codelineno-0-5605" name="__codelineno-0-5605"></a><span class="sd">    Combines image, dynamic spectrum, and cutout explorers in a</span>
+<a id="__codelineno-0-5606" name="__codelineno-0-5606"></a><span class="sd">    tabbed Panel layout. Requires the ``[visualization]`` optional</span>
+<a id="__codelineno-0-5607" name="__codelineno-0-5607"></a><span class="sd">    dependencies (Panel, HoloViews, Bokeh).</span>
+<a id="__codelineno-0-5608" name="__codelineno-0-5608"></a>
+<a id="__codelineno-0-5609" name="__codelineno-0-5609"></a><span class="sd">    Install with::</span>
+<a id="__codelineno-0-5610" name="__codelineno-0-5610"></a>
+<a id="__codelineno-0-5611" name="__codelineno-0-5611"></a><span class="sd">        pip install &#39;ovro_lwa_portal[visualization]&#39;</span>
+<a id="__codelineno-0-5612" name="__codelineno-0-5612"></a>
+<a id="__codelineno-0-5613" name="__codelineno-0-5613"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-5614" name="__codelineno-0-5614"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-5615" name="__codelineno-0-5615"></a><span class="sd">    max_size : int, optional</span>
+<a id="__codelineno-0-5616" name="__codelineno-0-5616"></a><span class="sd">        Maximum pixels per spatial side after downsampling. Lower</span>
+<a id="__codelineno-0-5617" name="__codelineno-0-5617"></a><span class="sd">        values are faster but coarser. Default 512.</span>
+<a id="__codelineno-0-5618" name="__codelineno-0-5618"></a>
+<a id="__codelineno-0-5619" name="__codelineno-0-5619"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-5620" name="__codelineno-0-5620"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-5621" name="__codelineno-0-5621"></a><span class="sd">    panel.Tabs</span>
+<a id="__codelineno-0-5622" name="__codelineno-0-5622"></a><span class="sd">        Interactive tabbed dashboard.</span>
+<a id="__codelineno-0-5623" name="__codelineno-0-5623"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5624" name="__codelineno-0-5624"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_exploration_dashboard</span>
+<a id="__codelineno-0-5625" name="__codelineno-0-5625"></a>
+<a id="__codelineno-0-5626" name="__codelineno-0-5626"></a>    <span class="k">return</span> <span class="n">create_exploration_dashboard</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="n">max_size</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="ovro_lwa_portal.accessor.RadportAccessor.explore_image" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explore_image</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_image" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Launch an interactive image explorer.</p>
+<p>Provides sliders for time, frequency, and polarization with
+live image updates. Requires <code>[visualization]</code> dependencies.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum pixels per spatial side after downsampling. Lower
+values are faster but coarser. Default 512.</p>
+              </div>
+            </td>
+            <td>
+                  <code>512</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Passed to :class:<code>~ovro_lwa_portal.viz.explorers.ImageExplorer</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="panel.viewable.Viewable">Viewable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Interactive Panel layout.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/ovro_lwa_portal/accessor.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-5628">5628</a></span>
+<span class="normal"><a href="#__codelineno-0-5629">5629</a></span>
+<span class="normal"><a href="#__codelineno-0-5630">5630</a></span>
+<span class="normal"><a href="#__codelineno-0-5631">5631</a></span>
+<span class="normal"><a href="#__codelineno-0-5632">5632</a></span>
+<span class="normal"><a href="#__codelineno-0-5633">5633</a></span>
+<span class="normal"><a href="#__codelineno-0-5634">5634</a></span>
+<span class="normal"><a href="#__codelineno-0-5635">5635</a></span>
+<span class="normal"><a href="#__codelineno-0-5636">5636</a></span>
+<span class="normal"><a href="#__codelineno-0-5637">5637</a></span>
+<span class="normal"><a href="#__codelineno-0-5638">5638</a></span>
+<span class="normal"><a href="#__codelineno-0-5639">5639</a></span>
+<span class="normal"><a href="#__codelineno-0-5640">5640</a></span>
+<span class="normal"><a href="#__codelineno-0-5641">5641</a></span>
+<span class="normal"><a href="#__codelineno-0-5642">5642</a></span>
+<span class="normal"><a href="#__codelineno-0-5643">5643</a></span>
+<span class="normal"><a href="#__codelineno-0-5644">5644</a></span>
+<span class="normal"><a href="#__codelineno-0-5645">5645</a></span>
+<span class="normal"><a href="#__codelineno-0-5646">5646</a></span>
+<span class="normal"><a href="#__codelineno-0-5647">5647</a></span>
+<span class="normal"><a href="#__codelineno-0-5648">5648</a></span>
+<span class="normal"><a href="#__codelineno-0-5649">5649</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-5628" name="__codelineno-0-5628"></a><span class="k">def</span><span class="w"> </span><span class="nf">explore_image</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">512</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5629" name="__codelineno-0-5629"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Launch an interactive image explorer.</span>
+<a id="__codelineno-0-5630" name="__codelineno-0-5630"></a>
+<a id="__codelineno-0-5631" name="__codelineno-0-5631"></a><span class="sd">    Provides sliders for time, frequency, and polarization with</span>
+<a id="__codelineno-0-5632" name="__codelineno-0-5632"></a><span class="sd">    live image updates. Requires ``[visualization]`` dependencies.</span>
+<a id="__codelineno-0-5633" name="__codelineno-0-5633"></a>
+<a id="__codelineno-0-5634" name="__codelineno-0-5634"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-5635" name="__codelineno-0-5635"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-5636" name="__codelineno-0-5636"></a><span class="sd">    max_size : int, optional</span>
+<a id="__codelineno-0-5637" name="__codelineno-0-5637"></a><span class="sd">        Maximum pixels per spatial side after downsampling. Lower</span>
+<a id="__codelineno-0-5638" name="__codelineno-0-5638"></a><span class="sd">        values are faster but coarser. Default 512.</span>
+<a id="__codelineno-0-5639" name="__codelineno-0-5639"></a><span class="sd">    **kwargs</span>
+<a id="__codelineno-0-5640" name="__codelineno-0-5640"></a><span class="sd">        Passed to :class:`~ovro_lwa_portal.viz.explorers.ImageExplorer`.</span>
+<a id="__codelineno-0-5641" name="__codelineno-0-5641"></a>
+<a id="__codelineno-0-5642" name="__codelineno-0-5642"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-5643" name="__codelineno-0-5643"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-5644" name="__codelineno-0-5644"></a><span class="sd">    panel.viewable.Viewable</span>
+<a id="__codelineno-0-5645" name="__codelineno-0-5645"></a><span class="sd">        Interactive Panel layout.</span>
+<a id="__codelineno-0-5646" name="__codelineno-0-5646"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5647" name="__codelineno-0-5647"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageExplorer</span>
+<a id="__codelineno-0-5648" name="__codelineno-0-5648"></a>
+<a id="__codelineno-0-5649" name="__codelineno-0-5649"></a>    <span class="k">return</span> <span class="n">ImageExplorer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="n">max_size</span><span class="o">=</span><span class="n">max_size</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="ovro_lwa_portal.accessor.RadportAccessor.explore_dynamic_spectrum" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explore_dynamic_spectrum</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_dynamic_spectrum" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Launch an interactive dynamic spectrum explorer.</p>
+<p>Displays a time-frequency waterfall with linked spectrum and
+light curve views. Requires <code>[visualization]</code> dependencies.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Passed to :class:<code>~ovro_lwa_portal.viz.explorers.DynamicSpectrumExplorer</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="panel.viewable.Viewable">Viewable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Interactive Panel layout with linked views.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/ovro_lwa_portal/accessor.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-5651">5651</a></span>
+<span class="normal"><a href="#__codelineno-0-5652">5652</a></span>
+<span class="normal"><a href="#__codelineno-0-5653">5653</a></span>
+<span class="normal"><a href="#__codelineno-0-5654">5654</a></span>
+<span class="normal"><a href="#__codelineno-0-5655">5655</a></span>
+<span class="normal"><a href="#__codelineno-0-5656">5656</a></span>
+<span class="normal"><a href="#__codelineno-0-5657">5657</a></span>
+<span class="normal"><a href="#__codelineno-0-5658">5658</a></span>
+<span class="normal"><a href="#__codelineno-0-5659">5659</a></span>
+<span class="normal"><a href="#__codelineno-0-5660">5660</a></span>
+<span class="normal"><a href="#__codelineno-0-5661">5661</a></span>
+<span class="normal"><a href="#__codelineno-0-5662">5662</a></span>
+<span class="normal"><a href="#__codelineno-0-5663">5663</a></span>
+<span class="normal"><a href="#__codelineno-0-5664">5664</a></span>
+<span class="normal"><a href="#__codelineno-0-5665">5665</a></span>
+<span class="normal"><a href="#__codelineno-0-5666">5666</a></span>
+<span class="normal"><a href="#__codelineno-0-5667">5667</a></span>
+<span class="normal"><a href="#__codelineno-0-5668">5668</a></span>
+<span class="normal"><a href="#__codelineno-0-5669">5669</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-5651" name="__codelineno-0-5651"></a><span class="k">def</span><span class="w"> </span><span class="nf">explore_dynamic_spectrum</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5652" name="__codelineno-0-5652"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Launch an interactive dynamic spectrum explorer.</span>
+<a id="__codelineno-0-5653" name="__codelineno-0-5653"></a>
+<a id="__codelineno-0-5654" name="__codelineno-0-5654"></a><span class="sd">    Displays a time-frequency waterfall with linked spectrum and</span>
+<a id="__codelineno-0-5655" name="__codelineno-0-5655"></a><span class="sd">    light curve views. Requires ``[visualization]`` dependencies.</span>
+<a id="__codelineno-0-5656" name="__codelineno-0-5656"></a>
+<a id="__codelineno-0-5657" name="__codelineno-0-5657"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-5658" name="__codelineno-0-5658"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-5659" name="__codelineno-0-5659"></a><span class="sd">    **kwargs</span>
+<a id="__codelineno-0-5660" name="__codelineno-0-5660"></a><span class="sd">        Passed to :class:`~ovro_lwa_portal.viz.explorers.DynamicSpectrumExplorer`.</span>
+<a id="__codelineno-0-5661" name="__codelineno-0-5661"></a>
+<a id="__codelineno-0-5662" name="__codelineno-0-5662"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-5663" name="__codelineno-0-5663"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-5664" name="__codelineno-0-5664"></a><span class="sd">    panel.viewable.Viewable</span>
+<a id="__codelineno-0-5665" name="__codelineno-0-5665"></a><span class="sd">        Interactive Panel layout with linked views.</span>
+<a id="__codelineno-0-5666" name="__codelineno-0-5666"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5667" name="__codelineno-0-5667"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">DynamicSpectrumExplorer</span>
+<a id="__codelineno-0-5668" name="__codelineno-0-5668"></a>
+<a id="__codelineno-0-5669" name="__codelineno-0-5669"></a>    <span class="k">return</span> <span class="n">DynamicSpectrumExplorer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="ovro_lwa_portal.accessor.RadportAccessor.explore_sky" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">explore_sky</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></code>
+
+<a href="#ovro_lwa_portal.accessor.RadportAccessor.explore_sky" class="headerlink" title="Permanent link">&para;</a></h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Launch an interactive sky viewer with Aladin Lite.</p>
+<p>Overlays OVRO-LWA data on astronomical survey backgrounds
+(DSS, WISE, Planck, etc.) with real-time panning, zooming,
+and coordinate exploration. Requires <code>[visualization]</code>
+dependencies and a WCS header (<code>fits_wcs_header</code> attribute)
+in the dataset.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>**kwargs</code>
+            </td>
+            <td>
+                  <code><span title="typing.Any">Any</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Passed to :class:<code>~ovro_lwa_portal.viz.sky_viewer.SkyViewer</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>{}</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="panel.viewable.Viewable">Viewable</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Interactive Panel layout with Aladin sky viewer.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the dataset does not contain a WCS header.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/ovro_lwa_portal/accessor.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-5671">5671</a></span>
+<span class="normal"><a href="#__codelineno-0-5672">5672</a></span>
+<span class="normal"><a href="#__codelineno-0-5673">5673</a></span>
+<span class="normal"><a href="#__codelineno-0-5674">5674</a></span>
+<span class="normal"><a href="#__codelineno-0-5675">5675</a></span>
+<span class="normal"><a href="#__codelineno-0-5676">5676</a></span>
+<span class="normal"><a href="#__codelineno-0-5677">5677</a></span>
+<span class="normal"><a href="#__codelineno-0-5678">5678</a></span>
+<span class="normal"><a href="#__codelineno-0-5679">5679</a></span>
+<span class="normal"><a href="#__codelineno-0-5680">5680</a></span>
+<span class="normal"><a href="#__codelineno-0-5681">5681</a></span>
+<span class="normal"><a href="#__codelineno-0-5682">5682</a></span>
+<span class="normal"><a href="#__codelineno-0-5683">5683</a></span>
+<span class="normal"><a href="#__codelineno-0-5684">5684</a></span>
+<span class="normal"><a href="#__codelineno-0-5685">5685</a></span>
+<span class="normal"><a href="#__codelineno-0-5686">5686</a></span>
+<span class="normal"><a href="#__codelineno-0-5687">5687</a></span>
+<span class="normal"><a href="#__codelineno-0-5688">5688</a></span>
+<span class="normal"><a href="#__codelineno-0-5689">5689</a></span>
+<span class="normal"><a href="#__codelineno-0-5690">5690</a></span>
+<span class="normal"><a href="#__codelineno-0-5691">5691</a></span>
+<span class="normal"><a href="#__codelineno-0-5692">5692</a></span>
+<span class="normal"><a href="#__codelineno-0-5693">5693</a></span>
+<span class="normal"><a href="#__codelineno-0-5694">5694</a></span>
+<span class="normal"><a href="#__codelineno-0-5695">5695</a></span>
+<span class="normal"><a href="#__codelineno-0-5696">5696</a></span>
+<span class="normal"><a href="#__codelineno-0-5697">5697</a></span>
+<span class="normal"><a href="#__codelineno-0-5698">5698</a></span>
+<span class="normal"><a href="#__codelineno-0-5699">5699</a></span>
+<span class="normal"><a href="#__codelineno-0-5700">5700</a></span>
+<span class="normal"><a href="#__codelineno-0-5701">5701</a></span>
+<span class="normal"><a href="#__codelineno-0-5702">5702</a></span>
+<span class="normal"><a href="#__codelineno-0-5703">5703</a></span>
+<span class="normal"><a href="#__codelineno-0-5704">5704</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-5671" name="__codelineno-0-5671"></a><span class="k">def</span><span class="w"> </span><span class="nf">explore_sky</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-5672" name="__codelineno-0-5672"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Launch an interactive sky viewer with Aladin Lite.</span>
+<a id="__codelineno-0-5673" name="__codelineno-0-5673"></a>
+<a id="__codelineno-0-5674" name="__codelineno-0-5674"></a><span class="sd">    Overlays OVRO-LWA data on astronomical survey backgrounds</span>
+<a id="__codelineno-0-5675" name="__codelineno-0-5675"></a><span class="sd">    (DSS, WISE, Planck, etc.) with real-time panning, zooming,</span>
+<a id="__codelineno-0-5676" name="__codelineno-0-5676"></a><span class="sd">    and coordinate exploration. Requires ``[visualization]``</span>
+<a id="__codelineno-0-5677" name="__codelineno-0-5677"></a><span class="sd">    dependencies and a WCS header (``fits_wcs_header`` attribute)</span>
+<a id="__codelineno-0-5678" name="__codelineno-0-5678"></a><span class="sd">    in the dataset.</span>
+<a id="__codelineno-0-5679" name="__codelineno-0-5679"></a>
+<a id="__codelineno-0-5680" name="__codelineno-0-5680"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-5681" name="__codelineno-0-5681"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-5682" name="__codelineno-0-5682"></a><span class="sd">    **kwargs</span>
+<a id="__codelineno-0-5683" name="__codelineno-0-5683"></a><span class="sd">        Passed to :class:`~ovro_lwa_portal.viz.sky_viewer.SkyViewer`.</span>
+<a id="__codelineno-0-5684" name="__codelineno-0-5684"></a>
+<a id="__codelineno-0-5685" name="__codelineno-0-5685"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-5686" name="__codelineno-0-5686"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-5687" name="__codelineno-0-5687"></a><span class="sd">    panel.viewable.Viewable</span>
+<a id="__codelineno-0-5688" name="__codelineno-0-5688"></a><span class="sd">        Interactive Panel layout with Aladin sky viewer.</span>
+<a id="__codelineno-0-5689" name="__codelineno-0-5689"></a>
+<a id="__codelineno-0-5690" name="__codelineno-0-5690"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-5691" name="__codelineno-0-5691"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-5692" name="__codelineno-0-5692"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-5693" name="__codelineno-0-5693"></a><span class="sd">        If the dataset does not contain a WCS header.</span>
+<a id="__codelineno-0-5694" name="__codelineno-0-5694"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-5695" name="__codelineno-0-5695"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_wcs</span><span class="p">:</span>
+<a id="__codelineno-0-5696" name="__codelineno-0-5696"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-5697" name="__codelineno-0-5697"></a>            <span class="s2">&quot;explore_sky() requires a WCS header in the dataset &quot;</span>
+<a id="__codelineno-0-5698" name="__codelineno-0-5698"></a>            <span class="s2">&quot;(fits_wcs_header attribute). Use explore_image() for &quot;</span>
+<a id="__codelineno-0-5699" name="__codelineno-0-5699"></a>            <span class="s2">&quot;datasets without celestial coordinates.&quot;</span>
+<a id="__codelineno-0-5700" name="__codelineno-0-5700"></a>        <span class="p">)</span>
+<a id="__codelineno-0-5701" name="__codelineno-0-5701"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-5702" name="__codelineno-0-5702"></a>    <span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">SkyViewer</span>
+<a id="__codelineno-0-5703" name="__codelineno-0-5703"></a>
+<a id="__codelineno-0-5704" name="__codelineno-0-5704"></a>    <span class="k">return</span> <span class="n">SkyViewer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_obj</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

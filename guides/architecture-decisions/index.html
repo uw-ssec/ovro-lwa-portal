@@ -692,6 +692,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../user-guide/interactive-visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactive Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../user-guide/spectral-analysis/" class="md-nav__link">
         
   
@@ -1118,6 +1146,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../api/viz-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../api/data-loading/" class="md-nav__link">
         
   
@@ -1324,6 +1380,34 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#interactive-visualization-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactive Visualization Framework
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Interactive Visualization Framework">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-04-07-panelholoviews-with-lazy-preloadedcube-for-interactive-explorers-accepted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-04-07: Panel/HoloViews with lazy PreloadedCube for interactive explorers (Accepted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#celestial-coordinate-tracking" class="md-nav__link">
@@ -1721,6 +1805,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#interactive-visualization-framework" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactive Visualization Framework
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Interactive Visualization Framework">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2026-04-07-panelholoviews-with-lazy-preloadedcube-for-interactive-explorers-accepted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2026-04-07: Panel/HoloViews with lazy PreloadedCube for interactive explorers (Accepted)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#celestial-coordinate-tracking" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2009,6 +2121,28 @@
 <h1 id="architecture-decisions">Architecture Decisions<a class="headerlink" href="#architecture-decisions" title="Permanent link">&para;</a></h1>
 <p>Technical decisions made during development, with rationale and outcomes. Newest
 entries appear first within each section.</p>
+<h2 id="interactive-visualization-framework">Interactive Visualization Framework<a class="headerlink" href="#interactive-visualization-framework" title="Permanent link">&para;</a></h2>
+<h3 id="2026-04-07-panelholoviews-with-lazy-preloadedcube-for-interactive-explorers-accepted">2026-04-07: Panel/HoloViews with lazy PreloadedCube for interactive explorers (Accepted)<a class="headerlink" href="#2026-04-07-panelholoviews-with-lazy-preloadedcube-for-interactive-explorers-accepted" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Decision:</strong> Built the <code>viz</code> subpackage using Panel + HoloViews + Bokeh as
+  the interactive visualization stack, with a <code>PreloadedCube</code> class that
+  stride-downsamples (4096x4096 to 512x512) and LRU-caches individual 2D slices
+  on demand.</li>
+<li><strong>Why:</strong> The existing matplotlib-based <code>radport</code> accessor produces static
+  images. Researchers need to scrub through time/frequency/polarization
+  interactively, click on features to inspect spectra and light curves, and
+  overlay data on sky surveys. Panel/HoloViews integrates natively with Jupyter
+  and can be served as standalone web apps. HoloViews' <code>DynamicMap</code> with <code>param</code>
+  dependency tracking enables declarative reactive UIs. The PreloadedCube avoids
+  loading the full data cube (which can be &gt;3 GB for production 4096x4096 data)
+  by fetching one slice per slider change and caching 32 recent slices.</li>
+<li><strong>Result:</strong> Four explorer classes (ImageExplorer, DynamicSpectrumExplorer,
+  CutoutExplorer, SkyViewer) accessible via <code>ds.radport.explore*()</code> methods. All
+  viz deps are optional (<code>[visualization]</code> extra). The SkyViewer uses ipyaladin
+  to overlay FITS data on survey backgrounds with proper WCS projection. The
+  DynamicSpectrumExplorer delegates to the accessor's batched <code>dask.compute()</code>
+  path for efficient waterfall generation.</li>
+</ul>
 <h2 id="celestial-coordinate-tracking">Celestial Coordinate Tracking<a class="headerlink" href="#celestial-coordinate-tracking" title="Permanent link">&para;</a></h2>
 <h3 id="2026-04-03-negate-l-in-sin-projection-to-match-ra-direction-accepted">2026-04-03: Negate l in SIN projection to match RA direction (Accepted)<a class="headerlink" href="#2026-04-03-negate-l-in-sin-projection-to-match-ra-direction-accepted" title="Permanent link">&para;</a></h3>
 <ul>

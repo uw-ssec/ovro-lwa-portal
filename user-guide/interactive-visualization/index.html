@@ -10,11 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/contributing/contributing/">
+        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/user-guide/interactive-visualization/">
       
       
-        <link rel="prev" href="../../guides/architecture-decisions/">
+        <link rel="prev" href="../visualization/">
       
+      
+        <link rel="next" href="../spectral-analysis/">
       
       
         
@@ -25,7 +27,7 @@
     
     
       
-        <title>Contributing - OVRO-LWA Portal</title>
+        <title>Interactive Visualization - OVRO-LWA Portal</title>
       
     
     
@@ -78,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing" class="md-skip">
+        <a href="#interactive-visualization" class="md-skip">
           Skip to content
         </a>
       
@@ -112,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing
+              Interactive Visualization
             
           </span>
         </div>
@@ -262,11 +264,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../user-guide/visualization/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../visualization/" class="md-tabs__link">
           
   
   
@@ -342,13 +346,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../contributing/contributing/" class="md-tabs__link">
           
   
   
@@ -607,26 +609,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -644,7 +651,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -662,7 +669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/visualization/" class="md-nav__link">
+      <a href="../visualization/" class="md-nav__link">
         
   
   
@@ -687,10 +694,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../user-guide/interactive-visualization/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactive Visualization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -706,6 +740,175 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#image-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dynamic-spectrum-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Spectrum Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutout-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutout Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sky-viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sky Viewer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exploration-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exploration Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#data-access-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Access Strategy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#display-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Display Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#remote-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Remote Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#serving-as-a-web-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Serving as a Web App
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next Steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -718,7 +921,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/spectral-analysis/" class="md-nav__link">
+      <a href="../spectral-analysis/" class="md-nav__link">
         
   
   
@@ -746,7 +949,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/source-detection/" class="md-nav__link">
+      <a href="../source-detection/" class="md-nav__link">
         
   
   
@@ -774,7 +977,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/celestial-tracking/" class="md-nav__link">
+      <a href="../celestial-tracking/" class="md-nav__link">
         
   
   
@@ -802,7 +1005,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/dispersion-measure/" class="md-nav__link">
+      <a href="../dispersion-measure/" class="md-nav__link">
         
   
   
@@ -830,7 +1033,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/animations/" class="md-nav__link">
+      <a href="../animations/" class="md-nav__link">
         
   
   
@@ -858,7 +1061,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/wcs-coordinates/" class="md-nav__link">
+      <a href="../wcs-coordinates/" class="md-nav__link">
         
   
   
@@ -886,7 +1089,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/fits-to-zarr/" class="md-nav__link">
+      <a href="../fits-to-zarr/" class="md-nav__link">
         
   
   
@@ -1347,31 +1550,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -1389,7 +1587,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1404,37 +1602,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Contributing
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../contributing/contributing/" class="md-nav__link">
         
   
   
@@ -1450,242 +1621,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#pull-requests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pull Requests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#setting-up-your-environment" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Setting Up Your Environment
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Setting Up Your Environment">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Prerequisites
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#clone-and-install" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Clone and Install
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#verify-installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verify Installation
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running-tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Running Tests
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#building-the-package" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building the Package
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pre-commit-hooks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pre-commit Hooks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#building-documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code Style
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-with-radio-astronomy-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working with Radio Astronomy Data
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Working with Radio Astronomy Data">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#test-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Test Data
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#jupyter-notebooks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Jupyter Notebooks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#performance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Performance
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project-specific-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project-Specific Notes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Project-Specific Notes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#image-plane-correction" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Image Plane Correction
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bdsf-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BDSF Integration
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ssec-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ssec CLI
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1725,10 +1660,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#pull-requests" class="md-nav__link">
+  <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pull Requests
+        Installation
       
     </span>
   </a>
@@ -1736,22 +1671,88 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#setting-up-your-environment" class="md-nav__link">
+  <a href="#quick-start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Setting Up Your Environment
+        Quick Start
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Setting Up Your Environment">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#image-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dynamic-spectrum-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dynamic Spectrum Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cutout-explorer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cutout Explorer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sky-viewer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sky Viewer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exploration-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exploration Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance Notes">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
+  <a href="#data-access-strategy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Prerequisites
+        Data Access Strategy
       
     </span>
   </a>
@@ -1759,10 +1760,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#clone-and-install" class="md-nav__link">
+  <a href="#display-resolution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Clone and Install
+        Display Resolution
       
     </span>
   </a>
@@ -1770,10 +1771,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#verify-installation" class="md-nav__link">
+  <a href="#remote-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Verify Installation
+        Remote Data
       
     </span>
   </a>
@@ -1786,10 +1787,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-tests" class="md-nav__link">
+  <a href="#serving-as-a-web-app" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Running Tests
+        Serving as a Web App
       
     </span>
   </a>
@@ -1797,143 +1798,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#building-the-package" class="md-nav__link">
+  <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building the Package
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pre-commit-hooks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pre-commit Hooks
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#building-documentation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building Documentation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#code-style" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Code Style
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#working-with-radio-astronomy-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Working with Radio Astronomy Data
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Working with Radio Astronomy Data">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#test-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Test Data
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#jupyter-notebooks" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Jupyter Notebooks
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#performance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Performance
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#project-specific-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Project-Specific Notes
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Project-Specific Notes">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#image-plane-correction" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Image Plane Correction
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bdsf-integration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        BDSF Integration
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ssec-cli" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ssec CLI
+        Next Steps
       
     </span>
   </a>
@@ -1960,144 +1828,332 @@
   
 
 
-<h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
-<p>Thank you for your interest in contributing to OVRO-LWA Portal! This guide
-covers how to set up the project locally, run tests, and submit changes.</p>
-<p>For the full contributing guidelines, see
-<a href="https://github.com/uw-ssec/ovro-lwa-portal/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>
-on GitHub.</p>
-<p>Please review our
-<a href="https://github.com/uw-ssec/code-of-conduct/blob/main/CODE_OF_CONDUCT.md">Code of Conduct</a>
-before contributing.</p>
-<h2 id="pull-requests">Pull Requests<a class="headerlink" href="#pull-requests" title="Permanent link">&para;</a></h2>
+<h1 id="interactive-visualization">Interactive Visualization<a class="headerlink" href="#interactive-visualization" title="Permanent link">&para;</a></h1>
+<p>The <code>viz</code> module provides Panel/HoloViews-based interactive explorers for
+OVRO-LWA data. Unlike the static matplotlib plots from the <code>radport</code> accessor,
+these explorers offer real-time slider controls, linked views, and
+click-to-inspect interactions — all running in a Jupyter notebook or as a
+standalone Panel application.</p>
+<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
+<p>Interactive visualization requires optional dependencies. Install them with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;ovro_lwa_portal[visualization]&#39;</span>
+</code></pre></div>
+<p>Or with pixi:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pixi<span class="w"> </span>install
+</code></pre></div>
+<p>The required packages are <strong>Panel</strong>, <strong>HoloViews</strong>, <strong>Bokeh</strong>, and <strong>Param</strong>.
+For the sky viewer, you also need <strong>ipyaladin</strong> and <strong>ipywidgets</strong>.</p>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;path/to/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># Launch the full exploration dashboard (all explorers in tabs)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore</span><span class="p">()</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># Or launch individual explorers</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_image</span><span class="p">()</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_dynamic_spectrum</span><span class="p">()</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_sky</span><span class="p">()</span>  <span class="c1"># requires WCS header</span>
+</code></pre></div>
+<p>All explorer methods return Panel layout objects. In Jupyter, they render
+inline. For standalone apps, use <code>panel serve notebook.ipynb</code>.</p>
+<h2 id="image-explorer">Image Explorer<a class="headerlink" href="#image-explorer" title="Permanent link">&para;</a></h2>
+<p>Browse the full sky image across time, frequency, and polarization with
+interactive sliders.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_image</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Controls:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time Step</td>
+<td>Slider to select the time index</td>
+</tr>
+<tr>
+<td>Frequency Channel</td>
+<td>Slider to select the frequency index</td>
+</tr>
+<tr>
+<td>Colormap</td>
+<td>Dropdown with radio-astronomy-friendly colormaps</td>
+</tr>
+<tr>
+<td>Robust Scaling</td>
+<td>Toggle 2nd/98th percentile color clipping</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Features:</strong></p>
 <ul>
-<li>Fork the repository and create a branch for your changes</li>
-<li>Follow
-  <a href="https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md">Conventional Commits</a>
-  for PR titles</li>
-<li>See <a href="https://www.dataschool.io/how-to-contribute-on-github/">this tutorial</a>
-  for a general guide to open-source contributions</li>
+<li>Hover to read pixel coordinates and values</li>
+<li>Scroll to zoom, drag to pan</li>
+<li>LRU-cached slices — first view of each (time, freq) pair fetches one chunk
+  from storage (~3s for S3), subsequent views are instant</li>
 </ul>
-<h2 id="setting-up-your-environment">Setting Up Your Environment<a class="headerlink" href="#setting-up-your-environment" title="Permanent link">&para;</a></h2>
-<h3 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h3>
-<p>This project uses <a href="https://pixi.sh">Pixi</a> for dependency management.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">macOS / Linux</label><label for="__tabbed_1_2">Windows</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://pixi.sh/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Access the underlying explorer class directly</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImageExplorer</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">explorer</span> <span class="o">=</span> <span class="n">ImageExplorer</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">explorer</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>  <span class="c1"># Returns the Panel layout</span>
 </code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">powershell</span> <span class="n">-ExecutionPolicy</span> <span class="n">ByPass</span> <span class="n">-c</span> <span class="s2">&quot;irm -useb https://pixi.sh/install.ps1 | iex&quot;</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<h3 id="clone-and-install">Clone and Install<a class="headerlink" href="#clone-and-install" title="Permanent link">&para;</a></h3>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Pixi (Recommended)</label><label for="__tabbed_2_2">pip</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/uw-ssec/ovro-lwa-portal.git
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>ovro-lwa-portal
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pixi<span class="w"> </span>install
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>pixi<span class="w"> </span>run<span class="w"> </span>pre-commit-install
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/uw-ssec/ovro-lwa-portal.git
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">cd</span><span class="w"> </span>ovro-lwa-portal
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<h3 id="verify-installation">Verify Installation<a class="headerlink" href="#verify-installation" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import ovro_lwa_portal; print(ovro_lwa_portal.__version__)&quot;</span>
-</code></pre></div>
-<h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># With Pixi</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>pixi<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/
+<h2 id="dynamic-spectrum-explorer">Dynamic Spectrum Explorer<a class="headerlink" href="#dynamic-spectrum-explorer" title="Permanent link">&para;</a></h2>
+<p>Visualize a time-frequency waterfall at any spatial position, with linked
+spectrum and light curve views that update on click.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># At the phase center</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_dynamic_spectrum</span><span class="p">()</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Or directly</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>pytest<span class="w"> </span>tests/
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># At a specific l/m position</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_dynamic_spectrum</span><span class="p">(</span><span class="n">l</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">m</span><span class="o">=-</span><span class="mf">0.1</span><span class="p">)</span>
 </code></pre></div>
-<h2 id="building-the-package">Building the Package<a class="headerlink" href="#building-the-package" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>-m<span class="w"> </span>build
+<p><strong>Controls:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>l</td>
+<td>Direction cosine slider for the spatial position</td>
+</tr>
+<tr>
+<td>m</td>
+<td>Direction cosine slider for the spatial position</td>
+</tr>
+<tr>
+<td>Colormap</td>
+<td>Dropdown colormap selector</td>
+</tr>
+<tr>
+<td>Robust Scaling</td>
+<td>Toggle percentile clipping</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Linked views:</strong></p>
+<ul>
+<li><strong>Click on the waterfall</strong> to show the spectrum at that time step and the
+  light curve at that frequency in the right panel</li>
+</ul>
+<p>!!! tip "Performance" The initial load fetches pixel data across all
+time/frequency slices using the accessor's batched <code>dask.compute()</code>. For remote
+data, this is much faster than sequential access. Click-linked views only read
+one chunk each.</p>
+<h2 id="cutout-explorer">Cutout Explorer<a class="headerlink" href="#cutout-explorer" title="Permanent link">&para;</a></h2>
+<p>Interactively explore spatial subregions with adjustable center and extent.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ovro_lwa_portal.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">CutoutExplorer</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">explorer</span> <span class="o">=</span> <span class="n">CutoutExplorer</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">explorer</span><span class="o">.</span><span class="n">panel</span><span class="p">()</span>
 </code></pre></div>
-<p>This creates wheel and source distributions in the <code>dist/</code> directory.</p>
-<h2 id="pre-commit-hooks">Pre-commit Hooks<a class="headerlink" href="#pre-commit-hooks" title="Permanent link">&para;</a></h2>
-<p>PRs are checked by <a href="https://pre-commit.com/">pre-commit</a> for style and
-formatting. Set up your local repository so checks run automatically on every
-commit:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Install hooks (run once)</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>pixi<span class="w"> </span>run<span class="w"> </span>pre-commit-install
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Run manually on staged files</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>pixi<span class="w"> </span>run<span class="w"> </span>pre-commit
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Run on all files</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>pixi<span class="w"> </span>run<span class="w"> </span>pre-commit-all
+<p><strong>Controls:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>l center / m center</td>
+<td>Spatial center of the cutout</td>
+</tr>
+<tr>
+<td>dl / dm</td>
+<td>Half-extent of the cutout region</td>
+</tr>
+<tr>
+<td>Time Step</td>
+<td>Time index slider</td>
+</tr>
+<tr>
+<td>Frequency</td>
+<td>Frequency channel slider</td>
+</tr>
+<tr>
+<td>Colormap</td>
+<td>Dropdown selector</td>
+</tr>
+<tr>
+<td>Robust Scaling</td>
+<td>Toggle percentile clipping</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Linked views:</strong></p>
+<ul>
+<li>Click on the cutout image to get a spectrum and light curve at that pixel</li>
+</ul>
+<h2 id="sky-viewer">Sky Viewer<a class="headerlink" href="#sky-viewer" title="Permanent link">&para;</a></h2>
+<p>Overlay OVRO-LWA data on astronomical survey backgrounds (DSS, WISE, Planck,
+etc.) with real-time panning, zooming, and coordinate grid display. Requires WCS
+metadata in the dataset.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore_sky</span><span class="p">()</span>
 </code></pre></div>
-<h2 id="building-documentation">Building Documentation<a class="headerlink" href="#building-documentation" title="Permanent link">&para;</a></h2>
-<p>The documentation site is built with <a href="https://www.mkdocs.org/">MkDocs</a> and the
-<a href="https://squidfunk.github.io/mkdocs-material/">Material</a> theme.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Serve locally with live reload</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>pixi<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </span>serve
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Build the static site</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>pixi<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </span>build
+<p>!!! warning "Requirements" The sky viewer requires a WCS header in the dataset
+(<code>fits_wcs_header</code> attribute) and the <code>ipyaladin</code> package. It works best in
+JupyterLab.</p>
+<p><strong>Controls:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time Step</td>
+<td>Time index for the overlay image</td>
+</tr>
+<tr>
+<td>Frequency</td>
+<td>Frequency channel for the overlay</td>
+</tr>
+<tr>
+<td>Background Survey</td>
+<td>Select from DSS, 2MASS, WISE, Planck, SDSS, etc.</td>
+</tr>
+<tr>
+<td>Overlay Opacity</td>
+<td>Transparency of the OVRO-LWA overlay (0-1)</td>
+</tr>
+<tr>
+<td>Colormap</td>
+<td>Color mapping for the overlay</td>
+</tr>
+<tr>
+<td>Stretch</td>
+<td>Color stretch function (linear, log, sqrt, pow2)</td>
+</tr>
+<tr>
+<td>Robust Clipping</td>
+<td>Toggle percentile clipping</td>
+</tr>
+<tr>
+<td>Field of View</td>
+<td>FOV in degrees (0.1-180)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Available survey backgrounds:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DSS Color</td>
+<td>Digitized Sky Survey</td>
+</tr>
+<tr>
+<td>2MASS Color</td>
+<td>Two Micron All Sky Survey</td>
+</tr>
+<tr>
+<td>AllWISE Color</td>
+<td>Wide-field Infrared Survey Explorer</td>
+</tr>
+<tr>
+<td>Planck HFI Color</td>
+<td>Planck High Frequency Instrument</td>
+</tr>
+<tr>
+<td>SDSS9 Color</td>
+<td>Sloan Digital Sky Survey</td>
+</tr>
+<tr>
+<td>Mellinger Color</td>
+<td>Optical all-sky mosaic</td>
+</tr>
+<tr>
+<td>Fermi Color</td>
+<td>Fermi Gamma-ray Space Telescope</td>
+</tr>
+<tr>
+<td>RASS Soft</td>
+<td>ROSAT All-Sky Survey (X-ray)</td>
+</tr>
+<tr>
+<td>Haslam 408 MHz</td>
+<td>408 MHz all-sky radio survey</td>
+</tr>
+</tbody>
+</table>
+<p>The viewer constructs FITS HDUs from the dataset's numpy arrays and WCS headers,
+downsampling large images to 512x512 for overlay performance.</p>
+<h2 id="exploration-dashboard">Exploration Dashboard<a class="headerlink" href="#exploration-dashboard" title="Permanent link">&para;</a></h2>
+<p>Combine all explorers into a single tabbed interface:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore</span><span class="p">()</span>
 </code></pre></div>
-<p>The site will be available at <code>http://127.0.0.1:8000/ovro-lwa-portal/</code>.</p>
-<h2 id="code-style">Code Style<a class="headerlink" href="#code-style" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Docstrings</strong>: Use
-  <a href="https://numpydoc.readthedocs.io/en/latest/format.html">NumPy-style</a>
-  docstrings for all public functions and classes</li>
-<li><strong>PR titles</strong>: Follow
-  <a href="https://github.com/uw-ssec/rse-guidelines/blob/main/docs/fundamentals/conventional-commits.md">Conventional Commits</a></li>
-<li><strong>Formatting</strong>: Enforced automatically by pre-commit hooks</li>
-</ul>
-<h2 id="working-with-radio-astronomy-data">Working with Radio Astronomy Data<a class="headerlink" href="#working-with-radio-astronomy-data" title="Permanent link">&para;</a></h2>
-<h3 id="test-data">Test Data<a class="headerlink" href="#test-data" title="Permanent link">&para;</a></h3>
-<p>Use the provided test FITS files in <code>notebooks/test_fits_files/</code> for development
-and testing. These represent typical OVRO-LWA observations.</p>
-<h3 id="jupyter-notebooks">Jupyter Notebooks<a class="headerlink" href="#jupyter-notebooks" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Notebooks in <code>notebooks/</code> are for data exploration and analysis</li>
-<li>Keep notebooks clean and well-documented</li>
-<li>Use <code>nbstripout</code> or similar tools to remove output before committing</li>
-</ul>
-<h3 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h3>
-<ul>
-<li>Use <code>dask</code> for large array operations that don't fit in memory</li>
-<li>Consider chunking strategies for Zarr arrays based on access patterns</li>
-<li>Profile memory usage when working with large datasets</li>
-</ul>
-<h2 id="project-specific-notes">Project-Specific Notes<a class="headerlink" href="#project-specific-notes" title="Permanent link">&para;</a></h2>
-<h3 id="image-plane-correction">Image Plane Correction<a class="headerlink" href="#image-plane-correction" title="Permanent link">&para;</a></h3>
-<ul>
-<li>The <code>image-plane-correction</code> package is an external dependency from the
-  OVRO-LWA team</li>
-<li>Currently using the <code>nikita/dev</code> branch</li>
-<li>Report issues to the upstream repository when appropriate</li>
-</ul>
-<h3 id="bdsf-integration">BDSF Integration<a class="headerlink" href="#bdsf-integration" title="Permanent link">&para;</a></h3>
-<p>For macOS ARM64 users:</p>
-<ul>
-<li>A pre-compiled wheel is provided to avoid compilation issues</li>
-<li>If you encounter problems, check the <code>pyproject.toml</code> configuration in the
-  <code>[tool.pixi]</code> section</li>
-<li>Linux users should use the standard PyPI package</li>
-</ul>
-<h2 id="ssec-cli">ssec CLI<a class="headerlink" href="#ssec-cli" title="Permanent link">&para;</a></h2>
-<p>The <code>ssec</code> CLI provides convenience functions for working with this repository.
-See <a href="https://github.com/uw-ssec/ssec-cli">https://github.com/uw-ssec/ssec-cli</a> for details.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Set up autocompletions</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>pixi<span class="w"> </span>run<span class="w"> </span>ssec-setup
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Run ssec commands</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>pixi<span class="w"> </span>run<span class="w"> </span>ssec<span class="w"> </span>&lt;options&gt;
+<p>This creates a <code>panel.Tabs</code> layout with:</p>
+<ol>
+<li><strong>Image</strong> — full sky image browser</li>
+<li><strong>Dynamic Spectrum</strong> — waterfall with linked views</li>
+<li><strong>Cutout</strong> — spatial subregion explorer</li>
+<li><strong>Sky Viewer</strong> — Aladin overlay (only if WCS header is available)</li>
+</ol>
+<h2 id="performance-notes">Performance Notes<a class="headerlink" href="#performance-notes" title="Permanent link">&para;</a></h2>
+<h3 id="data-access-strategy">Data Access Strategy<a class="headerlink" href="#data-access-strategy" title="Permanent link">&para;</a></h3>
+<p>Each explorer uses the optimal data access pattern for its use case:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>graph TD
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    A[PreloadedCube] --&gt;|&quot;LRU cache&lt;br/&gt;(32 slices)&quot;| B[ImageExplorer]
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    A --&gt;|&quot;LRU cache&lt;br/&gt;(spatial subset)&quot;| C[CutoutExplorer]
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    D[accessor.dynamic_spectrum] --&gt;|&quot;batched&lt;br/&gt;dask.compute()&quot;| E[DynamicSpectrumExplorer]
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    F[accessor.spectrum / light_curve] --&gt;|&quot;single chunk&quot;| E
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    G[&quot;_build_fits_hdu&lt;br/&gt;(downsample + WCS)&quot;] --&gt; H[SkyViewer]
 </code></pre></div>
+<ul>
+<li><strong>ImageExplorer / CutoutExplorer</strong>: Use <code>PreloadedCube</code> with stride-based
+  downsampling (4096x4096 to 512x512) and an LRU cache of 32 slices. First
+  access reads one chunk; repeated access is instant.</li>
+<li><strong>DynamicSpectrumExplorer</strong>: Uses the accessor's <code>dynamic_spectrum()</code> for the
+  waterfall (batched <code>dask.compute()</code>) and single-frame methods for linked views
+  (one chunk read each).</li>
+<li><strong>SkyViewer</strong>: Builds FITS HDUs with proper WCS, downsampled to 512x512 for
+  Aladin overlay performance.</li>
+</ul>
+<h3 id="display-resolution">Display Resolution<a class="headerlink" href="#display-resolution" title="Permanent link">&para;</a></h3>
+<p>All explorers downsample images to a maximum of 512x512 pixels for display. This
+keeps interactive controls responsive even with 4096x4096 production data.</p>
+<h3 id="remote-data">Remote Data<a class="headerlink" href="#remote-data" title="Permanent link">&para;</a></h3>
+<p>For S3-backed datasets, the dominant cost is chunk I/O. With the default
+(4096, 4096) spatial chunks, each single-pixel access reads ~64 MB. The LRU
+cache ensures each chunk is read at most once per explorer session.</p>
+<h2 id="serving-as-a-web-app">Serving as a Web App<a class="headerlink" href="#serving-as-a-web-app" title="Permanent link">&para;</a></h2>
+<p>Panel explorers can be served as standalone web applications:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>panel<span class="w"> </span>serve<span class="w"> </span>notebook.ipynb<span class="w"> </span>--show<span class="w"> </span>--autoreload
+</code></pre></div>
+<p>Or from a Python script:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">panel</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pn</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;path/to/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">dashboard</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore</span><span class="p">()</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">dashboard</span><span class="o">.</span><span class="n">servable</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../visualization/">Static visualization</a> — matplotlib-based plots via the
+  <code>radport</code> accessor</li>
+<li><a href="../celestial-tracking/">Celestial tracking</a> — RA/Dec coordinate support</li>
+<li><a href="../../api/viz-module/">API reference</a> — full API documentation for the viz
+  module</li>
+</ul>
 
 
 
