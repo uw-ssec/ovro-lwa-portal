@@ -122,7 +122,7 @@ def SkyViewer(ds: xr.Dataset, **kwargs: Any) -> Any:  # noqa: N802
     return _SV(ds, **kwargs)
 
 
-def create_exploration_dashboard(ds: xr.Dataset) -> Any:
+def create_exploration_dashboard(ds: xr.Dataset, **kwargs: Any) -> Any:
     """Create a comprehensive exploration dashboard.
 
     Combines image, dynamic spectrum, and cutout explorers into a
@@ -132,6 +132,8 @@ def create_exploration_dashboard(ds: xr.Dataset) -> Any:
     ----------
     ds : xr.Dataset
         OVRO-LWA dataset to explore.
+    **kwargs
+        Passed to :func:`~ovro_lwa_portal.viz.dashboards.create_exploration_dashboard`.
 
     Returns
     -------
@@ -141,4 +143,4 @@ def create_exploration_dashboard(ds: xr.Dataset) -> Any:
     check_viz_deps()
     from ovro_lwa_portal.viz.dashboards import create_exploration_dashboard as _ced
 
-    return _ced(ds)
+    return _ced(ds, **kwargs)

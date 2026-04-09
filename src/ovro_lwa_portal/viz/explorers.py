@@ -20,12 +20,17 @@ import panel as pn
 import param
 
 from ovro_lwa_portal.viz._data import (
+    _MAX_DISPLAY_SIZE,
     PreloadedCube,
     cutout_image_element,
     sky_image_element,
 )
 from ovro_lwa_portal.viz.components import (
     COLORMAPS,
+    CURVE_HEIGHT,
+    CURVE_WIDTH,
+    IMAGE_HEIGHT,
+    IMAGE_WIDTH,
     style_curve,
     style_sky_image,
     style_spectrum_image,
@@ -47,6 +52,9 @@ class ImageExplorer(param.Parameterized):
     ----------
     ds : xr.Dataset
         OVRO-LWA dataset to explore.
+    max_size : int, optional
+        Maximum pixels per spatial side after downsampling (controls stride).
+        Lower values are faster but coarser. Default 512.
     """
 
     time_idx = param.Integer(default=0, bounds=(0, 1), doc="Time step index")
@@ -60,7 +68,7 @@ class ImageExplorer(param.Parameterized):
     )
     robust = param.Boolean(default=True, doc="Use robust (percentile) color scaling")
 
-    def __init__(self, ds: xr.Dataset, **params: Any) -> None:
+    def __init__(self, ds: xr.Dataset, *, max_size: int = _MAX_DISPLAY_SIZE, **params: Any) -> None:
         # Set bounds before super().__init__ so incoming params validate
         # against dataset-derived ranges, not stale defaults.
         n_times = ds.sizes["time"]
@@ -78,6 +86,7 @@ class ImageExplorer(param.Parameterized):
 
         super().__init__(**params)
         self._ds = ds
+        self._max_size = max_size
 
         # LRU-cached cube — no upfront load, fetches one slice at a time.
         # Recreated when var or pol changes via _get_cube().
@@ -97,7 +106,9 @@ class ImageExplorer(param.Parameterized):
     def _get_cube(self) -> PreloadedCube:
         """Get or create a PreloadedCube for the current var/pol."""
         if self._cube is None or self._cube_var != self.var or self._cube_pol != self.pol:
-            self._cube = PreloadedCube(self._ds, var=self.var, pol=self.pol)
+            self._cube = PreloadedCube(
+                self._ds, var=self.var, pol=self.pol, max_size=self._max_size,
+            )
             self._cube_var = self.var
             self._cube_pol = self.pol
         return self._cube
@@ -139,7 +150,9 @@ class ImageExplorer(param.Parameterized):
         )
 
         image_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._image_view), sizing_mode="stretch_both"
+            hv.DynamicMap(self._image_view),
+            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
+            sizing_mode="stretch_both",
         )
 
         return pn.Row(controls, image_pane, sizing_mode="stretch_width")
@@ -325,13 +338,17 @@ class DynamicSpectrumExplorer(param.Parameterized):
         )
 
         dynspec_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._dynspec_view), sizing_mode="stretch_both"
+            hv.DynamicMap(self._dynspec_view),
+            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
+            sizing_mode="stretch_both",
         )
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
+            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
         lightcurve_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
+            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
 
         return pn.Row(
@@ -351,6 +368,9 @@ class CutoutExplorer(param.Parameterized):
     ----------
     ds : xr.Dataset
         OVRO-LWA dataset to explore.
+    max_size : int, optional
+        Maximum pixels per spatial side after downsampling (controls stride).
+        Lower values are faster but coarser. Default 512.
     """
 
     l_center = param.Number(default=0.0, step=0.01, doc="l center")
@@ -362,7 +382,7 @@ class CutoutExplorer(param.Parameterized):
     cmap = param.Selector(default="inferno", objects=COLORMAPS, doc="Colormap")
     robust = param.Boolean(default=True, doc="Robust scaling")
 
-    def __init__(self, ds: xr.Dataset, **params: Any) -> None:
+    def __init__(self, ds: xr.Dataset, *, max_size: int = _MAX_DISPLAY_SIZE, **params: Any) -> None:
         # Set bounds before super().__init__ so incoming params validate
         # against dataset-derived ranges.
         n_times = ds.sizes["time"]
@@ -374,7 +394,7 @@ class CutoutExplorer(param.Parameterized):
         self._ds = ds
 
         var = "SKY" if "SKY" in ds.data_vars else list(ds.data_vars)[0]
-        self._cube = PreloadedCube(ds, var=var, pol=0)
+        self._cube = PreloadedCube(ds, var=var, pol=0, max_size=max_size)
 
         self._tap = hv.streams.Tap(x=None, y=None)
 
@@ -433,13 +453,17 @@ class CutoutExplorer(param.Parameterized):
         )
 
         cutout_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._cutout_view), sizing_mode="stretch_both"
+            hv.DynamicMap(self._cutout_view),
+            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
+            sizing_mode="stretch_both",
         )
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
+            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
         lightcurve_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
+            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
 
         return pn.Row(

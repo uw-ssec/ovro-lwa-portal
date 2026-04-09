@@ -16,22 +16,27 @@ if TYPE_CHECKING:
     import xarray as xr
 
 
-def create_exploration_dashboard(ds: xr.Dataset) -> pn.Tabs:
+def create_exploration_dashboard(
+    ds: xr.Dataset, *, max_size: int = 512,
+) -> pn.Tabs:
     """Create a comprehensive exploration dashboard.
 
     Parameters
     ----------
     ds : xr.Dataset
         OVRO-LWA dataset to explore.
+    max_size : int, optional
+        Maximum pixels per spatial side after downsampling. Lower
+        values are faster but coarser. Default 512.
 
     Returns
     -------
     panel.Tabs
         Tabbed layout with all explorers.
     """
-    image_explorer = ImageExplorer(ds)
+    image_explorer = ImageExplorer(ds, max_size=max_size)
     dynspec_explorer = DynamicSpectrumExplorer(ds)
-    cutout_explorer = CutoutExplorer(ds)
+    cutout_explorer = CutoutExplorer(ds, max_size=max_size)
 
     tabs: list[tuple[str, Any]] = [
         ("Image", image_explorer.panel()),

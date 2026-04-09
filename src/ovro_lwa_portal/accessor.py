@@ -5599,7 +5599,7 @@ class RadportAccessor:
     # Interactive visualization (requires optional [visualization] deps)
     # ------------------------------------------------------------------
 
-    def explore(self) -> Any:
+    def explore(self, *, max_size: int = 512) -> Any:
         """Launch an interactive exploration dashboard.
 
         Combines image, dynamic spectrum, and cutout explorers in a
@@ -5610,6 +5610,12 @@ class RadportAccessor:
 
             pip install 'ovro_lwa_portal[visualization]'
 
+        Parameters
+        ----------
+        max_size : int, optional
+            Maximum pixels per spatial side after downsampling. Lower
+            values are faster but coarser. Default 512.
+
         Returns
         -------
         panel.Tabs
@@ -5617,9 +5623,9 @@ class RadportAccessor:
         """
         from ovro_lwa_portal.viz import create_exploration_dashboard
 
-        return create_exploration_dashboard(self._obj)
+        return create_exploration_dashboard(self._obj, max_size=max_size)
 
-    def explore_image(self, **kwargs: Any) -> Any:
+    def explore_image(self, *, max_size: int = 512, **kwargs: Any) -> Any:
         """Launch an interactive image explorer.
 
         Provides sliders for time, frequency, and polarization with
@@ -5627,6 +5633,9 @@ class RadportAccessor:
 
         Parameters
         ----------
+        max_size : int, optional
+            Maximum pixels per spatial side after downsampling. Lower
+            values are faster but coarser. Default 512.
         **kwargs
             Passed to :class:`~ovro_lwa_portal.viz.explorers.ImageExplorer`.
 
@@ -5637,7 +5646,7 @@ class RadportAccessor:
         """
         from ovro_lwa_portal.viz import ImageExplorer
 
-        return ImageExplorer(self._obj, **kwargs).panel()
+        return ImageExplorer(self._obj, max_size=max_size, **kwargs).panel()
 
     def explore_dynamic_spectrum(self, **kwargs: Any) -> Any:
         """Launch an interactive dynamic spectrum explorer.
