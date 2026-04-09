@@ -50,4 +50,4 @@ def create_exploration_dashboard(
         sky_viewer = SkyViewer(ds)
         tabs.append(("Sky Viewer", sky_viewer.panel()))
 
-    return pn.Tabs(*tabs, sizing_mode="stretch_width")
+    return pn.Tabs(*tabs)

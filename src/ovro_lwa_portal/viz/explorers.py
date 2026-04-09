@@ -27,10 +27,6 @@ from ovro_lwa_portal.viz._data import (
 )
 from ovro_lwa_portal.viz.components import (
     COLORMAPS,
-    CURVE_HEIGHT,
-    CURVE_WIDTH,
-    IMAGE_HEIGHT,
-    IMAGE_WIDTH,
     style_curve,
     style_sky_image,
     style_spectrum_image,
@@ -149,13 +145,9 @@ class ImageExplorer(param.Parameterized):
             width=280,
         )
 
-        image_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._image_view),
-            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
-            sizing_mode="stretch_both",
-        )
+        image_pane = pn.pane.HoloViews(hv.DynamicMap(self._image_view))
 
-        return pn.Row(controls, image_pane, sizing_mode="stretch_width")
+        return pn.Row(controls, image_pane)
 
 
 class DynamicSpectrumExplorer(param.Parameterized):
@@ -337,25 +329,18 @@ class DynamicSpectrumExplorer(param.Parameterized):
             width=280,
         )
 
-        dynspec_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._dynspec_view),
-            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
-            sizing_mode="stretch_both",
-        )
+        dynspec_pane = pn.pane.HoloViews(hv.DynamicMap(self._dynspec_view))
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
-            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
         lightcurve_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
-            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
 
         return pn.Row(
             controls,
-            pn.Column(dynspec_pane, sizing_mode="stretch_both"),
+            dynspec_pane,
             pn.Column(spectrum_pane, lightcurve_pane),
-            sizing_mode="stretch_width",
         )
 
 
@@ -452,23 +437,16 @@ class CutoutExplorer(param.Parameterized):
             width=280,
         )
 
-        cutout_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._cutout_view),
-            min_width=IMAGE_WIDTH, min_height=IMAGE_HEIGHT,
-            sizing_mode="stretch_both",
-        )
+        cutout_pane = pn.pane.HoloViews(hv.DynamicMap(self._cutout_view))
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
-            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
         lightcurve_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
-            min_width=CURVE_WIDTH, min_height=CURVE_HEIGHT,
         )
 
         return pn.Row(
             controls,
-            pn.Column(cutout_pane, sizing_mode="stretch_both"),
+            cutout_pane,
             pn.Column(spectrum_pane, lightcurve_pane),
-            sizing_mode="stretch_width",
         )
