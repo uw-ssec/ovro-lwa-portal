@@ -739,7 +739,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/32/53/bac4724684064bfee95ece0bb6caf3887e509006845e25388a12cac26d0c/astroid-4.1.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/1c/f06ad85180e7dd9855aa5ede901bfc2be858d7bee17d4e978a14c0ecec14/astropy-7.2.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0f/c6/cdfe89a694f41d435687dea90b14b567b2e8daf18afc2b3168c7f1260124/astropy_iers_data-0.2026.2.23.0.48.33-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/23/b90d8e2f3b075d53e2e0295775add34f052acedeeef478e679d2dccc8de3/astrowidget-0.1.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/ff/21/8845fd0f1bd6d920b17f2135177b89b3f938c1db461cc6830460c065849a/astrowidget-0.1.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/39/e7eaf1799466a4aef85b6a4fe7bd175ad2b1c6345066aa33f1f58d4b18d0/asttokens-3.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/13/5c/af990f019b8dd11c5492a6371fe74a5b0276357370030b67254a87329944/async_lru-2.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl
@@ -1058,7 +1058,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/32/53/bac4724684064bfee95ece0bb6caf3887e509006845e25388a12cac26d0c/astroid-4.1.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a6/ba/3418133ba144dfcd1530bca5a6b695f4cdd21a8abaaa2ac4e5450d11b028/astropy-7.2.0-cp311-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/0f/c6/cdfe89a694f41d435687dea90b14b567b2e8daf18afc2b3168c7f1260124/astropy_iers_data-0.2026.2.23.0.48.33-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/23/b90d8e2f3b075d53e2e0295775add34f052acedeeef478e679d2dccc8de3/astrowidget-0.1.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/ff/21/8845fd0f1bd6d920b17f2135177b89b3f938c1db461cc6830460c065849a/astrowidget-0.1.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/39/e7eaf1799466a4aef85b6a4fe7bd175ad2b1c6345066aa33f1f58d4b18d0/asttokens-3.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/13/5c/af990f019b8dd11c5492a6371fe74a5b0276357370030b67254a87329944/async_lru-2.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl
@@ -1386,7 +1386,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/32/53/bac4724684064bfee95ece0bb6caf3887e509006845e25388a12cac26d0c/astroid-4.1.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/c3/1c/f06ad85180e7dd9855aa5ede901bfc2be858d7bee17d4e978a14c0ecec14/astropy-7.2.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/0f/c6/cdfe89a694f41d435687dea90b14b567b2e8daf18afc2b3168c7f1260124/astropy_iers_data-0.2026.2.23.0.48.33-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/23/b90d8e2f3b075d53e2e0295775add34f052acedeeef478e679d2dccc8de3/astrowidget-0.1.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/ff/21/8845fd0f1bd6d920b17f2135177b89b3f938c1db461cc6830460c065849a/astrowidget-0.1.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/39/e7eaf1799466a4aef85b6a4fe7bd175ad2b1c6345066aa33f1f58d4b18d0/asttokens-3.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/13/5c/af990f019b8dd11c5492a6371fe74a5b0276357370030b67254a87329944/async_lru-2.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl
@@ -1706,7 +1706,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/32/53/bac4724684064bfee95ece0bb6caf3887e509006845e25388a12cac26d0c/astroid-4.1.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a6/ba/3418133ba144dfcd1530bca5a6b695f4cdd21a8abaaa2ac4e5450d11b028/astropy-7.2.0-cp311-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/0f/c6/cdfe89a694f41d435687dea90b14b567b2e8daf18afc2b3168c7f1260124/astropy_iers_data-0.2026.2.23.0.48.33-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/f8/23/b90d8e2f3b075d53e2e0295775add34f052acedeeef478e679d2dccc8de3/astrowidget-0.1.2-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/ff/21/8845fd0f1bd6d920b17f2135177b89b3f938c1db461cc6830460c065849a/astrowidget-0.1.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/d2/39/e7eaf1799466a4aef85b6a4fe7bd175ad2b1c6345066aa33f1f58d4b18d0/asttokens-3.0.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/13/5c/af990f019b8dd11c5492a6371fe74a5b0276357370030b67254a87329944/async_lru-2.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3a/2a/7cc015f5b9f5db42b7d48157e23356022889fc354a2813c15934b7cb5c0e/attrs-25.4.0-py3-none-any.whl
@@ -2229,10 +2229,10 @@ packages:
   - pytest ; extra == 'test'
   - pytest-remotedata ; extra == 'test'
   requires_python: '>=3.8'
-- pypi: https://files.pythonhosted.org/packages/f8/23/b90d8e2f3b075d53e2e0295775add34f052acedeeef478e679d2dccc8de3/astrowidget-0.1.2-py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/ff/21/8845fd0f1bd6d920b17f2135177b89b3f938c1db461cc6830460c065849a/astrowidget-0.1.3-py3-none-any.whl
   name: astrowidget
-  version: 0.1.2
-  sha256: c417b91d4f53c6f63fbc464c8d3c9eeb110b3ae0ad23d2202446124a4e82290a
+  version: 0.1.3
+  sha256: 858fb87bb86df2475386c4133b025ec903fc27234ce3e30672c14e95517fa89a
   requires_dist:
   - anywidget>=0.9
   - astropy>=6.0
@@ -5672,8 +5672,8 @@ packages:
   timestamp: 1769556384749
 - pypi: ./
   name: ovro-lwa-portal
-  version: 0.1.dev52
-  sha256: 80942543135e70791a0bd077bb68ae5b43ef163e54a6488333361455f254ff7d
+  version: 0.1.dev54
+  sha256: 0b0969107df7f189185619b63c3d91a8edde1e029cff62c3d54838cc310e203a
   requires_dist:
   - astropy>=7.1.0,<8
   - dask>=2025.9.1,<2026
