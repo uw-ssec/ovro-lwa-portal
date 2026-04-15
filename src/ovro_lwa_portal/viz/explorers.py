@@ -35,8 +35,6 @@ from ovro_lwa_portal.viz.components import (
 if TYPE_CHECKING:
     import xarray as xr
 
-hv.extension("bokeh")
-
 
 class ImageExplorer(param.Parameterized):
     """Interactive image explorer with time/frequency/polarization selection.
@@ -262,7 +260,6 @@ class DynamicSpectrumExplorer(param.Parameterized):
                 )
 
         img = style_spectrum_image(img, cmap=self.cmap)
-        self._tap.source = img
         return img
 
     def _linked_spectrum(self, x: float | None, y: float | None) -> hv.Curve:
@@ -329,7 +326,10 @@ class DynamicSpectrumExplorer(param.Parameterized):
             width=280,
         )
 
-        dynspec_pane = pn.pane.HoloViews(hv.DynamicMap(self._dynspec_view))
+        dynspec_dmap = hv.DynamicMap(self._dynspec_view)
+        self._tap.source = dynspec_dmap
+
+        dynspec_pane = pn.pane.HoloViews(dynspec_dmap)
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
         )
@@ -393,7 +393,6 @@ class CutoutExplorer(param.Parameterized):
             robust=self.robust,
         )
         img = style_sky_image(img, cmap=self.cmap)
-        self._tap.source = img
         return img
 
     def _linked_spectrum(self, x: float | None, y: float | None) -> hv.Curve:
@@ -437,7 +436,10 @@ class CutoutExplorer(param.Parameterized):
             width=280,
         )
 
-        cutout_pane = pn.pane.HoloViews(hv.DynamicMap(self._cutout_view))
+        cutout_dmap = hv.DynamicMap(self._cutout_view)
+        self._tap.source = cutout_dmap
+
+        cutout_pane = pn.pane.HoloViews(cutout_dmap)
         spectrum_pane = pn.pane.HoloViews(
             hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
         )

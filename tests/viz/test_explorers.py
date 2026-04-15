@@ -84,6 +84,25 @@ class TestDynamicSpectrumExplorer:
         curve = explorer._linked_light_curve(None, None)
         assert isinstance(curve, hv.Curve)
 
+    def test_linked_spectrum_with_coordinates(self, viz_dataset):
+        explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
+        # x = time value, y = frequency (MHz) from dynspec image
+        curve = explorer._linked_spectrum(60000.0, 50.0)
+        assert isinstance(curve, hv.Curve)
+        assert len(curve) > 0
+
+    def test_linked_light_curve_with_coordinates(self, viz_dataset):
+        explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
+        # x = time value, y = frequency (MHz) from dynspec image
+        curve = explorer._linked_light_curve(60000.0, 50.0)
+        assert isinstance(curve, hv.Curve)
+        assert len(curve) > 0
+
+    def test_tap_source_set_to_dynamicmap(self, viz_dataset):
+        explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
+        layout = explorer.panel()
+        assert isinstance(explorer._tap.source, hv.DynamicMap)
+
 
 class TestCutoutExplorer:
     """Tests for CutoutExplorer."""
@@ -107,3 +126,27 @@ class TestCutoutExplorer:
         explorer = CutoutExplorer(viz_dataset)
         curve = explorer._linked_spectrum(None, None)
         assert isinstance(curve, hv.Curve)
+
+    def test_linked_light_curve_empty_before_click(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        curve = explorer._linked_light_curve(None, None)
+        assert isinstance(curve, hv.Curve)
+
+    def test_linked_spectrum_with_coordinates(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        # x = l, y = m from cutout image
+        curve = explorer._linked_spectrum(0.0, 0.0)
+        assert isinstance(curve, hv.Curve)
+        assert len(curve) > 0
+
+    def test_linked_light_curve_with_coordinates(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        # x = l, y = m from cutout image
+        curve = explorer._linked_light_curve(0.0, 0.0)
+        assert isinstance(curve, hv.Curve)
+        assert len(curve) > 0
+
+    def test_tap_source_set_to_dynamicmap(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        layout = explorer.panel()
+        assert isinstance(explorer._tap.source, hv.DynamicMap)
