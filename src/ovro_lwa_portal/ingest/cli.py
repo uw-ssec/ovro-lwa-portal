@@ -248,8 +248,8 @@ def convert(
             console.print(f"\n[bold red]✗[/bold red] Error: {e}", style="red")
             console.print(
                 "\nNo matching FITS files found. Please check:\n"
-                "  • The input directory contains FITS files\n"
-                "  • Files follow the naming pattern: YYYYMMDD_HHMMSS_*MHz_*-I-image.fits"
+                "  • The input directory contains .fits files\n"
+                "  • Filenames contain a timestamp (YYYYMMDD_HHMMSS) and frequency (<freq>MHz)"
             )
             raise typer.Exit(code=1) from e
 

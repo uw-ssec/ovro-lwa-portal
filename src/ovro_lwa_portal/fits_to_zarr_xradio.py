@@ -40,10 +40,13 @@ Library usage
 
 Notes
 -----
-* The code assumes filenames of the form:
-  YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
+* Filenames must contain ``YYYYMMDD_HHMMSS`` (observation timestamp) and
+  ``<freq>MHz`` (subband frequency). All ``.fits`` files in the input
+  directory are assumed to be valid images for grouping.
 * LM grids must match across time steps; a mismatch raises a RuntimeError.
-* On append, the existing Zarr is read and re-written with the appended time step.
+* Each time step is appended incrementally via ``to_zarr(append_dim="time")``;
+  missing frequency subbands are NaN-filled so every write has a consistent
+  frequency grid.
 """
 
 from __future__ import annotations
@@ -64,11 +67,8 @@ __all__ = ["convert_fits_dir_to_zarr", "fix_fits_headers"]
 
 logger = logging.getLogger(__name__)
 
-# Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
-PAT = re.compile(
-    r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
-)
-MHZ_RE = re.compile(r"_(\d+)MHz_")
+_DATETIME_RE = re.compile(r"(?P<date>\d{8})_(?P<hms>\d{6})")
+MHZ_RE = re.compile(r"(\d+)MHz")
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -331,7 +331,12 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
 
 
 def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
-    """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
+    """Group input FITS by time key ``YYYYMMDD_HHMMSS``.
+
+    Every ``.fits`` file in *in_dir* is considered a candidate.  The
+    observation timestamp is extracted by searching for an
+    ``YYYYMMDD_HHMMSS`` pattern anywhere in the filename.  Files whose
+    names do not contain a recognisable timestamp are silently skipped.
 
     Parameters
     ----------
@@ -345,12 +350,57 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
     """
     by_time: Dict[str, List[Path]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        m = PAT.match(f.name)
+        m = _DATETIME_RE.search(f.name)
         if not m:
             continue
         key = f"{m.group('date')}_{m.group('hms')}"
         by_time.setdefault(key, []).append(f)
     return by_time
+
+
+def _discover_freq_grid(
+    by_time: Dict[str, List[Path]],
+    fixed_dir: Path,
+    fix_headers_on_demand: bool,
+) -> NDArray[np.floating]:
+    """Pre-scan one FITS header per unique subband to build the full frequency grid.
+
+    Only headers are read (via ``memmap``), so no pixel data is loaded.
+
+    Parameters
+    ----------
+    by_time : Dict[str, List[Path]]
+        Time-grouped FITS file paths from :func:`_discover_groups`.
+    fixed_dir : Path
+        Directory containing (or to create) ``*_fixed.fits`` files.
+    fix_headers_on_demand : bool
+        If True, fix headers for representative files if not already done.
+
+    Returns
+    -------
+    NDArray[np.floating]
+        Sorted array of unique frequency values in Hz.
+    """
+    representatives: Dict[int, Path] = {}
+    for files in by_time.values():
+        for f in files:
+            mhz = _mhz_from_name(f)
+            representatives.setdefault(mhz, f)
+
+    freq_hz: List[float] = []
+    for mhz in sorted(representatives):
+        f = representatives[mhz]
+
+        if fix_headers_on_demand:
+            fixed_paths = fix_fits_headers([f], fixed_dir, skip_existing=True)
+            f = fixed_paths[0]
+        elif not f.name.endswith("_fixed.fits"):
+            f = fixed_dir / (f.stem + "_fixed.fits")
+
+        with fits.open(str(f), memmap=True) as hdul:
+            freq_hz.append(float(hdul[0].header.get("CRVAL3", mhz * 1e6)))
+
+    return np.array(sorted(freq_hz))
 
 
 def _combine_time_step(
@@ -442,59 +492,6 @@ def _assert_same_lm(
         raise RuntimeError("l/m grids differ across times; aborting to avoid misalignment.")
 
 
-def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) -> None:
-    """Safe write/append to Zarr store.
-
-    First write: write directly.
-    Append: read existing lazily, build combined, write to a TEMP path,
-    then atomically swap into place so we never delete the source store
-    while still reading from it.
-
-    Parameters
-    ----------
-    xds_t : xr.Dataset
-        Dataset to write or append.
-    out_zarr : Path
-        Path to output Zarr store.
-    first_write : bool
-        If True, write a new Zarr store; if False, append to existing.
-    """
-    from shutil import rmtree, move
-
-    if first_write or (not out_zarr.exists()):
-        write_image(xds_t, str(out_zarr), out_format="zarr", overwrite=True)
-        return
-
-    # 1) Open existing lazily
-    existing = xr.open_zarr(str(out_zarr))
-    existing.attrs = {}
-    for v in existing.data_vars:
-        existing[v].encoding = {}
-
-    # 2) Sort for determinism
-    if "time" in existing.coords: existing = existing.sortby("time")
-    if "frequency" in existing.coords: existing = existing.sortby("frequency")
-    if "time" in xds_t.coords:       xds_t = xds_t.sortby("time")
-    if "frequency" in xds_t.coords:  xds_t = xds_t.sortby("frequency")
-
-    # 3) Build combined (still lazy)
-    combined = xr.concat([existing, xds_t], dim="time")
-    if "time" in combined.coords:      combined = combined.sortby("time")
-    if "frequency" in combined.coords: combined = combined.sortby("frequency")
-
-    # 4) Write to a temporary path (so the original store remains readable)
-    tmp = out_zarr.with_suffix(out_zarr.suffix + ".tmpwrite")
-    if tmp.exists():
-        rmtree(tmp)
-    write_image(combined, str(tmp), out_format="zarr", overwrite=True)
-
-    # 5) Swap: remove old store, move tmp into place
-    if out_zarr.exists():
-        rmtree(out_zarr)
-    move(str(tmp), str(out_zarr))
-
-
-
 def convert_fits_dir_to_zarr(
     input_dir: str | Path,
     out_dir: str | Path,
@@ -558,8 +555,12 @@ def convert_fits_dir_to_zarr(
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
 
-    # Decide whether we write a fresh store or append to an existing one
-    first_write = not (out_zarr.exists() and not rebuild)
+    # Pre-scan to build the full frequency grid across all time steps.
+    # Only reads one FITS header per unique subband — no pixel data.
+    freq_grid = _discover_freq_grid(by_time, fixed_dir, fix_headers_on_demand)
+    logger.info(f"Frequency grid ({len(freq_grid)} subbands): {freq_grid.tolist()}")
+
+    first_write = rebuild or not out_zarr.exists()
     lm_reference: Tuple[NDArray[np.floating], NDArray[np.floating]] | None = None
 
     total_time_steps = len(by_time)
@@ -573,6 +574,9 @@ def convert_fits_dir_to_zarr(
         logger.info(f"  combined dims: {dict(xds_t.dims)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
+        # Pad to the full frequency grid so every write has the same shape.
+        xds_t = xds_t.reindex(frequency=freq_grid)
+
         lm_current = (xds_t["l"].values, xds_t["m"].values)
         if lm_reference is None:
             lm_reference = (lm_current[0].copy(), lm_current[1].copy())
@@ -581,17 +585,21 @@ def convert_fits_dir_to_zarr(
             _assert_same_lm(lm_reference, lm_current)
             logger.info("  l/m grid matches reference")
 
-        logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
-        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
-        first_write = False
+        if first_write:
+            logger.info(f"[write new] {out_zarr}")
+            write_image(xds_t, str(out_zarr), out_format="zarr", overwrite=True)
+            first_write = False
+        else:
+            logger.info(f"[append] {out_zarr}")
+            time_vars = [v for v in xds_t.data_vars if "time" in xds_t[v].dims]
+            xds_t[time_vars].to_zarr(str(out_zarr), mode="a", append_dim="time")
 
-        # Report progress after completing this time step
         if progress_callback:
             progress_callback(
                 "converting",
                 idx + 1,
                 total_time_steps,
-                f"Completed time step {idx + 1}/{total_time_steps}"
+                f"Completed time step {idx + 1}/{total_time_steps}",
             )
 
     logger.info(f"[done] All times appended into: {out_zarr}")
