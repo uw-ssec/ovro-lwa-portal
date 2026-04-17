@@ -40,8 +40,8 @@ Library usage
 
 Notes
 -----
-* The code assumes filenames of the form:
-  YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
+* Discovery groups files by observation time/frequency from FITS headers first.
+  Filename parsing is only used as a fallback when header metadata is missing.
 * LM grids must match across time steps; a mismatch raises a RuntimeError.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """

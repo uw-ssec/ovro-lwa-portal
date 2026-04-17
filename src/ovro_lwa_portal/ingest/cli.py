@@ -155,7 +155,8 @@ def convert(
 
     This command processes FITS image files from the specified INPUT_DIR and
     combines them into an optimized Zarr store at OUTPUT_DIR. Files are grouped
-    by observation time and frequency subband.
+    by observation time and frequency, using FITS headers first with filename
+    parsing as a fallback when headers are incomplete.
 
     \b
     Examples:
@@ -280,7 +281,8 @@ def convert(
             console.print(
                 "\nNo matching FITS files found. Please check:\n"
                 "  • The input directory contains FITS files\n"
-                "  • Files follow the naming pattern: YYYYMMDD_HHMMSS_*MHz_*-I-image.fits"
+                "  • FITS headers contain usable observation time/frequency metadata\n"
+                "  • Or filenames include parseable fallback patterns (e.g., YYYYMMDD_HHMMSS_*MHz_*)"
             )
             raise typer.Exit(code=1) from e
 

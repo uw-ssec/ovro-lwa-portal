@@ -218,3 +218,32 @@ def test_discover_groups_header_based_frequency_sorting(tmp_path: Path):
 
     freqs = [mod._extract_group_metadata(p)[1] for p in group_files]
     assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]
+
+
+def test_discover_groups_skips_file_without_time_or_frequency_metadata(tmp_path: Path):
+    """Files with no usable header or filename metadata should be skipped."""
+    mod = _import_module()
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
+        tmp_path / "unparseable_name.fits"
+    )
+
+    groups = mod._discover_groups(tmp_path)
+
+    assert groups == {}
+
+
+def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
+    """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
+    mod = _import_module()
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
+        tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
+    )
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
+        tmp_path / "20240524_050009_82MHz_averaged_20000_iterations-I-image.fits"
+    )
+
+    groups = mod._discover_groups(tmp_path)
+
+    assert "20240524_050009" in groups
+    freqs = [mod._extract_group_metadata(p)[1] for p in groups["20240524_050009"]]
+    assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]
