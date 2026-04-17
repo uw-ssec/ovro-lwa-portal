@@ -363,6 +363,51 @@ def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
     return best_idx
 
 
+def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
+    """Return LM shape ``(m, l)`` from FITS using xradio, without full WCS attachment."""
+    xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
+    return int(xds.sizes["m"]), int(xds.sizes["l"])
+
+
+def _load_global_lm_reference_dataset(
+    by_time: Dict[str, List[Path]],
+    fixed_dir: Path,
+    *,
+    chunk_lm: int,
+    fix_headers_on_demand: bool,
+) -> xr.Dataset:
+    """Load the dataset whose LM grid has the largest shape across *all* time steps.
+
+    Per-time reprojection alone is insufficient: different observation times can
+    imply different in-step max shapes (e.g. only 3122² files in one step and
+    mixed 4096²+3122² in another). A single global reference ensures every step
+    normalizes to the same ``l``/``m`` so :func:`_assert_same_lm` can succeed.
+    """
+    candidates: List[Tuple[Path, Tuple[int, int]]] = []
+    for tkey in sorted(by_time.keys()):
+        files = by_time[tkey]
+        if fix_headers_on_demand:
+            fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
+        else:
+            fixed_paths = _get_fixed_paths(files, fixed_dir)
+        for fp in fixed_paths:
+            candidates.append((fp, _peek_lm_shape(fp)))
+
+    if not candidates:
+        msg = "No FITS paths available to build a global LM reference."
+        raise RuntimeError(msg)
+
+    shapes = [sh for _, sh in candidates]
+    win_idx = _select_reference_shape_index(shapes)
+    ref_fp, ref_shape = candidates[win_idx]
+    logger.info(
+        "Global LM reference grid (m,l)=%s from %s",
+        ref_shape,
+        ref_fp.name,
+    )
+    return _load_for_combine(ref_fp, chunk_lm=chunk_lm)
+
+
 def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
     """Interpolate ``xds`` onto ``ref``'s ``l`` / ``m`` coordinate grid.
 
@@ -457,7 +502,12 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
 
 
 def _combine_time_step(
-    files: List[Path], fixed_dir: Path, *, chunk_lm: int, fix_headers_on_demand: bool = True
+    files: List[Path],
+    fixed_dir: Path,
+    *,
+    chunk_lm: int,
+    fix_headers_on_demand: bool = True,
+    lm_reference_ds: Optional[xr.Dataset] = None,
 ) -> Tuple[xr.Dataset, List[float]]:
     """Create a single-time dataset by combining frequency slices from subbands.
 
@@ -472,6 +522,10 @@ def _combine_time_step(
     fix_headers_on_demand : bool, optional
         If True, fix headers on-demand if they don't exist. If False,
         assume headers are already fixed. Default is True.
+    lm_reference_ds : xarray.Dataset, optional
+        If provided, regrid all slices to this dataset's ``l``/``m`` grid (used for
+        a conversion-wide max-shape reference). If omitted, the largest slice in
+        this time step is the reference.
 
     Returns
     -------
@@ -496,15 +550,24 @@ def _combine_time_step(
     lm_shapes = [_lm_shape(xds) for xds in xds_list]
     reference_idx = _select_reference_shape_index(lm_shapes)
     unique_shapes = sorted(set(lm_shapes))
-    if len(unique_shapes) > 1:
-        logger.info(
-            "Detected mixed LM shapes %s; selected reference shape %s from %s",
-            unique_shapes,
-            lm_shapes[reference_idx],
-            fixed_paths[reference_idx].name,
-        )
 
-    ref_ds = xds_list[reference_idx]
+    if lm_reference_ds is not None:
+        ref_ds = lm_reference_ds
+        if len(unique_shapes) > 1 or any(_lm_shape(xds) != _lm_shape(ref_ds) for xds in xds_list):
+            logger.info(
+                "Using global LM reference grid (m,l)=%s; this time step shapes: %s",
+                _lm_shape(ref_ds),
+                unique_shapes,
+            )
+    else:
+        ref_ds = xds_list[reference_idx]
+        if len(unique_shapes) > 1:
+            logger.info(
+                "Detected mixed LM shapes %s; selected reference shape %s from %s",
+                unique_shapes,
+                lm_shapes[reference_idx],
+                fixed_paths[reference_idx].name,
+            )
     for i, xds in enumerate(xds_list):
         if _lm_shape(xds) != _lm_shape(ref_ds):
             logger.info(
@@ -561,8 +624,17 @@ def _assert_same_lm(
     RuntimeError
         If l or m grids differ across time steps.
     """
-    same_l = np.allclose(reference[0], current[0])
-    same_m = np.allclose(reference[1], current[1])
+    ref_l, ref_m = reference[0], reference[1]
+    cur_l, cur_m = current[0], current[1]
+    if ref_l.shape != cur_l.shape or ref_m.shape != cur_m.shape:
+        msg = (
+            "l/m coordinate length mismatch across time steps "
+            f"(l: {ref_l.shape} vs {cur_l.shape}, m: {ref_m.shape} vs {cur_m.shape}). "
+            "After mixed-resolution normalization, every time step must share one LM grid."
+        )
+        raise RuntimeError(msg)
+    same_l = np.allclose(ref_l, cur_l)
+    same_m = np.allclose(ref_m, cur_m)
     if not (same_l and same_m):
         raise RuntimeError("l/m grids differ across times; aborting to avoid misalignment.")
 
@@ -683,9 +755,16 @@ def convert_fits_dir_to_zarr(
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
 
+    lm_ref_ds = _load_global_lm_reference_dataset(
+        by_time,
+        fixed_dir,
+        chunk_lm=chunk_lm,
+        fix_headers_on_demand=fix_headers_on_demand,
+    )
+    lm_reference = (lm_ref_ds["l"].values.copy(), lm_ref_ds["m"].values.copy())
+
     # Decide whether we write a fresh store or append to an existing one
     first_write = not (out_zarr.exists() and not rebuild)
-    lm_reference: Tuple[NDArray[np.floating], NDArray[np.floating]] | None = None
 
     total_time_steps = len(by_time)
     for idx, tkey in enumerate(sorted(by_time.keys())):
@@ -693,18 +772,18 @@ def convert_fits_dir_to_zarr(
 
         logger.info(f"[read/combine] time {tkey}")
         xds_t, freqs = _combine_time_step(
-            files, fixed_dir, chunk_lm=chunk_lm, fix_headers_on_demand=fix_headers_on_demand
+            files,
+            fixed_dir,
+            chunk_lm=chunk_lm,
+            fix_headers_on_demand=fix_headers_on_demand,
+            lm_reference_ds=lm_ref_ds,
         )
         logger.info(f"  combined dims: {dict(xds_t.dims)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)
-        if lm_reference is None:
-            lm_reference = (lm_current[0].copy(), lm_current[1].copy())
-            logger.info("  stored l/m grid as reference")
-        else:
-            _assert_same_lm(lm_reference, lm_current)
-            logger.info("  l/m grid matches reference")
+        _assert_same_lm(lm_reference, lm_current)
+        logger.info("  l/m grid matches global reference")
 
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
         _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)

@@ -202,3 +202,18 @@ def test_regrid_to_reference_lm_mixed_shapes():
     np.testing.assert_allclose(out["right_ascension"].values, xds_ref["right_ascension"].values)
     np.testing.assert_allclose(out["declination"].values, xds_ref["declination"].values)
     assert bytes(out["wcs_header_str"].values.item()) == hdr_ref.encode("utf-8")
+
+
+def test_assert_same_lm_clear_error_on_length_mismatch():
+    """Length mismatch must raise RuntimeError, not a NumPy broadcast error."""
+    try:
+        import numpy as np
+
+        from ovro_lwa_portal import fits_to_zarr_xradio
+    except ImportError as e:
+        pytest.skip(f"xradio dependencies not available: {e}")
+
+    ref = (np.linspace(-1, 1, 4096), np.linspace(-1, 1, 4096))
+    cur = (np.linspace(-1, 1, 3122), np.linspace(-1, 1, 3122))
+    with pytest.raises(RuntimeError, match="length mismatch"):
+        fits_to_zarr_xradio._assert_same_lm(ref, cur)
