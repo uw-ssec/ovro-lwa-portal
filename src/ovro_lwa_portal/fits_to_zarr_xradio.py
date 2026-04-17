@@ -498,6 +498,11 @@ def _discover_groups(
             by_time.setdefault(time_key, [])
             by_time[time_key] = [p for p in by_time[time_key] if p not in candidates]
             by_time[time_key].append(selected)
+            # Replace the pending duplicate bucket so the next file with this (time, freq)
+            # starts from the chosen file only. Otherwise `candidates` never shrinks and
+            # grows as [f1, f2, f3, ...], re-invoking the resolver with stale paths and
+            # widening the filter that strips `by_time[time_key]`.
+            time_freq_map[freq_key] = [selected]
             logger.warning(
                 "Duplicate FITS files for time=%s, frequency_hz=%.1f. Selected: %s. Candidates: %s",
                 time_key,

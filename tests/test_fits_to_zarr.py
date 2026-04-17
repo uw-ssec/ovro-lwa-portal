@@ -200,6 +200,28 @@ def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
     assert groups["20240524_050009"] == [f2]
 
 
+def test_discover_groups_triple_duplicate_resolver_sees_fresh_candidates(tmp_path: Path):
+    """After resolving two-way duplicate, third file must not reuse stale candidate list."""
+    mod = _import_module()
+    hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
+    paths = [tmp_path / f"candidate_{i}.fits" for i in range(3)]
+    for p in paths:
+        fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(p)
+
+    resolver_calls: list[list[Path]] = []
+
+    def record_first(_time_key: str, _freq_hz: float, candidates: list[Path]) -> Path:
+        resolver_calls.append(list(candidates))
+        return candidates[0]
+
+    groups = mod._discover_groups(tmp_path, duplicate_resolver=record_first)
+
+    assert groups["20240524_050009"] == [paths[0]]
+    assert len(resolver_calls) == 2
+    assert resolver_calls[0] == paths[:2]
+    assert resolver_calls[1] == [paths[0], paths[2]]
+
+
 def test_discover_groups_header_based_frequency_sorting(tmp_path: Path):
     """Groups should be deterministically sorted by header frequency."""
     mod = _import_module()
