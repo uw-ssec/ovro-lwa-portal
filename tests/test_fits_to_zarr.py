@@ -198,3 +198,23 @@ def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
 
     assert "20240524_050009" in groups
     assert groups["20240524_050009"] == [f2]
+
+
+def test_discover_groups_header_based_frequency_sorting(tmp_path: Path):
+    """Groups should be deterministically sorted by header frequency."""
+    mod = _import_module()
+    # Write intentionally out-of-order names with opposite order frequencies.
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 8.2e7}),
+    ).writeto(tmp_path / "aaa_name.fits")
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7}),
+    ).writeto(tmp_path / "zzz_name.fits")
+
+    groups = mod._discover_groups(tmp_path)
+    group_files = groups["20240524_050009"]
+
+    freqs = [mod._extract_group_metadata(p)[1] for p in group_files]
+    assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]

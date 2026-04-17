@@ -190,6 +190,14 @@ def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], L
     return time_key, frequency_hz, notes
 
 
+def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
+    """Sort key for deterministic frequency ordering with fallback."""
+    _, frequency_hz, _ = _extract_group_metadata(fp)
+    if frequency_hz is None:
+        return (float(10**15), fp.name)
+    return (float(frequency_hz), fp.name)
+
+
 def _fix_headers(path_in: Path, path_out: Path) -> None:
     """Write a *_fixed.fits with BSCALE/BZERO applied and minimal WCS/spectral keys.
 
@@ -266,7 +274,7 @@ def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
         List of paths to fixed FITS files, sorted by frequency.
     """
     fixed_paths: List[Path] = []
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             fixed_paths.append(f)
         else:
@@ -323,7 +331,7 @@ def fix_fits_headers(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     fixed_paths: List[Path] = []
 
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             # Already fixed, use as-is
             fixed_paths.append(f)
@@ -502,6 +510,9 @@ def _discover_groups(
         if notes:
             logger.warning(f"Using fallback metadata for {f.name}: {', '.join(notes)}")
         by_time.setdefault(time_key, []).append(f)
+
+    for time_key, files in by_time.items():
+        by_time[time_key] = sorted(files, key=_frequency_sort_tuple)
     return by_time
 
 
@@ -708,8 +719,8 @@ def convert_fits_dir_to_zarr(
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
-        mhz_sorted = sorted(_mhz_from_name(p) for p in v)
-        logger.info(f"  time {k}: {len(v)} file(s), subbands (MHz): {mhz_sorted}")
+        freqs_hz = [_extract_group_metadata(p)[1] for p in v]
+        logger.info(f"  time {k}: {len(v)} file(s), frequencies (Hz): {freqs_hz}")
 
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
