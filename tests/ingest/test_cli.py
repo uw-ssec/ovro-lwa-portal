@@ -37,6 +37,7 @@ class TestCLI:
         result = runner.invoke(app, ["convert", "--help"])
         assert result.exit_code == 0
         assert "Convert OVRO-LWA FITS files to a single Zarr store" in result.stdout
+        assert "largest grid" in result.stdout
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""

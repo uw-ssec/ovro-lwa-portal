@@ -45,6 +45,8 @@ Notes
 * LM grids must match across time steps after global and per-step mixed-resolution normalization;
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
+* Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
+  Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """
 
@@ -519,7 +521,12 @@ def _load_global_lm_reference_dataset(
     return _load_for_combine(ref_fp, chunk_lm=chunk_lm)
 
 
-def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
+def _regrid_to_reference_lm(
+    xds: xr.Dataset,
+    ref: xr.Dataset,
+    *,
+    source_label: Optional[str] = None,
+) -> xr.Dataset:
     """Interpolate ``xds`` onto ``ref``'s ``l`` / ``m`` coordinate grid.
 
     Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
@@ -532,6 +539,8 @@ def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
         Source dataset (e.g. from :func:`_load_for_combine`).
     ref
         Reference dataset whose ``l`` and ``m`` define the target grid.
+    source_label
+        Optional filename or path for error messages when regridding fails.
 
     Returns
     -------
@@ -546,6 +555,11 @@ def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
     if _lm_shape(xds) == _lm_shape(ref):
         return xds
 
+    if "l" not in xds.coords or "m" not in xds.coords:
+        who = f"{source_label}: " if source_label else ""
+        msg = f"{who}cannot regrid: dataset is missing ``l`` and/or ``m`` coordinates."
+        raise RuntimeError(msg)
+
     # Materialize for scipy-backed interp; reference coords may be lazy.
     xds = xds.load()
     target_l = ref["l"].load() if hasattr(ref["l"].data, "compute") else ref["l"]
@@ -554,7 +568,8 @@ def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
     try:
         regridded = xds.interp(l=target_l, m=target_m, method="linear")
     except Exception as exc:
-        msg = f"LM regridding onto reference grid failed: {exc}"
+        who = f"{source_label}: " if source_label else ""
+        msg = f"{who}LM regridding onto reference grid failed: {exc}"
         raise RuntimeError(msg) from exc
 
     # Sky coords and WCS metadata match the reference physical grid.
@@ -748,7 +763,7 @@ def _combine_time_step(
                 _lm_shape(xds),
                 _lm_shape(ref_ds),
             )
-        xds_list[i] = _regrid_to_reference_lm(xds, ref_ds)
+        xds_list[i] = _regrid_to_reference_lm(xds, ref_ds, source_label=str(fixed_paths[i]))
 
     try:
         xds_t = xr.combine_by_coords(
@@ -832,7 +847,9 @@ def _assert_same_lm(
     same_l = np.allclose(ref_l, cur_l)
     same_m = np.allclose(ref_m, cur_m)
     if not (same_l and same_m):
-        raise RuntimeError("l/m grids differ across times; aborting to avoid misalignment.")
+        raise RuntimeError(
+            "l/m grids differ across times after normalization; aborting to avoid misalignment."
+        )
 
 
 def _write_or_append_zarr(
@@ -944,6 +961,12 @@ def convert_fits_dir_to_zarr(
     duplicate_resolver
         Optional callback to resolve duplicate files that map to the same
         time/frequency group. Signature: ``(time_key, frequency_hz, candidates) -> selected_path``.
+
+    Mixed-resolution inputs (different ``l``/``m`` pixel shapes) are supported: the
+    largest LM grid among all selected files becomes the conversion-wide reference,
+    and smaller images are linearly interpolated onto that grid before combine. The
+    same reference is used for every time step so output Zarr has one consistent
+    sky pixel grid.
 
     Returns
     -------

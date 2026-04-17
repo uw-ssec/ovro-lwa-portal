@@ -205,6 +205,132 @@ def test_regrid_to_reference_lm_mixed_shapes():
     assert bytes(out["wcs_header_str"].values.item()) == hdr_ref.encode("utf-8")
 
 
+def test_regrid_to_reference_lm_requires_l_m_coords():
+    """Regridding must fail clearly when ``l``/``m`` coordinates are absent."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    l_ref = np.linspace(-1.0, 1.0, 4)
+    m_ref = np.linspace(-1.0, 1.0, 4)
+    sky_ref = np.zeros((4, 4))
+    xds_ref = xr.Dataset(
+        {"SKY": (("m", "l"), sky_ref)},
+        coords={
+            "l": ("l", l_ref),
+            "m": ("m", m_ref),
+            "right_ascension": (("m", "l"), np.zeros((4, 4))),
+            "declination": (("m", "l"), np.zeros((4, 4))),
+        },
+        attrs={"fits_wcs_header": "SIMPLE  =                   T"},
+    )
+    xds_no_coords = xr.Dataset({"SKY": (("m", "l"), np.zeros((2, 3)))})
+
+    with pytest.raises(RuntimeError, match="missing"):
+        mod._regrid_to_reference_lm(xds_no_coords, xds_ref)
+
+
+def test_regrid_to_reference_lm_error_includes_source_label():
+    """Interpolation failures should name the source file when provided."""
+    from unittest.mock import patch
+
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    rng = np.random.default_rng(2)
+    l_ref = np.linspace(-1.0, 1.0, 5)
+    m_ref = np.linspace(-1.0, 1.0, 5)
+    sky_ref = rng.standard_normal((5, 5))
+    hdr_ref = "SIMPLE  =                   T\nNAXIS   =                    2"
+    xds_ref = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_ref)},
+        coords={
+            "l": ("l", l_ref),
+            "m": ("m", m_ref),
+            "right_ascension": (("m", "l"), np.full((5, 5), 180.0)),
+            "declination": (("m", "l"), np.full((5, 5), 45.0)),
+        },
+        attrs={"fits_wcs_header": hdr_ref},
+    )
+    l_sm = np.linspace(-0.5, 0.5, 4)
+    m_sm = np.linspace(-0.5, 0.5, 3)
+    sky_sm = rng.standard_normal((3, 4))
+    xds_sm = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_sm)},
+        coords={
+            "l": ("l", l_sm),
+            "m": ("m", m_sm),
+            "right_ascension": (("m", "l"), np.zeros((3, 4))),
+            "declination": (("m", "l"), np.zeros((3, 4))),
+        },
+        attrs={"fits_wcs_header": hdr_ref},
+    )
+
+    with (
+        patch.object(xr.Dataset, "interp", side_effect=ValueError("simulated interp failure")),
+        pytest.raises(RuntimeError, match="bad_file.fits"),
+    ):
+        mod._regrid_to_reference_lm(xds_sm, xds_ref, source_label="bad_file.fits")
+
+
+def test_load_global_lm_reference_selects_largest_shape(monkeypatch, tmp_path: Path):
+    """Global reference must load the FITS whose LM shape wins the max-shape rule."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    f_small = tmp_path / "small.fits"
+    f_large = tmp_path / "large.fits"
+    f_small.touch()
+    f_large.touch()
+    by_time = {"20240101_120000": [f_small, f_large]}
+
+    monkeypatch.setattr(mod, "fix_fits_headers", lambda files, fd, skip_existing=True: list(files))
+    monkeypatch.setattr(
+        mod,
+        "_peek_lm_shape",
+        lambda fp: (32, 32) if fp.name.startswith("small") else (64, 64),
+    )
+
+    loaded: list[Path] = []
+
+    def fake_load(fp: Path, chunk_lm: int = 1024) -> xr.Dataset:
+        loaded.append(fp)
+        n = 64
+        l_ = np.linspace(-1.0, 1.0, n)
+        m_ = np.linspace(-1.0, 1.0, n)
+        sky = np.zeros((n, n))
+        hdr = "SIMPLE  =                   T\nNAXIS   =                    2"
+        return (
+            xr.Dataset(
+                {"SKY": (("m", "l"), sky)},
+                coords={
+                    "l": ("l", l_),
+                    "m": ("m", m_),
+                    "frequency": ("frequency", np.array([1.4e8])),
+                    "right_ascension": (("m", "l"), np.full((n, n), 180.0)),
+                    "declination": (("m", "l"), np.full((n, n), 45.0)),
+                },
+                attrs={"fits_wcs_header": hdr},
+            )
+            .assign(wcs_header_str=((), np.bytes_(hdr.encode("utf-8"))))
+        )
+
+    monkeypatch.setattr(mod, "_load_for_combine", fake_load)
+
+    out = mod._load_global_lm_reference_dataset(
+        by_time,
+        tmp_path / "fixed",
+        chunk_lm=0,
+        fix_headers_on_demand=True,
+    )
+
+    assert loaded == [f_large]
+    assert int(out.sizes["m"]) == 64
+    assert int(out.sizes["l"]) == 64
+
+
 def test_assert_same_lm_clear_error_on_length_mismatch():
     """Length mismatch must raise RuntimeError, not a NumPy broadcast error."""
     import numpy as np
