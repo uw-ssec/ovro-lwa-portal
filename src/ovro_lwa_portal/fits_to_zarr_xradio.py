@@ -330,6 +330,38 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     return xds
 
 
+def _lm_shape(xds: xr.Dataset) -> Tuple[int, int]:
+    """Return dataset LM shape as ``(m, l)``."""
+    return int(xds.sizes["m"]), int(xds.sizes["l"])
+
+
+def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
+    """Select deterministic reference index from LM shapes.
+
+    Selection rule:
+      1) largest pixel count (m * l)
+      2) largest m
+      3) largest l
+      4) first occurrence on ties
+    """
+    if not shapes:
+        msg = "Cannot select reference shape from empty list."
+        raise RuntimeError(msg)
+
+    best_idx = 0
+    best_shape = shapes[0]
+    best_score = (best_shape[0] * best_shape[1], best_shape[0], best_shape[1])
+
+    for idx, shape in enumerate(shapes[1:], start=1):
+        score = (shape[0] * shape[1], shape[0], shape[1])
+        if score > best_score:
+            best_idx = idx
+            best_shape = shape
+            best_score = score
+
+    return best_idx
+
+
 def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
     """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
 
@@ -389,6 +421,17 @@ def _combine_time_step(
         fvals = np.atleast_1d(xds.frequency.values)
         freqs_seen.extend([float(f) for f in fvals])
         xds_list.append(xds)
+
+    lm_shapes = [_lm_shape(xds) for xds in xds_list]
+    reference_idx = _select_reference_shape_index(lm_shapes)
+    unique_shapes = sorted(set(lm_shapes))
+    if len(unique_shapes) > 1:
+        logger.info(
+            "Detected mixed LM shapes %s; selected reference shape %s from %s",
+            unique_shapes,
+            lm_shapes[reference_idx],
+            fixed_paths[reference_idx].name,
+        )
 
     try:
         xds_t = xr.combine_by_coords(

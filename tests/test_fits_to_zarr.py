@@ -132,3 +132,17 @@ def test_module_can_be_imported():
         assert hasattr(fits_to_zarr_xradio, "MHZ_RE")
     except ImportError as e:
         pytest.skip(f"xradio dependencies not available: {e}")
+
+
+def test_select_reference_shape_index_deterministic():
+    """Largest LM shape should be selected deterministically."""
+    try:
+        from ovro_lwa_portal import fits_to_zarr_xradio
+    except ImportError as e:
+        pytest.skip(f"xradio dependencies not available: {e}")
+
+    shapes = [(3122, 3122), (4096, 4096), (4096, 3000), (4096, 4096)]
+    idx = fits_to_zarr_xradio._select_reference_shape_index(shapes)
+
+    # Tie on (4096, 4096) should pick first occurrence.
+    assert idx == 1
