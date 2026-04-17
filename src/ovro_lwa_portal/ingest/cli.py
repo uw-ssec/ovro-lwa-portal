@@ -24,6 +24,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
@@ -178,6 +179,24 @@ def convert(
     verbose = log_level == LogLevel.DEBUG
 
     # Build configuration
+    def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
+        """Prompt user to resolve duplicate files in the same time/subband."""
+        console.print(
+            "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
+            f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
+        )
+        for idx, candidate in enumerate(candidates, start=1):
+            console.print(f"  {idx}. {candidate}")
+
+        choices = [str(i) for i in range(1, len(candidates) + 1)]
+        selection = Prompt.ask(
+            "Select which file to use",
+            choices=choices,
+            default="1",
+            console=console,
+        )
+        return candidates[int(selection) - 1]
+
     config = ConversionConfig(
         input_dir=input_dir,
         output_dir=output_dir,
@@ -186,6 +205,7 @@ def convert(
         chunk_lm=chunk_lm,
         rebuild=rebuild,
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
+        duplicate_resolver=duplicate_resolver,
         verbose=verbose,
     )
 

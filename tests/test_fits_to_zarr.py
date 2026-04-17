@@ -6,6 +6,16 @@ import re
 from pathlib import Path
 
 import pytest
+from astropy.io import fits
+
+
+def _import_module():
+    """Import module under test if optional dependencies are available."""
+    try:
+        from ovro_lwa_portal import fits_to_zarr_xradio
+    except ImportError as e:
+        pytest.skip(f"xradio dependencies not available: {e}")
+    return fits_to_zarr_xradio
 
 
 def test_parse_filename_pattern():
@@ -125,10 +135,66 @@ def test_mhz_from_name_no_match():
 
 def test_module_can_be_imported():
     """Test that the fits_to_zarr_xradio module can be imported."""
-    try:
-        from ovro_lwa_portal import fits_to_zarr_xradio
-        assert hasattr(fits_to_zarr_xradio, "convert_fits_dir_to_zarr")
-        assert hasattr(fits_to_zarr_xradio, "PAT")
-        assert hasattr(fits_to_zarr_xradio, "MHZ_RE")
-    except ImportError as e:
-        pytest.skip(f"xradio dependencies not available: {e}")
+    fits_to_zarr_xradio = _import_module()
+    assert hasattr(fits_to_zarr_xradio, "convert_fits_dir_to_zarr")
+    assert hasattr(fits_to_zarr_xradio, "PAT")
+    assert hasattr(fits_to_zarr_xradio, "MHZ_RE")
+
+
+def test_extract_group_metadata_from_header(tmp_path: Path):
+    """Header metadata should provide both time and frequency."""
+    mod = _import_module()
+    fpath = tmp_path / "arbitrary_name.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7}),
+    ).writeto(fpath)
+
+    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath)
+
+    assert time_key == "20240524_050009"
+    assert frequency_hz == pytest.approx(4.1e7)
+    assert notes == []
+
+
+def test_extract_group_metadata_fallback_to_filename(tmp_path: Path):
+    """Filename fallback should be used when headers are missing metadata."""
+    mod = _import_module()
+    fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
+
+    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath)
+
+    assert time_key == "20240524_050009"
+    assert frequency_hz == pytest.approx(4.1e7)
+    assert "time-from-filename" in notes
+    assert "frequency-from-filename" in notes
+
+
+def test_discover_groups_duplicate_without_resolver_raises(tmp_path: Path):
+    """Duplicate time/frequency files should raise without a resolver."""
+    mod = _import_module()
+    hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(tmp_path / "first_name.fits")
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(tmp_path / "second_name.fits")
+
+    with pytest.raises(RuntimeError, match="Duplicate FITS files detected"):
+        mod._discover_groups(tmp_path)
+
+
+def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
+    """Resolver should choose one candidate for duplicate time/frequency groups."""
+    mod = _import_module()
+    hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
+    f1 = tmp_path / "candidate_a.fits"
+    f2 = tmp_path / "candidate_b.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(f1)
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(f2)
+
+    def choose_second(_time_key: str, _freq_hz: float, candidates: list[Path]) -> Path:
+        return candidates[-1]
+
+    groups = mod._discover_groups(tmp_path, duplicate_resolver=choose_second)
+
+    assert "20240524_050009" in groups
+    assert groups["20240524_050009"] == [f2]
