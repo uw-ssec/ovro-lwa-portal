@@ -179,24 +179,6 @@ def convert(
     verbose = log_level == LogLevel.DEBUG
 
     # Build configuration
-    def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
-        """Prompt user to resolve duplicate files in the same time/subband."""
-        console.print(
-            "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
-            f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
-        )
-        for idx, candidate in enumerate(candidates, start=1):
-            console.print(f"  {idx}. {candidate}")
-
-        choices = [str(i) for i in range(1, len(candidates) + 1)]
-        selection = Prompt.ask(
-            "Select which file to use",
-            choices=choices,
-            default="1",
-            console=console,
-        )
-        return candidates[int(selection) - 1]
-
     config = ConversionConfig(
         input_dir=input_dir,
         output_dir=output_dir,
@@ -205,7 +187,7 @@ def convert(
         chunk_lm=chunk_lm,
         rebuild=rebuild,
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
-        duplicate_resolver=duplicate_resolver,
+        duplicate_resolver=None,
         verbose=verbose,
     )
 
@@ -245,13 +227,42 @@ def convert(
     ) as progress:
         task = progress.add_task("Converting...", total=100)
 
+        duplicate_prompt_context = {"active": False}
+
         def progress_callback(stage: str, current: int, total: int, message: str) -> None:
             """Update progress bar based on conversion stage."""
+            if duplicate_prompt_context["active"]:
+                return
             if total > 0:
                 percentage = (current / total) * 100
                 progress.update(task, completed=percentage, description=message)
 
+        def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
+            """Prompt user to resolve duplicate files in the same time/subband."""
+            duplicate_prompt_context["active"] = True
+            progress.stop()
+            try:
+                console.print(
+                    "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
+                    f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
+                )
+                for idx, candidate in enumerate(candidates, start=1):
+                    console.print(f"  {idx}. {candidate}")
+
+                choices = [str(i) for i in range(1, len(candidates) + 1)]
+                selection = Prompt.ask(
+                    "Select which file to use",
+                    choices=choices,
+                    default="1",
+                    console=console,
+                )
+                return candidates[int(selection) - 1]
+            finally:
+                progress.start()
+                duplicate_prompt_context["active"] = False
+
         # Execute conversion (suppress CASA stderr warnings unless in debug mode)
+        config.duplicate_resolver = duplicate_resolver
         converter = FITSToZarrConverter(config, progress_callback=progress_callback)
 
         try:
