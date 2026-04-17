@@ -24,6 +24,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
@@ -154,7 +155,8 @@ def convert(
 
     This command processes FITS image files from the specified INPUT_DIR and
     combines them into an optimized Zarr store at OUTPUT_DIR. Files are grouped
-    by observation time and frequency subband.
+    by observation time and frequency, using FITS headers first with filename
+    parsing as a fallback when headers are incomplete.
 
     \b
     Examples:
@@ -186,6 +188,7 @@ def convert(
         chunk_lm=chunk_lm,
         rebuild=rebuild,
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
+        duplicate_resolver=None,
         verbose=verbose,
     )
 
@@ -225,13 +228,42 @@ def convert(
     ) as progress:
         task = progress.add_task("Converting...", total=100)
 
+        duplicate_prompt_context = {"active": False}
+
         def progress_callback(stage: str, current: int, total: int, message: str) -> None:
             """Update progress bar based on conversion stage."""
+            if duplicate_prompt_context["active"]:
+                return
             if total > 0:
                 percentage = (current / total) * 100
                 progress.update(task, completed=percentage, description=message)
 
+        def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
+            """Prompt user to resolve duplicate files in the same time/subband."""
+            duplicate_prompt_context["active"] = True
+            progress.stop()
+            try:
+                console.print(
+                    "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
+                    f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
+                )
+                for idx, candidate in enumerate(candidates, start=1):
+                    console.print(f"  {idx}. {candidate}")
+
+                choices = [str(i) for i in range(1, len(candidates) + 1)]
+                selection = Prompt.ask(
+                    "Select which file to use",
+                    choices=choices,
+                    default="1",
+                    console=console,
+                )
+                return candidates[int(selection) - 1]
+            finally:
+                progress.start()
+                duplicate_prompt_context["active"] = False
+
         # Execute conversion (suppress CASA stderr warnings unless in debug mode)
+        config.duplicate_resolver = duplicate_resolver
         converter = FITSToZarrConverter(config, progress_callback=progress_callback)
 
         try:
@@ -249,7 +281,8 @@ def convert(
             console.print(
                 "\nNo matching FITS files found. Please check:\n"
                 "  • The input directory contains FITS files\n"
-                "  • Files follow the naming pattern: YYYYMMDD_HHMMSS_*MHz_*-I-image.fits"
+                "  • FITS headers contain usable observation time/frequency metadata\n"
+                "  • Or filenames include parseable fallback patterns (e.g., YYYYMMDD_HHMMSS_*MHz_*)"
             )
             raise typer.Exit(code=1) from e
 

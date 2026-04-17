@@ -40,8 +40,8 @@ Library usage
 
 Notes
 -----
-* The code assumes filenames of the form:
-  YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
+* Discovery groups files by observation time/frequency from FITS headers first.
+  Filename parsing is only used as a fallback when header metadata is missing.
 * LM grids must match across time steps; a mismatch raises a RuntimeError.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """
@@ -56,6 +56,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import xarray as xr
 from astropy.io import fits
+from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
 from xradio.image import read_image, write_image
@@ -69,6 +70,14 @@ PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
 )
 MHZ_RE = re.compile(r"_(\d+)MHz_")
+
+
+def _time_key_from_name(p: Path) -> Optional[str]:
+    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from filename when possible."""
+    m = PAT.match(p.name)
+    if not m:
+        return None
+    return f"{m.group('date')}_{m.group('hms')}"
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -86,6 +95,107 @@ def _mhz_from_name(p: Path) -> int:
     """
     m = MHZ_RE.search(p.name)
     return int(m.group(1)) if m else 10**9
+
+
+def _time_key_from_header(header: fits.Header) -> Optional[str]:
+    """Extract observation time from FITS headers as ``YYYYMMDD_HHMMSS``.
+
+    Header precedence:
+      1) ``DATE-OBS`` (optionally with ``TIME-OBS`` if date-only)
+      2) ``MJD-OBS``
+      3) ``MJD``
+
+    Returns ``None`` when no usable timestamp is found.
+    """
+    date_obs = header.get("DATE-OBS")
+    if date_obs:
+        date_obs = str(date_obs).strip()
+        time_obs = header.get("TIME-OBS")
+        if time_obs and "T" not in date_obs:
+            dt_value = f"{date_obs}T{str(time_obs).strip()}"
+        else:
+            dt_value = date_obs
+        try:
+            t = Time(dt_value, format="isot", scale="utc")
+            return t.to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            logger.debug(f"Could not parse DATE-OBS/TIME-OBS timestamp: {dt_value}")
+
+    for mjd_key in ("MJD-OBS", "MJD"):
+        if mjd_key in header:
+            try:
+                t = Time(float(header[mjd_key]), format="mjd", scale="utc")
+                return t.to_datetime().strftime("%Y%m%d_%H%M%S")
+            except Exception:
+                logger.debug(f"Could not parse {mjd_key} timestamp: {header.get(mjd_key)}")
+
+    return None
+
+
+def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
+    """Extract frequency in Hz from FITS headers.
+
+    Header precedence:
+      1) ``RESTFREQ``
+      2) ``RESTFRQ``
+      3) ``CRVAL3``
+      4) ``FREQ``
+    """
+    for key in ("RESTFREQ", "RESTFRQ", "CRVAL3", "FREQ"):
+        value = header.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logger.debug(f"Could not parse {key} frequency: {value}")
+    return None
+
+
+def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], List[str]]:
+    """Extract grouping metadata from headers with filename fallback.
+
+    Returns
+    -------
+    Tuple[Optional[str], Optional[float], List[str]]
+        Tuple of ``(time_key, frequency_hz, fallback_notes)`` where fallback_notes
+        records when filename-based fallback was used.
+    """
+    time_key: Optional[str] = None
+    frequency_hz: Optional[float] = None
+    notes: List[str] = []
+
+    header: Optional[fits.Header] = None
+    try:
+        header = fits.getheader(fp, ext=0)
+    except Exception as e:
+        logger.warning(f"Could not read FITS header for {fp.name}: {e}")
+
+    if header is not None:
+        time_key = _time_key_from_header(header)
+        frequency_hz = _frequency_hz_from_header(header)
+
+    if time_key is None:
+        name_time_key = _time_key_from_name(fp)
+        if name_time_key is not None:
+            time_key = name_time_key
+            notes.append("time-from-filename")
+
+    if frequency_hz is None:
+        mhz = _mhz_from_name(fp)
+        if mhz != 10**9:
+            frequency_hz = float(mhz * 1e6)
+            notes.append("frequency-from-filename")
+
+    return time_key, frequency_hz, notes
+
+
+def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
+    """Sort key for deterministic frequency ordering with fallback."""
+    _, frequency_hz, _ = _extract_group_metadata(fp)
+    if frequency_hz is None:
+        return (float(10**15), fp.name)
+    return (float(frequency_hz), fp.name)
 
 
 def _fix_headers(path_in: Path, path_out: Path) -> None:
@@ -164,7 +274,7 @@ def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
         List of paths to fixed FITS files, sorted by frequency.
     """
     fixed_paths: List[Path] = []
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             fixed_paths.append(f)
         else:
@@ -221,7 +331,7 @@ def fix_fits_headers(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     fixed_paths: List[Path] = []
 
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             # Already fixed, use as-is
             fixed_paths.append(f)
@@ -330,7 +440,10 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     return xds
 
 
-def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
+def _discover_groups(
+    in_dir: Path,
+    duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
+) -> Dict[str, List[Path]]:
     """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
 
     Parameters
@@ -344,12 +457,67 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
         Dictionary mapping time keys to lists of FITS file paths.
     """
     by_time: Dict[str, List[Path]] = {}
+    by_time_freq: Dict[str, Dict[int, List[Path]]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        m = PAT.match(f.name)
-        if not m:
+        time_key, frequency_hz, notes = _extract_group_metadata(f)
+        if time_key is None:
+            logger.warning(
+                f"Skipping {f.name}: missing usable observation time in FITS headers and filename."
+            )
             continue
-        key = f"{m.group('date')}_{m.group('hms')}"
-        by_time.setdefault(key, []).append(f)
+        if frequency_hz is None:
+            logger.warning(
+                f"Could not determine frequency for {f.name}; duplicate detection disabled for this file."
+            )
+            by_time.setdefault(time_key, []).append(f)
+            continue
+
+        freq_key = int(round(frequency_hz))
+        time_freq_map = by_time_freq.setdefault(time_key, {})
+        candidates = time_freq_map.setdefault(freq_key, [])
+        candidates.append(f)
+
+        if len(candidates) > 1:
+            duplicate_names = [p.name for p in candidates]
+            if duplicate_resolver is None:
+                msg = (
+                    "Duplicate FITS files detected for the same time/frequency group "
+                    f"(time={time_key}, frequency_hz={float(freq_key)}): {duplicate_names}. "
+                    "Provide unique inputs or pass duplicate_resolver to choose one."
+                )
+                raise RuntimeError(msg)
+
+            selected = duplicate_resolver(time_key, float(freq_key), candidates.copy())
+            if selected not in candidates:
+                msg = (
+                    f"Duplicate resolver returned unknown file {selected} for "
+                    f"time={time_key}, frequency_hz={float(freq_key)}."
+                )
+                raise RuntimeError(msg)
+
+            by_time.setdefault(time_key, [])
+            by_time[time_key] = [p for p in by_time[time_key] if p not in candidates]
+            by_time[time_key].append(selected)
+            # Replace the pending duplicate bucket so the next file with this (time, freq)
+            # starts from the chosen file only. Otherwise `candidates` never shrinks and
+            # grows as [f1, f2, f3, ...], re-invoking the resolver with stale paths and
+            # widening the filter that strips `by_time[time_key]`.
+            time_freq_map[freq_key] = [selected]
+            logger.warning(
+                "Duplicate FITS files for time=%s, frequency_hz=%.1f. Selected: %s. Candidates: %s",
+                time_key,
+                float(freq_key),
+                selected.name,
+                duplicate_names,
+            )
+            continue
+
+        if notes:
+            logger.warning(f"Using fallback metadata for {f.name}: {', '.join(notes)}")
+        by_time.setdefault(time_key, []).append(f)
+
+    for time_key, files in by_time.items():
+        by_time[time_key] = sorted(files, key=_frequency_sort_tuple)
     return by_time
 
 
@@ -504,6 +672,7 @@ def convert_fits_dir_to_zarr(
     rebuild: bool = False,
     fix_headers_on_demand: bool = True,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+    duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -528,6 +697,9 @@ def convert_fits_dir_to_zarr(
     progress_callback
         Optional callback function for progress reporting. Should accept
         (stage: str, current: int, total: int, message: str).
+    duplicate_resolver
+        Optional callback to resolve duplicate files that map to the same
+        time/frequency group. Signature: ``(time_key, frequency_hz, candidates) -> selected_path``.
 
     Returns
     -------
@@ -548,12 +720,12 @@ def convert_fits_dir_to_zarr(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     out_zarr = out_dir / zarr_name
 
-    by_time = _discover_groups(input_dir)
+    by_time = _discover_groups(input_dir, duplicate_resolver=duplicate_resolver)
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
-        mhz_sorted = sorted(_mhz_from_name(p) for p in v)
-        logger.info(f"  time {k}: {len(v)} file(s), subbands (MHz): {mhz_sorted}")
+        freqs_hz = [_extract_group_metadata(p)[1] for p in v]
+        logger.info(f"  time {k}: {len(v)} file(s), frequencies (Hz): {freqs_hz}")
 
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
