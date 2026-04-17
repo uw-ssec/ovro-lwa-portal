@@ -146,3 +146,59 @@ def test_select_reference_shape_index_deterministic():
 
     # Tie on (4096, 4096) should pick first occurrence.
     assert idx == 1
+
+
+def test_regrid_to_reference_lm_mixed_shapes():
+    """Smaller (m,l) grids interpolate onto the reference LM grid."""
+    try:
+        import numpy as np
+        import xarray as xr
+
+        from ovro_lwa_portal import fits_to_zarr_xradio
+    except ImportError as e:
+        pytest.skip(f"xradio dependencies not available: {e}")
+
+    l_ref = np.linspace(-1.0, 1.0, 6)
+    m_ref = np.linspace(-1.0, 1.0, 5)
+    rng = np.random.default_rng(0)
+    sky_ref = rng.standard_normal((5, 6))
+    hdr_ref = "SIMPLE  =                   T\nNAXIS   =                    2"
+    xds_ref = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_ref)},
+        coords={
+            "l": ("l", l_ref),
+            "m": ("m", m_ref),
+            "right_ascension": (("m", "l"), np.full((5, 6), 180.0)),
+            "declination": (("m", "l"), np.full((5, 6), 45.0)),
+        },
+        attrs={"fits_wcs_header": hdr_ref},
+    )
+    xds_ref = xds_ref.assign(wcs_header_str=((), np.bytes_(hdr_ref.encode("utf-8"))))
+
+    l_sm = np.linspace(-0.5, 0.5, 4)
+    m_sm = np.linspace(-0.5, 0.5, 3)
+    sky_sm = rng.standard_normal((3, 4))
+    hdr_sm = "SIMPLE  =                   T\nNAXIS   =                    2\nSMALL=T"
+    xds_sm = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_sm)},
+        coords={
+            "l": ("l", l_sm),
+            "m": ("m", m_sm),
+            "right_ascension": (("m", "l"), np.zeros((3, 4))),
+            "declination": (("m", "l"), np.zeros((3, 4))),
+        },
+        attrs={"fits_wcs_header": hdr_sm},
+    )
+    xds_sm = xds_sm.assign(wcs_header_str=((), np.bytes_(hdr_sm.encode("utf-8"))))
+
+    out = fits_to_zarr_xradio._regrid_to_reference_lm(xds_sm, xds_ref)
+
+    assert out.sizes["m"] == 5
+    assert out.sizes["l"] == 6
+    np.testing.assert_allclose(out["l"].values, l_ref)
+    np.testing.assert_allclose(out["m"].values, m_ref)
+    assert out.attrs["fits_wcs_header"] == hdr_ref
+    assert out["SKY"].attrs["fits_wcs_header"] == hdr_ref
+    np.testing.assert_allclose(out["right_ascension"].values, xds_ref["right_ascension"].values)
+    np.testing.assert_allclose(out["declination"].values, xds_ref["declination"].values)
+    assert bytes(out["wcs_header_str"].values.item()) == hdr_ref.encode("utf-8")

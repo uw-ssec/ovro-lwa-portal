@@ -42,7 +42,8 @@ Notes
 -----
 * The code assumes filenames of the form:
   YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
-* LM grids must match across time steps; a mismatch raises a RuntimeError.
+* LM grids must match across time steps after per-step normalization; a mismatch raises a RuntimeError.
+* Within a single time step, mixed LM shapes are regridded onto the largest grid before combine.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """
 
@@ -362,6 +363,76 @@ def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
     return best_idx
 
 
+def _regrid_to_reference_lm(xds: xr.Dataset, ref: xr.Dataset) -> xr.Dataset:
+    """Interpolate ``xds`` onto ``ref``'s ``l`` / ``m`` coordinate grid.
+
+    Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
+    WCS header metadata are taken from ``ref`` so the result is consistent with the
+    reference pixel grid. No-op when ``xds`` already matches ``ref`` LM shape.
+
+    Parameters
+    ----------
+    xds
+        Source dataset (e.g. from :func:`_load_for_combine`).
+    ref
+        Reference dataset whose ``l`` and ``m`` define the target grid.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset on the reference LM grid with writer-safe encodings cleared.
+
+    Raises
+    ------
+    RuntimeError
+        If interpolation fails (e.g. incompatible coordinates).
+    """
+    if _lm_shape(xds) == _lm_shape(ref):
+        return xds
+
+    # Materialize for scipy-backed interp; reference coords may be lazy.
+    xds = xds.load()
+    target_l = ref["l"].load() if hasattr(ref["l"].data, "compute") else ref["l"]
+    target_m = ref["m"].load() if hasattr(ref["m"].data, "compute") else ref["m"]
+
+    try:
+        regridded = xds.interp(l=target_l, m=target_m, method="linear")
+    except Exception as exc:
+        msg = f"LM regridding onto reference grid failed: {exc}"
+        raise RuntimeError(msg) from exc
+
+    # Sky coords and WCS metadata match the reference physical grid.
+    regridded = regridded.assign_coords(
+        right_ascension=ref["right_ascension"].load()
+        if hasattr(ref["right_ascension"].data, "compute")
+        else ref["right_ascension"],
+        declination=ref["declination"].load()
+        if hasattr(ref["declination"].data, "compute")
+        else ref["declination"],
+    )
+
+    hdr_str = ref.attrs.get("fits_wcs_header")
+    if hdr_str is None and "wcs_header_str" in ref:
+        raw = ref["wcs_header_str"].values.item()
+        hdr_str = raw.decode("utf-8") if isinstance(raw, (bytes, np.bytes_)) else str(raw)
+
+    regridded.attrs.pop("history", None)
+    if hdr_str is not None:
+        regridded.attrs["fits_wcs_header"] = hdr_str
+        regridded["right_ascension"].attrs["fits_wcs_header"] = hdr_str
+        regridded["declination"].attrs["fits_wcs_header"] = hdr_str
+        for dv in regridded.data_vars:
+            regridded[dv].attrs["fits_wcs_header"] = hdr_str
+
+    if "wcs_header_str" in ref:
+        regridded["wcs_header_str"] = ref["wcs_header_str"].copy()
+
+    for v in regridded.data_vars:
+        regridded[v].encoding = {}
+
+    return regridded
+
+
 def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
     """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
 
@@ -432,6 +503,17 @@ def _combine_time_step(
             lm_shapes[reference_idx],
             fixed_paths[reference_idx].name,
         )
+
+    ref_ds = xds_list[reference_idx]
+    for i, xds in enumerate(xds_list):
+        if _lm_shape(xds) != _lm_shape(ref_ds):
+            logger.info(
+                "Regridding %s from LM shape %s onto reference %s",
+                fixed_paths[i].name,
+                _lm_shape(xds),
+                _lm_shape(ref_ds),
+            )
+        xds_list[i] = _regrid_to_reference_lm(xds, ref_ds)
 
     try:
         xds_t = xr.combine_by_coords(
