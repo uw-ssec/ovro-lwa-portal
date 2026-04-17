@@ -330,6 +330,43 @@ def test_discover_groups_skips_file_without_time_or_frequency_metadata(tmp_path:
     assert groups == {}
 
 
+def test_rechunk_lm_for_zarr_uniform_spatial_chunks():
+    """Irregular dask chunks along l/m must become uniform for Zarr compatibility."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    arr = np.random.default_rng(0).random((512, 512))
+    data = da.from_array(arr, chunks=((256, 256), (256, 128, 128)))
+    l = np.linspace(-1.0, 1.0, 512)
+    m = np.linspace(-1.0, 1.0, 512)
+    ds = xr.Dataset(
+        {"SKY": (("m", "l"), data)},
+        coords={"l": ("l", l), "m": ("m", m)},
+    )
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=256)
+    chunks = out["SKY"].data.chunks
+    assert chunks[0] == (256, 256)
+    assert chunks[1] == (256, 256)
+
+
+def test_rechunk_lm_for_zarr_chunk_lm_zero_single_spatial_chunk():
+    """chunk_lm=0 should use one chunk per spatial axis (still uniform)."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    arr = np.random.default_rng(1).random((100, 100))
+    data = da.from_array(arr, chunks=((50, 50), (50, 50)))
+    l = np.linspace(-1.0, 1.0, 100)
+    m = np.linspace(-1.0, 1.0, 100)
+    ds = xr.Dataset({"SKY": (("m", "l"), data)}, coords={"l": ("l", l), "m": ("m", m)})
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=0)
+    assert out["SKY"].data.chunks == ((100,), (100,))
+
+
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
     mod = _import_module()

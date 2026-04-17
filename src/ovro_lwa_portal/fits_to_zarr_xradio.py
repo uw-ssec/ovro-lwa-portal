@@ -775,7 +775,31 @@ def _combine_time_step(
     for v in xds_t.data_vars:
         xds_t[v].encoding = {}
 
+    xds_t = _rechunk_lm_for_zarr(xds_t, chunk_lm)
+
     return xds_t, sorted(set(freqs_seen))
+
+
+def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
+    """Rechunk ``l`` and ``m`` so Dask-backed arrays use uniform spatial chunk sizes.
+
+    ``combine_by_coords`` / ``concat`` can fuse slices into irregular chunk
+    boundaries along ``l``/``m``. Zarr encoding (via xradio) requires uniform
+    chunk sizes per dimension except possibly the final chunk.
+
+    Parameters
+    ----------
+    xds
+        Dataset whose spatial dimensions are named ``l`` and ``m``.
+    chunk_lm
+        Target chunk length for each of ``l`` and ``m``. If zero, each spatial
+        axis is stored as a single chunk (still uniform).
+    """
+    if not {"l", "m"} <= set(xds.dims):
+        return xds
+    if chunk_lm and chunk_lm > 0:
+        return xds.chunk({"l": chunk_lm, "m": chunk_lm})
+    return xds.chunk({"l": -1, "m": -1})
 
 
 def _assert_same_lm(
@@ -811,7 +835,13 @@ def _assert_same_lm(
         raise RuntimeError("l/m grids differ across times; aborting to avoid misalignment.")
 
 
-def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) -> None:
+def _write_or_append_zarr(
+    xds_t: xr.Dataset,
+    out_zarr: Path,
+    first_write: bool,
+    *,
+    chunk_lm: int,
+) -> None:
     """Safe write/append to Zarr store.
 
     First write: write directly.
@@ -827,11 +857,19 @@ def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) 
         Path to output Zarr store.
     first_write : bool
         If True, write a new Zarr store; if False, append to existing.
+    chunk_lm
+        Spatial chunk size passed to :func:`_rechunk_lm_for_zarr` so appended
+        stores match uniform Zarr chunking requirements.
     """
     from shutil import rmtree, move
 
     if first_write or (not out_zarr.exists()):
-        write_image(xds_t, str(out_zarr), out_format="zarr", overwrite=True)
+        write_image(
+            _rechunk_lm_for_zarr(xds_t, chunk_lm),
+            str(out_zarr),
+            out_format="zarr",
+            overwrite=True,
+        )
         return
 
     # 1) Open existing lazily
@@ -855,7 +893,12 @@ def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) 
     tmp = out_zarr.with_suffix(out_zarr.suffix + ".tmpwrite")
     if tmp.exists():
         rmtree(tmp)
-    write_image(combined, str(tmp), out_format="zarr", overwrite=True)
+    write_image(
+        _rechunk_lm_for_zarr(combined, chunk_lm),
+        str(tmp),
+        out_format="zarr",
+        overwrite=True,
+    )
 
     # 5) Swap: remove old store, move tmp into place
     if out_zarr.exists():
@@ -962,7 +1005,7 @@ def convert_fits_dir_to_zarr(
         logger.info("  l/m grid matches global reference")
 
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
-        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
+        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
         first_write = False
 
         # Report progress after completing this time step
