@@ -1,5 +1,8 @@
 # OVRO-LWA Portal
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![PyPI](https://img.shields.io/pypi/v/ovro-lwa-portal)](https://pypi.org/project/ovro-lwa-portal/)
+
 A Python library for radio astronomy data processing and visualization for the
 Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
 
@@ -235,6 +238,19 @@ slack channel provided.
 
 - Meeting Notes in GitHub:
   [discussions/meetings](https://github.com/uw-ssec/ovro-lwa-portal/discussions/categories/meetings)
+
+## Citation
+
+If you use this software in your research, please cite it:
+
+```bibtex
+@software{ovro_lwa_portal,
+  title = {OVRO-LWA Portal},
+  author = {Core, Cordero and Setiawan, Don and Tambay, Anshul T. and Kosogorov, Nikita and Johari, Ishika},
+  url = {https://github.com/uw-ssec/ovro-lwa-portal},
+  license = {BSD-3-Clause}
+}
+```
 
 ## Questions
 

@@ -1,0 +1,52 @@
+{
+  "title": "OVRO-LWA Portal",
+  "description": "Python library for radio astronomy data processing and visualization for the Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA)",
+  "creators": [
+    {
+      "name": "Core, Cordero",
+      "affiliation": "University of Washington, Scientific Software Engineering Center"
+    },
+    {
+      "name": "Setiawan, Don",
+      "affiliation": "University of Washington, Scientific Software Engineering Center"
+    },
+    {
+      "name": "Tambay, Anshul T.",
+      "affiliation": "University of Washington"
+    },
+    {
+      "name": "Kosogorov, Nikita",
+      "affiliation": "University of Washington"
+    },
+    {
+      "name": "Johari, Ishika",
+      "affiliation": "University of Washington"
+    }
+  ],
+  "license": {
+    "id": "BSD-3-Clause"
+  },
+  "upload_type": "software",
+  "access_right": "open",
+  "keywords": [
+    "radio astronomy",
+    "OVRO-LWA",
+    "data processing",
+    "visualization",
+    "zarr",
+    "xarray",
+    "python"
+  ],
+  "communities": [
+    {
+      "identifier": "astronomy-general"
+    }
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/uw-ssec/ovro-lwa-portal",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

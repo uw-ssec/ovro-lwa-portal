@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: OVRO-LWA Portal
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - given-names: Cordero
+    family-names: Core
+    affiliation: "University of Washington, Scientific Software Engineering Center"
+  - given-names: Don
+    family-names: Setiawan
+    affiliation: "University of Washington, Scientific Software Engineering Center"
+  - given-names: Anshul T.
+    family-names: Tambay
+    affiliation: "University of Washington"
+  - given-names: Nikita
+    family-names: Kosogorov
+    affiliation: "University of Washington"
+  - given-names: Ishika
+    family-names: Johari
+    affiliation: "University of Washington"
+repository-code: "https://github.com/uw-ssec/ovro-lwa-portal"
+license: BSD-3-Clause
+keywords:
+  - radio astronomy
+  - OVRO-LWA
+  - data processing
+  - visualization
+  - zarr
+  - xarray
+abstract: >-
+  Python library for radio astronomy data processing and visualization
+  for the Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).
+  Provides unified data loading from local/S3/DOI sources, FITS to Zarr
+  conversion, and interactive visualization tools.
