@@ -76,32 +76,48 @@ class TestDynamicSpectrumExplorer:
 
     def test_linked_spectrum_empty_before_click(self, viz_dataset):
         explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
-        curve = explorer._linked_spectrum(None, None)
+        curve = explorer._linked_spectrum()
         assert isinstance(curve, hv.Curve)
+        assert len(curve) == 0
 
     def test_linked_light_curve_empty_before_click(self, viz_dataset):
         explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
-        curve = explorer._linked_light_curve(None, None)
+        curve = explorer._linked_light_curve()
         assert isinstance(curve, hv.Curve)
+        assert len(curve) == 0
 
     def test_linked_spectrum_with_coordinates(self, viz_dataset):
         explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
-        # x = time value, y = frequency (MHz) from dynspec image
-        curve = explorer._linked_spectrum(60000.0, 50.0)
+        # Simulate tap on the dynamic spectrum image
+        explorer._on_tap(x=60000.0, y=50.0)
+        curve = explorer._linked_spectrum()
         assert isinstance(curve, hv.Curve)
         assert len(curve) > 0
 
     def test_linked_light_curve_with_coordinates(self, viz_dataset):
         explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
-        # x = time value, y = frequency (MHz) from dynspec image
-        curve = explorer._linked_light_curve(60000.0, 50.0)
+        explorer._on_tap(x=60000.0, y=50.0)
+        curve = explorer._linked_light_curve()
         assert isinstance(curve, hv.Curve)
         assert len(curve) > 0
 
     def test_tap_source_set_to_dynamicmap(self, viz_dataset):
         explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
-        layout = explorer.panel()
+        explorer.panel()
         assert isinstance(explorer._tap.source, hv.DynamicMap)
+
+    def test_on_tap_updates_click_params(self, viz_dataset):
+        explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
+        assert explorer._click_time is None
+        assert explorer._click_freq_mhz is None
+        explorer._on_tap(x=60000.05, y=50.0)
+        assert explorer._click_time == 60000.05
+        assert explorer._click_freq_mhz == 50.0
+
+    def test_on_tap_ignores_none(self, viz_dataset):
+        explorer = DynamicSpectrumExplorer(viz_dataset, l=0.0, m=0.0)
+        explorer._on_tap(x=None, y=None)
+        assert explorer._click_time is None
 
 
 class TestCutoutExplorer:
@@ -124,29 +140,64 @@ class TestCutoutExplorer:
 
     def test_linked_spectrum_empty_before_click(self, viz_dataset):
         explorer = CutoutExplorer(viz_dataset)
-        curve = explorer._linked_spectrum(None, None)
+        curve = explorer._linked_spectrum()
         assert isinstance(curve, hv.Curve)
+        assert len(curve) == 0
 
     def test_linked_light_curve_empty_before_click(self, viz_dataset):
         explorer = CutoutExplorer(viz_dataset)
-        curve = explorer._linked_light_curve(None, None)
+        curve = explorer._linked_light_curve()
         assert isinstance(curve, hv.Curve)
+        assert len(curve) == 0
 
     def test_linked_spectrum_with_coordinates(self, viz_dataset):
         explorer = CutoutExplorer(viz_dataset)
-        # x = l, y = m from cutout image
-        curve = explorer._linked_spectrum(0.0, 0.0)
+        # Simulate tap on the cutout image
+        explorer._on_tap(x=0.0, y=0.0)
+        curve = explorer._linked_spectrum()
         assert isinstance(curve, hv.Curve)
         assert len(curve) > 0
 
     def test_linked_light_curve_with_coordinates(self, viz_dataset):
         explorer = CutoutExplorer(viz_dataset)
-        # x = l, y = m from cutout image
-        curve = explorer._linked_light_curve(0.0, 0.0)
+        explorer._on_tap(x=0.0, y=0.0)
+        curve = explorer._linked_light_curve()
         assert isinstance(curve, hv.Curve)
         assert len(curve) > 0
 
     def test_tap_source_set_to_dynamicmap(self, viz_dataset):
         explorer = CutoutExplorer(viz_dataset)
-        layout = explorer.panel()
+        explorer.panel()
         assert isinstance(explorer._tap.source, hv.DynamicMap)
+
+    def test_on_tap_updates_click_params(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        assert explorer._click_l is None
+        assert explorer._click_m is None
+        explorer._on_tap(x=0.05, y=-0.03)
+        assert explorer._click_l == 0.05
+        assert explorer._click_m == -0.03
+
+    def test_on_tap_ignores_none(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        explorer._on_tap(x=None, y=None)
+        assert explorer._click_l is None
+
+    def test_spectrum_updates_on_time_change(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        explorer._on_tap(x=0.0, y=0.0)
+        curve1 = explorer._linked_spectrum()
+        explorer.time_idx = 1
+        curve2 = explorer._linked_spectrum()
+        # Both should have data, but from different time steps
+        assert len(curve1) > 0
+        assert len(curve2) > 0
+
+    def test_light_curve_updates_on_freq_change(self, viz_dataset):
+        explorer = CutoutExplorer(viz_dataset)
+        explorer._on_tap(x=0.0, y=0.0)
+        curve1 = explorer._linked_light_curve()
+        explorer.freq_idx = 1
+        curve2 = explorer._linked_light_curve()
+        assert len(curve1) > 0
+        assert len(curve2) > 0

@@ -167,6 +167,11 @@ class DynamicSpectrumExplorer(param.Parameterized):
     cmap = param.Selector(default="inferno", objects=COLORMAPS, doc="Colormap")
     robust = param.Boolean(default=True, doc="Use robust color scaling")
 
+    # Private params for click tracking — updated by tap subscriber,
+    # read by @param.depends linked views.
+    _click_time = param.Number(default=None, allow_None=True, precedence=-1)
+    _click_freq_mhz = param.Number(default=None, allow_None=True, precedence=-1)
+
     def __init__(
         self,
         ds: xr.Dataset,
@@ -197,9 +202,15 @@ class DynamicSpectrumExplorer(param.Parameterized):
         self._ds = ds
 
         self._tap = hv.streams.Tap(x=None, y=None)
+        self._tap.add_subscriber(self._on_tap)
 
         # Cache for dynamic spectra keyed by (l_val, m_val)
         self._dynspec_cache: dict[tuple[float, float], Any] = {}
+
+    def _on_tap(self, x: float | None, y: float | None) -> None:
+        """Bridge tap events to param updates for linked views."""
+        if x is not None and y is not None:
+            self.param.update(_click_time=x, _click_freq_mhz=y)
 
     def _get_dynspec(self) -> Any:
         """Get dynamic spectrum DataArray, using cache if available."""
@@ -262,19 +273,20 @@ class DynamicSpectrumExplorer(param.Parameterized):
         img = style_spectrum_image(img, cmap=self.cmap)
         return img
 
-    def _linked_spectrum(self, x: float | None, y: float | None) -> hv.Curve:
+    @param.depends("_click_time")
+    def _linked_spectrum(self) -> hv.Curve:
         """Spectrum at the clicked time step — one chunk read."""
         from ovro_lwa_portal.viz._data import _ensure_extension
 
         _ensure_extension()
 
-        if x is None:
+        if self._click_time is None:
             return hv.Curve([], kdims=["Frequency (MHz)"], vdims=["Intensity (Jy/beam)"]).opts(
                 title="Click on dynamic spectrum to show spectrum"
             )
 
         time_vals = self._ds.coords["time"].values
-        time_idx = int(np.abs(time_vals - x).argmin())
+        time_idx = int(np.abs(time_vals - self._click_time).argmin())
 
         spec = self._ds.radport.spectrum(
             l=self.l_val, m=self.m_val, time_idx=time_idx
@@ -288,20 +300,21 @@ class DynamicSpectrumExplorer(param.Parameterized):
         ).opts(title=f"Spectrum at t={time_val:.4f} MJD")
         return style_curve(curve)
 
-    def _linked_light_curve(self, x: float | None, y: float | None) -> hv.Curve:
+    @param.depends("_click_freq_mhz")
+    def _linked_light_curve(self) -> hv.Curve:
         """Light curve at the clicked frequency — one chunk read per time step."""
         from ovro_lwa_portal.viz._data import _ensure_extension
 
         _ensure_extension()
 
-        if y is None:
+        if self._click_freq_mhz is None:
             return hv.Curve([], kdims=["Time (MJD)"], vdims=["Intensity (Jy/beam)"]).opts(
                 title="Click on dynamic spectrum to show light curve"
             )
 
         freq_hz = self._ds.coords["frequency"].values
         freq_mhz = freq_hz / 1e6
-        freq_idx = int(np.abs(freq_mhz - y).argmin())
+        freq_idx = int(np.abs(freq_mhz - self._click_freq_mhz).argmin())
 
         lc = self._ds.radport.light_curve(
             l=self.l_val, m=self.m_val, freq_idx=freq_idx
@@ -331,10 +344,10 @@ class DynamicSpectrumExplorer(param.Parameterized):
 
         dynspec_pane = pn.pane.HoloViews(dynspec_dmap)
         spectrum_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
+            hv.DynamicMap(self._linked_spectrum),
         )
         lightcurve_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
+            hv.DynamicMap(self._linked_light_curve),
         )
 
         return pn.Row(
@@ -367,6 +380,11 @@ class CutoutExplorer(param.Parameterized):
     cmap = param.Selector(default="inferno", objects=COLORMAPS, doc="Colormap")
     robust = param.Boolean(default=True, doc="Robust scaling")
 
+    # Private params for click tracking — updated by tap subscriber,
+    # read by @param.depends linked views.
+    _click_l = param.Number(default=None, allow_None=True, precedence=-1)
+    _click_m = param.Number(default=None, allow_None=True, precedence=-1)
+
     def __init__(self, ds: xr.Dataset, *, max_size: int = _MAX_DISPLAY_SIZE, **params: Any) -> None:
         # Set bounds before super().__init__ so incoming params validate
         # against dataset-derived ranges.
@@ -382,6 +400,12 @@ class CutoutExplorer(param.Parameterized):
         self._cube = PreloadedCube(ds, var=var, pol=0, max_size=max_size)
 
         self._tap = hv.streams.Tap(x=None, y=None)
+        self._tap.add_subscriber(self._on_tap)
+
+    def _on_tap(self, x: float | None, y: float | None) -> None:
+        """Bridge tap events to param updates for linked views."""
+        if x is not None and y is not None:
+            self.param.update(_click_l=x, _click_m=y)
 
     @param.depends("l_center", "m_center", "dl", "dm", "time_idx", "freq_idx", "cmap", "robust")
     def _cutout_view(self) -> hv.Image:
@@ -395,30 +419,32 @@ class CutoutExplorer(param.Parameterized):
         img = style_sky_image(img, cmap=self.cmap)
         return img
 
-    def _linked_spectrum(self, x: float | None, y: float | None) -> hv.Curve:
+    @param.depends("_click_l", "_click_m", "time_idx")
+    def _linked_spectrum(self) -> hv.Curve:
         from ovro_lwa_portal.viz._data import _ensure_extension, spectrum_element
 
         _ensure_extension()
 
-        if x is None or y is None:
+        if self._click_l is None or self._click_m is None:
             return hv.Curve([], kdims=["Frequency (MHz)"], vdims=["Intensity (Jy/beam)"]).opts(
                 title="Click on cutout to show spectrum"
             )
-        curve = spectrum_element(self._cube, l=x, m=y, time_idx=self.time_idx)
-        curve = curve.opts(title=f"Spectrum at l={x:.4f}, m={y:.4f}")
+        curve = spectrum_element(self._cube, l=self._click_l, m=self._click_m, time_idx=self.time_idx)
+        curve = curve.opts(title=f"Spectrum at l={self._click_l:.4f}, m={self._click_m:.4f}")
         return style_curve(curve)
 
-    def _linked_light_curve(self, x: float | None, y: float | None) -> hv.Curve:
+    @param.depends("_click_l", "_click_m", "freq_idx")
+    def _linked_light_curve(self) -> hv.Curve:
         from ovro_lwa_portal.viz._data import _ensure_extension, light_curve_element
 
         _ensure_extension()
 
-        if x is None or y is None:
+        if self._click_l is None or self._click_m is None:
             return hv.Curve([], kdims=["Time (MJD)"], vdims=["Intensity (Jy/beam)"]).opts(
                 title="Click on cutout to show light curve"
             )
-        curve = light_curve_element(self._cube, l=x, m=y, freq_idx=self.freq_idx)
-        curve = curve.opts(title=f"Light Curve at l={x:.4f}, m={y:.4f}")
+        curve = light_curve_element(self._cube, l=self._click_l, m=self._click_m, freq_idx=self.freq_idx)
+        curve = curve.opts(title=f"Light Curve at l={self._click_l:.4f}, m={self._click_m:.4f}")
         return style_curve(curve)
 
     def panel(self) -> pn.viewable.Viewable:
@@ -441,10 +467,10 @@ class CutoutExplorer(param.Parameterized):
 
         cutout_pane = pn.pane.HoloViews(cutout_dmap)
         spectrum_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._linked_spectrum, streams=[self._tap]),
+            hv.DynamicMap(self._linked_spectrum),
         )
         lightcurve_pane = pn.pane.HoloViews(
-            hv.DynamicMap(self._linked_light_curve, streams=[self._tap]),
+            hv.DynamicMap(self._linked_light_curve),
         )
 
         return pn.Row(
