@@ -508,3 +508,44 @@ def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     assert "20240524_050009" in groups
     freqs = [mod._extract_group_metadata(p)[1] for p in groups["20240524_050009"]]
     assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]
+
+
+def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
+    """Header fixing should add a singleton STOKES axis for 3D FREQ-only cubes."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "input.fits"
+    out_path = tmp_path / "output_fixed.fits"
+
+    data = np.zeros((1, 4, 4), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 3,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CRVAL3": 4.1e7,
+            "CRPIX3": 1.0,
+            "CDELT3": 1.0,
+            "CUNIT3": "Hz",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+        out_data = hdul[0].data
+
+    assert hdr["NAXIS"] == 4
+    assert hdr["CTYPE4"] == "STOKES"
+    assert hdr["CRVAL4"] == pytest.approx(1.0)
+    assert hdr["CRPIX4"] == pytest.approx(1.0)
+    assert hdr["CDELT4"] == pytest.approx(1.0)
+    assert out_data is not None
+    assert out_data.shape == (1, 1, 4, 4)

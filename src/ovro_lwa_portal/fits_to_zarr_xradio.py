@@ -229,6 +229,24 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
                 if k in hdr:
                     del hdr[k]
 
+        # xradio expects a STOKES axis in image metadata. Some OVRO-LWA FITS files
+        # are 3D cubes with only (RA, DEC, FREQ). Promote these to a 4D cube by
+        # adding a singleton STOKES axis so FITS parsing is accepted.
+        ctype_values = [
+            str(hdr.get(f"CTYPE{i}", "")).strip().upper()
+            for i in range(1, int(hdr.get("NAXIS", 0)) + 1)
+        ]
+        has_stokes = any("STOKES" in c for c in ctype_values)
+        if data is not None and int(hdr.get("NAXIS", 0)) == 3 and not has_stokes:
+            data = np.expand_dims(data, axis=0)
+            hdr["NAXIS"] = 4
+            hdr["CTYPE4"] = "STOKES"
+            hdr["CRVAL4"] = 1.0
+            hdr["CRPIX4"] = 1.0
+            hdr["CDELT4"] = 1.0
+            if "CUNIT4" not in hdr:
+                hdr["CUNIT4"] = ""
+
         phdu = fits.PrimaryHDU(data=data, header=hdr)
         H = phdu.header
 
