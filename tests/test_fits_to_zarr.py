@@ -152,6 +152,17 @@ def test_select_reference_shape_index_deterministic():
     assert idx == 1
 
 
+def test_peek_lm_shape_matches_naxis(tmp_path: Path):
+    """_peek_lm_shape must use FITS NAXIS1/NAXIS2 (l/m) without loading pixels."""
+    import numpy as np
+
+    mod = _import_module()
+    fpath = tmp_path / "two_d.fits"
+    fits.PrimaryHDU(data=np.zeros((5, 7), dtype=np.float32)).writeto(fpath)
+
+    assert mod._peek_lm_shape(fpath) == (5, 7)
+
+
 def test_regrid_to_reference_lm_mixed_shapes():
     """Smaller (m,l) grids interpolate onto the reference LM grid."""
     import numpy as np

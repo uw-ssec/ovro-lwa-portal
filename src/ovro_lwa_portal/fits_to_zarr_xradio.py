@@ -495,9 +495,21 @@ def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
 
 
 def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
-    """Return LM shape ``(m, l)`` from FITS using xradio, without full WCS attachment."""
-    xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
-    return int(xds.sizes["m"]), int(xds.sizes["l"])
+    """Return LM shape ``(m, l)`` from the primary FITS header (no pixel array load).
+
+    ``NAXIS1`` and ``NAXIS2`` are the sky-plane sizes in the same sense as
+    :func:`xradio.image.read_image`: ``l`` maps to FITS axis 1, ``m`` to axis 2.
+    That matches :func:`_load_for_combine`, where ``ny = xds.sizes["m"]`` and
+    ``nx = xds.sizes["l"]`` index the 2D WCS with ``np.indices((ny, nx))``.
+    """
+    hdr = fits.getheader(str(fp), ext=0, memmap=False)
+    naxis = int(hdr.get("NAXIS", 0))
+    if naxis < 2:
+        msg = f"Expected NAXIS >= 2 for image plane in {fp.name!r}, got NAXIS={naxis}."
+        raise RuntimeError(msg)
+    l_size = int(hdr["NAXIS1"])
+    m_size = int(hdr["NAXIS2"])
+    return m_size, l_size
 
 
 def _load_global_lm_reference_dataset(
@@ -550,6 +562,7 @@ def _regrid_to_reference_lm(
     Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
     WCS header metadata are taken from ``ref`` so the result is consistent with the
     reference pixel grid. No-op when ``xds`` already matches ``ref`` LM shape.
+    Assumes that all files at a given time have the same pointing center (CRVAL1/CRVAL2).
 
     Parameters
     ----------
