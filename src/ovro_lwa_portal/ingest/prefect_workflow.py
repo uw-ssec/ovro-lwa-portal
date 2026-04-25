@@ -12,8 +12,9 @@ To use this module, install the 'prefect' optional dependency:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from ovro_lwa_portal.ingest.core import ConversionConfig
@@ -29,7 +30,7 @@ try:
 except ImportError:
     PREFECT_AVAILABLE = False
 
-    def _raise_import_error() -> None:
+    def _raise_import_error() -> NoReturn:
         msg = (
             "Prefect is not installed. Install it with:\n"
             "  pip install ovro_lwa_portal[prefect]\n"
@@ -59,6 +60,20 @@ except ImportError:
             return decorator(func)
         return decorator
 if PREFECT_AVAILABLE:
+    _DUP_FITS_ERR = "Duplicate FITS files detected"
+
+    def _execute_conversion_should_retry(
+        _task: object, _task_run: object, state: object
+    ) -> bool:
+        """Return False for duplicate-FITS RuntimeErrors: retries will not help."""
+        try:
+            state.result()  # type: ignore[union-attr]
+        except RuntimeError as exc:
+            if _DUP_FITS_ERR in str(exc):
+                return False
+        except Exception:
+            pass
+        return True
 
     @task(name="Validate Configuration")
     def validate_config_task(config: ConversionConfig) -> None:
@@ -97,7 +112,12 @@ if PREFECT_AVAILABLE:
         logger.info(f"Output directory: {config.output_dir}")
         logger.info(f"Fixed FITS directory: {config.fixed_dir}")
 
-    @task(name="Execute Conversion", retries=2, retry_delay_seconds=60)
+    @task(
+        name="Execute Conversion",
+        retries=2,
+        retry_delay_seconds=60,
+        retry_condition_fn=_execute_conversion_should_retry,
+    )
     def execute_conversion_task(config: ConversionConfig) -> Path:
         """Execute the FITS to Zarr conversion as a Prefect task.
 
@@ -137,6 +157,7 @@ if PREFECT_AVAILABLE:
         fixed_dir: str | Path | None = None,
         chunk_lm: int = 1024,
         rebuild: bool = False,
+        duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         verbose: bool = False,
     ) -> Path:
         """Prefect flow for FITS to Zarr conversion.
@@ -159,6 +180,11 @@ if PREFECT_AVAILABLE:
             Chunk size for l and m spatial dimensions. Defaults to 1024.
         rebuild : bool, optional
             If True, overwrite existing Zarr store. Defaults to False.
+        duplicate_resolver : Callable[[str, float, list[Path]], Path] | None, optional
+            When two FITS files share the same (time, frequency) group, this callback
+            chooses which path to use. If omitted and duplicates exist, conversion
+            raises ``RuntimeError`` at discovery (see ``ConversionConfig`` in
+            ``ovro_lwa_portal.ingest.core``).
         verbose : bool, optional
             Enable verbose logging. Defaults to False.
 
@@ -189,6 +215,7 @@ if PREFECT_AVAILABLE:
             fixed_dir=Path(fixed_dir) if fixed_dir else None,
             chunk_lm=chunk_lm,
             rebuild=rebuild,
+            duplicate_resolver=duplicate_resolver,
             verbose=verbose,
         )
 
@@ -202,7 +229,7 @@ if PREFECT_AVAILABLE:
 
 else:
     # Provide stub implementations when Prefect is not available
-    def fits_to_zarr_flow(*args, **kwargs):  # type: ignore[no-untyped-def]
+    def fits_to_zarr_flow(*args, **kwargs) -> Path:  # type: ignore[no-untyped-def]
         _raise_import_error()
 
 
@@ -213,6 +240,7 @@ def run_conversion_flow(
     fixed_dir: str | Path | None = None,
     chunk_lm: int = 1024,
     rebuild: bool = False,
+    duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
     verbose: bool = False,
 ) -> Path:
     """Run the FITS to Zarr conversion using Prefect orchestration.
@@ -234,6 +262,9 @@ def run_conversion_flow(
         Chunk size for l and m spatial dimensions.
     rebuild : bool, optional
         If True, overwrite existing Zarr store.
+    duplicate_resolver : Callable[[str, float, list[Path]], Path] | None, optional
+        Resolves duplicate FITS files in the same (time, frequency) group; if ``None`` and
+        duplicates exist, conversion raises at discovery time.
     verbose : bool, optional
         Enable verbose logging.
 
@@ -246,6 +277,8 @@ def run_conversion_flow(
     ------
     ImportError
         If Prefect is not installed.
+    RuntimeError
+        If duplicate FITS are found and ``duplicate_resolver`` is not provided.
     """
     if not PREFECT_AVAILABLE:
         msg = (
@@ -263,5 +296,6 @@ def run_conversion_flow(
         fixed_dir=fixed_dir,
         chunk_lm=chunk_lm,
         rebuild=rebuild,
+        duplicate_resolver=duplicate_resolver,
         verbose=verbose,
     )
