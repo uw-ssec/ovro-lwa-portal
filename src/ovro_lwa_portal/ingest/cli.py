@@ -158,6 +158,10 @@ def convert(
     by observation time and frequency, using FITS headers first with filename
     parsing as a fallback when headers are incomplete.
 
+    If inputs use different LM pixel shapes, the largest grid in the selection is
+    chosen as the reference and smaller images are interpolated onto it so the
+    output has a single consistent sky grid.
+
     \b
     Examples:
         # Basic conversion (fixes headers on-demand)
