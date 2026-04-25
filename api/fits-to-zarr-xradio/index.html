@@ -1724,7 +1724,7 @@ process.</p>
 
 
 <h2 id="ovro_lwa_portal.fits_to_zarr_xradio.convert_fits_dir_to_zarr" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">convert_fits_dir_to_zarr</span><span class="p">(</span><span class="n">input_dir</span><span class="p">,</span> <span class="n">out_dir</span><span class="p">,</span> <span class="n">zarr_name</span><span class="o">=</span><span class="s1">&#39;ovro_lwa_full_lm_only.zarr&#39;</span><span class="p">,</span> <span class="n">fixed_dir</span><span class="o">=</span><span class="s1">&#39;fixed_fits&#39;</span><span class="p">,</span> <span class="n">chunk_lm</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span> <span class="n">rebuild</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fix_headers_on_demand</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">progress_callback</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">convert_fits_dir_to_zarr</span><span class="p">(</span><span class="n">input_dir</span><span class="p">,</span> <span class="n">out_dir</span><span class="p">,</span> <span class="n">zarr_name</span><span class="o">=</span><span class="s1">&#39;ovro_lwa_full_lm_only.zarr&#39;</span><span class="p">,</span> <span class="n">fixed_dir</span><span class="o">=</span><span class="s1">&#39;fixed_fits&#39;</span><span class="p">,</span> <span class="n">chunk_lm</span><span class="o">=</span><span class="mi">1024</span><span class="p">,</span> <span class="n">rebuild</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fix_headers_on_demand</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">progress_callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">duplicate_resolver</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 <a href="#ovro_lwa_portal.fits_to_zarr_xradio.convert_fits_dir_to_zarr" class="headerlink" title="Permanent link">&para;</a></h2>
 
@@ -1876,6 +1876,23 @@ Default is True.</p>
                   <code>None</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>duplicate_resolver</code>
+            </td>
+            <td>
+                  <code><span title="typing.Optional">Optional</span>[<span title="typing.Callable">Callable</span>[[<span title="str">str</span>, <span title="float">float</span>, <span title="typing.List">List</span>[<span title="pathlib.Path">Path</span>]], <span title="pathlib.Path">Path</span>]]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional callback to resolve duplicate files that map to the same
+time/frequency group. Signature: <code>(time_key, frequency_hz, candidates) -&gt; selected_path</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -1938,207 +1955,215 @@ Default is True.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/ovro_lwa_portal/fits_to_zarr_xradio.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-498">498</a></span>
-<span class="normal"><a href="#__codelineno-0-499">499</a></span>
-<span class="normal"><a href="#__codelineno-0-500">500</a></span>
-<span class="normal"><a href="#__codelineno-0-501">501</a></span>
-<span class="normal"><a href="#__codelineno-0-502">502</a></span>
-<span class="normal"><a href="#__codelineno-0-503">503</a></span>
-<span class="normal"><a href="#__codelineno-0-504">504</a></span>
-<span class="normal"><a href="#__codelineno-0-505">505</a></span>
-<span class="normal"><a href="#__codelineno-0-506">506</a></span>
-<span class="normal"><a href="#__codelineno-0-507">507</a></span>
-<span class="normal"><a href="#__codelineno-0-508">508</a></span>
-<span class="normal"><a href="#__codelineno-0-509">509</a></span>
-<span class="normal"><a href="#__codelineno-0-510">510</a></span>
-<span class="normal"><a href="#__codelineno-0-511">511</a></span>
-<span class="normal"><a href="#__codelineno-0-512">512</a></span>
-<span class="normal"><a href="#__codelineno-0-513">513</a></span>
-<span class="normal"><a href="#__codelineno-0-514">514</a></span>
-<span class="normal"><a href="#__codelineno-0-515">515</a></span>
-<span class="normal"><a href="#__codelineno-0-516">516</a></span>
-<span class="normal"><a href="#__codelineno-0-517">517</a></span>
-<span class="normal"><a href="#__codelineno-0-518">518</a></span>
-<span class="normal"><a href="#__codelineno-0-519">519</a></span>
-<span class="normal"><a href="#__codelineno-0-520">520</a></span>
-<span class="normal"><a href="#__codelineno-0-521">521</a></span>
-<span class="normal"><a href="#__codelineno-0-522">522</a></span>
-<span class="normal"><a href="#__codelineno-0-523">523</a></span>
-<span class="normal"><a href="#__codelineno-0-524">524</a></span>
-<span class="normal"><a href="#__codelineno-0-525">525</a></span>
-<span class="normal"><a href="#__codelineno-0-526">526</a></span>
-<span class="normal"><a href="#__codelineno-0-527">527</a></span>
-<span class="normal"><a href="#__codelineno-0-528">528</a></span>
-<span class="normal"><a href="#__codelineno-0-529">529</a></span>
-<span class="normal"><a href="#__codelineno-0-530">530</a></span>
-<span class="normal"><a href="#__codelineno-0-531">531</a></span>
-<span class="normal"><a href="#__codelineno-0-532">532</a></span>
-<span class="normal"><a href="#__codelineno-0-533">533</a></span>
-<span class="normal"><a href="#__codelineno-0-534">534</a></span>
-<span class="normal"><a href="#__codelineno-0-535">535</a></span>
-<span class="normal"><a href="#__codelineno-0-536">536</a></span>
-<span class="normal"><a href="#__codelineno-0-537">537</a></span>
-<span class="normal"><a href="#__codelineno-0-538">538</a></span>
-<span class="normal"><a href="#__codelineno-0-539">539</a></span>
-<span class="normal"><a href="#__codelineno-0-540">540</a></span>
-<span class="normal"><a href="#__codelineno-0-541">541</a></span>
-<span class="normal"><a href="#__codelineno-0-542">542</a></span>
-<span class="normal"><a href="#__codelineno-0-543">543</a></span>
-<span class="normal"><a href="#__codelineno-0-544">544</a></span>
-<span class="normal"><a href="#__codelineno-0-545">545</a></span>
-<span class="normal"><a href="#__codelineno-0-546">546</a></span>
-<span class="normal"><a href="#__codelineno-0-547">547</a></span>
-<span class="normal"><a href="#__codelineno-0-548">548</a></span>
-<span class="normal"><a href="#__codelineno-0-549">549</a></span>
-<span class="normal"><a href="#__codelineno-0-550">550</a></span>
-<span class="normal"><a href="#__codelineno-0-551">551</a></span>
-<span class="normal"><a href="#__codelineno-0-552">552</a></span>
-<span class="normal"><a href="#__codelineno-0-553">553</a></span>
-<span class="normal"><a href="#__codelineno-0-554">554</a></span>
-<span class="normal"><a href="#__codelineno-0-555">555</a></span>
-<span class="normal"><a href="#__codelineno-0-556">556</a></span>
-<span class="normal"><a href="#__codelineno-0-557">557</a></span>
-<span class="normal"><a href="#__codelineno-0-558">558</a></span>
-<span class="normal"><a href="#__codelineno-0-559">559</a></span>
-<span class="normal"><a href="#__codelineno-0-560">560</a></span>
-<span class="normal"><a href="#__codelineno-0-561">561</a></span>
-<span class="normal"><a href="#__codelineno-0-562">562</a></span>
-<span class="normal"><a href="#__codelineno-0-563">563</a></span>
-<span class="normal"><a href="#__codelineno-0-564">564</a></span>
-<span class="normal"><a href="#__codelineno-0-565">565</a></span>
-<span class="normal"><a href="#__codelineno-0-566">566</a></span>
-<span class="normal"><a href="#__codelineno-0-567">567</a></span>
-<span class="normal"><a href="#__codelineno-0-568">568</a></span>
-<span class="normal"><a href="#__codelineno-0-569">569</a></span>
-<span class="normal"><a href="#__codelineno-0-570">570</a></span>
-<span class="normal"><a href="#__codelineno-0-571">571</a></span>
-<span class="normal"><a href="#__codelineno-0-572">572</a></span>
-<span class="normal"><a href="#__codelineno-0-573">573</a></span>
-<span class="normal"><a href="#__codelineno-0-574">574</a></span>
-<span class="normal"><a href="#__codelineno-0-575">575</a></span>
-<span class="normal"><a href="#__codelineno-0-576">576</a></span>
-<span class="normal"><a href="#__codelineno-0-577">577</a></span>
-<span class="normal"><a href="#__codelineno-0-578">578</a></span>
-<span class="normal"><a href="#__codelineno-0-579">579</a></span>
-<span class="normal"><a href="#__codelineno-0-580">580</a></span>
-<span class="normal"><a href="#__codelineno-0-581">581</a></span>
-<span class="normal"><a href="#__codelineno-0-582">582</a></span>
-<span class="normal"><a href="#__codelineno-0-583">583</a></span>
-<span class="normal"><a href="#__codelineno-0-584">584</a></span>
-<span class="normal"><a href="#__codelineno-0-585">585</a></span>
-<span class="normal"><a href="#__codelineno-0-586">586</a></span>
-<span class="normal"><a href="#__codelineno-0-587">587</a></span>
-<span class="normal"><a href="#__codelineno-0-588">588</a></span>
-<span class="normal"><a href="#__codelineno-0-589">589</a></span>
-<span class="normal"><a href="#__codelineno-0-590">590</a></span>
-<span class="normal"><a href="#__codelineno-0-591">591</a></span>
-<span class="normal"><a href="#__codelineno-0-592">592</a></span>
-<span class="normal"><a href="#__codelineno-0-593">593</a></span>
-<span class="normal"><a href="#__codelineno-0-594">594</a></span>
-<span class="normal"><a href="#__codelineno-0-595">595</a></span>
-<span class="normal"><a href="#__codelineno-0-596">596</a></span>
-<span class="normal"><a href="#__codelineno-0-597">597</a></span>
-<span class="normal"><a href="#__codelineno-0-598">598</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="k">def</span><span class="w"> </span><span class="nf">convert_fits_dir_to_zarr</span><span class="p">(</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>    <span class="n">input_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a>    <span class="n">out_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a>    <span class="n">zarr_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ovro_lwa_full_lm_only.zarr&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">fixed_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;fixed_fits&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="n">chunk_lm</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">rebuild</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a>    <span class="n">fix_headers_on_demand</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>    <span class="n">progress_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert all matching FITS in a directory into a single LM-only Zarr store.</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a><span class="sd">    input_dir</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a><span class="sd">        Directory containing input FITS files.</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a><span class="sd">    out_dir</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a><span class="sd">        Directory where the Zarr store will be written.</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a><span class="sd">    zarr_name</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a><span class="sd">        Name of the Zarr store directory (under ``out_dir``).</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a><span class="sd">    fixed_dir</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a><span class="sd">        Directory to place generated ``*_fixed.fits`` files.</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a><span class="sd">    chunk_lm</span>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a><span class="sd">        Optional LM chunk size for the in-memory xarray datasets (0 disables).</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a><span class="sd">    rebuild</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a><span class="sd">        If True, overwrite any existing Zarr; otherwise append to it.</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a><span class="sd">    fix_headers_on_demand</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a><span class="sd">        If True, fix FITS headers on-demand during conversion if they don&#39;t exist.</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a><span class="sd">        If False, assume headers are already fixed using :func:`fix_fits_headers`.</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a><span class="sd">        Default is True.</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a><span class="sd">    progress_callback</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a><span class="sd">        Optional callback function for progress reporting. Should accept</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a><span class="sd">        (stage: str, current: int, total: int, message: str).</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a><span class="sd">    Path</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a><span class="sd">        Path to the resulting Zarr store directory.</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a><span class="sd">    FileNotFoundError</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a><span class="sd">        If no matching FITS files are found.</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a><span class="sd">    RuntimeError</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a><span class="sd">        If LM grids differ across time steps.</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>    <span class="n">input_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">input_dir</span><span class="p">)</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>    <span class="n">out_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_dir</span><span class="p">)</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>    <span class="n">out_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="n">fixed_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fixed_dir</span><span class="p">)</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>    <span class="n">fixed_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>    <span class="n">out_zarr</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="n">zarr_name</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>
-<a id="__codelineno-0-551" name="__codelineno-0-551"></a>    <span class="n">by_time</span> <span class="o">=</span> <span class="n">_discover_groups</span><span class="p">(</span><span class="n">input_dir</span><span class="p">)</span>
-<a id="__codelineno-0-552" name="__codelineno-0-552"></a>    <span class="n">total_files</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">by_time</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-<a id="__codelineno-0-553" name="__codelineno-0-553"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Discovered </span><span class="si">{</span><span class="n">total_files</span><span class="si">}</span><span class="s2"> FITS across </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">by_time</span><span class="p">)</span><span class="si">}</span><span class="s2"> time step(s).&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-554" name="__codelineno-0-554"></a>    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">by_time</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-555" name="__codelineno-0-555"></a>        <span class="n">mhz_sorted</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">_mhz_from_name</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">v</span><span class="p">)</span>
-<a id="__codelineno-0-556" name="__codelineno-0-556"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  time </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="si">}</span><span class="s2"> file(s), subbands (MHz): </span><span class="si">{</span><span class="n">mhz_sorted</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-557" name="__codelineno-0-557"></a>
-<a id="__codelineno-0-558" name="__codelineno-0-558"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">by_time</span><span class="p">:</span>
-<a id="__codelineno-0-559" name="__codelineno-0-559"></a>        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No matching FITS found in </span><span class="si">{</span><span class="n">input_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-560" name="__codelineno-0-560"></a>
-<a id="__codelineno-0-561" name="__codelineno-0-561"></a>    <span class="c1"># Decide whether we write a fresh store or append to an existing one</span>
-<a id="__codelineno-0-562" name="__codelineno-0-562"></a>    <span class="n">first_write</span> <span class="o">=</span> <span class="ow">not</span> <span class="p">(</span><span class="n">out_zarr</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rebuild</span><span class="p">)</span>
-<a id="__codelineno-0-563" name="__codelineno-0-563"></a>    <span class="n">lm_reference</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">],</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-564" name="__codelineno-0-564"></a>
-<a id="__codelineno-0-565" name="__codelineno-0-565"></a>    <span class="n">total_time_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">by_time</span><span class="p">)</span>
-<a id="__codelineno-0-566" name="__codelineno-0-566"></a>    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tkey</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">by_time</span><span class="o">.</span><span class="n">keys</span><span class="p">())):</span>
-<a id="__codelineno-0-567" name="__codelineno-0-567"></a>        <span class="n">files</span> <span class="o">=</span> <span class="n">by_time</span><span class="p">[</span><span class="n">tkey</span><span class="p">]</span>
-<a id="__codelineno-0-568" name="__codelineno-0-568"></a>
-<a id="__codelineno-0-569" name="__codelineno-0-569"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[read/combine] time </span><span class="si">{</span><span class="n">tkey</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-570" name="__codelineno-0-570"></a>        <span class="n">xds_t</span><span class="p">,</span> <span class="n">freqs</span> <span class="o">=</span> <span class="n">_combine_time_step</span><span class="p">(</span>
-<a id="__codelineno-0-571" name="__codelineno-0-571"></a>            <span class="n">files</span><span class="p">,</span> <span class="n">fixed_dir</span><span class="p">,</span> <span class="n">chunk_lm</span><span class="o">=</span><span class="n">chunk_lm</span><span class="p">,</span> <span class="n">fix_headers_on_demand</span><span class="o">=</span><span class="n">fix_headers_on_demand</span>
-<a id="__codelineno-0-572" name="__codelineno-0-572"></a>        <span class="p">)</span>
-<a id="__codelineno-0-573" name="__codelineno-0-573"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  combined dims: </span><span class="si">{</span><span class="nb">dict</span><span class="p">(</span><span class="n">xds_t</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-574" name="__codelineno-0-574"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  combined freqs (Hz): </span><span class="si">{</span><span class="n">freqs</span><span class="p">[:</span><span class="mi">8</span><span class="p">]</span><span class="si">}{</span><span class="s1">&#39; ...&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">8</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-575" name="__codelineno-0-575"></a>
-<a id="__codelineno-0-576" name="__codelineno-0-576"></a>        <span class="n">lm_current</span> <span class="o">=</span> <span class="p">(</span><span class="n">xds_t</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">xds_t</span><span class="p">[</span><span class="s2">&quot;m&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
-<a id="__codelineno-0-577" name="__codelineno-0-577"></a>        <span class="k">if</span> <span class="n">lm_reference</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-578" name="__codelineno-0-578"></a>            <span class="n">lm_reference</span> <span class="o">=</span> <span class="p">(</span><span class="n">lm_current</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">lm_current</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
-<a id="__codelineno-0-579" name="__codelineno-0-579"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  stored l/m grid as reference&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-580" name="__codelineno-0-580"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-581" name="__codelineno-0-581"></a>            <span class="n">_assert_same_lm</span><span class="p">(</span><span class="n">lm_reference</span><span class="p">,</span> <span class="n">lm_current</span><span class="p">)</span>
-<a id="__codelineno-0-582" name="__codelineno-0-582"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  l/m grid matches reference&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-583" name="__codelineno-0-583"></a>
-<a id="__codelineno-0-584" name="__codelineno-0-584"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="s1">&#39;write new&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">first_write</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;append&#39;</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">out_zarr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-585" name="__codelineno-0-585"></a>        <span class="n">_write_or_append_zarr</span><span class="p">(</span><span class="n">xds_t</span><span class="p">,</span> <span class="n">out_zarr</span><span class="p">,</span> <span class="n">first_write</span><span class="o">=</span><span class="n">first_write</span><span class="p">)</span>
-<a id="__codelineno-0-586" name="__codelineno-0-586"></a>        <span class="n">first_write</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-587" name="__codelineno-0-587"></a>
-<a id="__codelineno-0-588" name="__codelineno-0-588"></a>        <span class="c1"># Report progress after completing this time step</span>
-<a id="__codelineno-0-589" name="__codelineno-0-589"></a>        <span class="k">if</span> <span class="n">progress_callback</span><span class="p">:</span>
-<a id="__codelineno-0-590" name="__codelineno-0-590"></a>            <span class="n">progress_callback</span><span class="p">(</span>
-<a id="__codelineno-0-591" name="__codelineno-0-591"></a>                <span class="s2">&quot;converting&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-592" name="__codelineno-0-592"></a>                <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-593" name="__codelineno-0-593"></a>                <span class="n">total_time_steps</span><span class="p">,</span>
-<a id="__codelineno-0-594" name="__codelineno-0-594"></a>                <span class="sa">f</span><span class="s2">&quot;Completed time step </span><span class="si">{</span><span class="n">idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total_time_steps</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-595" name="__codelineno-0-595"></a>            <span class="p">)</span>
-<a id="__codelineno-0-596" name="__codelineno-0-596"></a>
-<a id="__codelineno-0-597" name="__codelineno-0-597"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[done] All times appended into: </span><span class="si">{</span><span class="n">out_zarr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-598" name="__codelineno-0-598"></a>    <span class="k">return</span> <span class="n">out_zarr</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-666">666</a></span>
+<span class="normal"><a href="#__codelineno-0-667">667</a></span>
+<span class="normal"><a href="#__codelineno-0-668">668</a></span>
+<span class="normal"><a href="#__codelineno-0-669">669</a></span>
+<span class="normal"><a href="#__codelineno-0-670">670</a></span>
+<span class="normal"><a href="#__codelineno-0-671">671</a></span>
+<span class="normal"><a href="#__codelineno-0-672">672</a></span>
+<span class="normal"><a href="#__codelineno-0-673">673</a></span>
+<span class="normal"><a href="#__codelineno-0-674">674</a></span>
+<span class="normal"><a href="#__codelineno-0-675">675</a></span>
+<span class="normal"><a href="#__codelineno-0-676">676</a></span>
+<span class="normal"><a href="#__codelineno-0-677">677</a></span>
+<span class="normal"><a href="#__codelineno-0-678">678</a></span>
+<span class="normal"><a href="#__codelineno-0-679">679</a></span>
+<span class="normal"><a href="#__codelineno-0-680">680</a></span>
+<span class="normal"><a href="#__codelineno-0-681">681</a></span>
+<span class="normal"><a href="#__codelineno-0-682">682</a></span>
+<span class="normal"><a href="#__codelineno-0-683">683</a></span>
+<span class="normal"><a href="#__codelineno-0-684">684</a></span>
+<span class="normal"><a href="#__codelineno-0-685">685</a></span>
+<span class="normal"><a href="#__codelineno-0-686">686</a></span>
+<span class="normal"><a href="#__codelineno-0-687">687</a></span>
+<span class="normal"><a href="#__codelineno-0-688">688</a></span>
+<span class="normal"><a href="#__codelineno-0-689">689</a></span>
+<span class="normal"><a href="#__codelineno-0-690">690</a></span>
+<span class="normal"><a href="#__codelineno-0-691">691</a></span>
+<span class="normal"><a href="#__codelineno-0-692">692</a></span>
+<span class="normal"><a href="#__codelineno-0-693">693</a></span>
+<span class="normal"><a href="#__codelineno-0-694">694</a></span>
+<span class="normal"><a href="#__codelineno-0-695">695</a></span>
+<span class="normal"><a href="#__codelineno-0-696">696</a></span>
+<span class="normal"><a href="#__codelineno-0-697">697</a></span>
+<span class="normal"><a href="#__codelineno-0-698">698</a></span>
+<span class="normal"><a href="#__codelineno-0-699">699</a></span>
+<span class="normal"><a href="#__codelineno-0-700">700</a></span>
+<span class="normal"><a href="#__codelineno-0-701">701</a></span>
+<span class="normal"><a href="#__codelineno-0-702">702</a></span>
+<span class="normal"><a href="#__codelineno-0-703">703</a></span>
+<span class="normal"><a href="#__codelineno-0-704">704</a></span>
+<span class="normal"><a href="#__codelineno-0-705">705</a></span>
+<span class="normal"><a href="#__codelineno-0-706">706</a></span>
+<span class="normal"><a href="#__codelineno-0-707">707</a></span>
+<span class="normal"><a href="#__codelineno-0-708">708</a></span>
+<span class="normal"><a href="#__codelineno-0-709">709</a></span>
+<span class="normal"><a href="#__codelineno-0-710">710</a></span>
+<span class="normal"><a href="#__codelineno-0-711">711</a></span>
+<span class="normal"><a href="#__codelineno-0-712">712</a></span>
+<span class="normal"><a href="#__codelineno-0-713">713</a></span>
+<span class="normal"><a href="#__codelineno-0-714">714</a></span>
+<span class="normal"><a href="#__codelineno-0-715">715</a></span>
+<span class="normal"><a href="#__codelineno-0-716">716</a></span>
+<span class="normal"><a href="#__codelineno-0-717">717</a></span>
+<span class="normal"><a href="#__codelineno-0-718">718</a></span>
+<span class="normal"><a href="#__codelineno-0-719">719</a></span>
+<span class="normal"><a href="#__codelineno-0-720">720</a></span>
+<span class="normal"><a href="#__codelineno-0-721">721</a></span>
+<span class="normal"><a href="#__codelineno-0-722">722</a></span>
+<span class="normal"><a href="#__codelineno-0-723">723</a></span>
+<span class="normal"><a href="#__codelineno-0-724">724</a></span>
+<span class="normal"><a href="#__codelineno-0-725">725</a></span>
+<span class="normal"><a href="#__codelineno-0-726">726</a></span>
+<span class="normal"><a href="#__codelineno-0-727">727</a></span>
+<span class="normal"><a href="#__codelineno-0-728">728</a></span>
+<span class="normal"><a href="#__codelineno-0-729">729</a></span>
+<span class="normal"><a href="#__codelineno-0-730">730</a></span>
+<span class="normal"><a href="#__codelineno-0-731">731</a></span>
+<span class="normal"><a href="#__codelineno-0-732">732</a></span>
+<span class="normal"><a href="#__codelineno-0-733">733</a></span>
+<span class="normal"><a href="#__codelineno-0-734">734</a></span>
+<span class="normal"><a href="#__codelineno-0-735">735</a></span>
+<span class="normal"><a href="#__codelineno-0-736">736</a></span>
+<span class="normal"><a href="#__codelineno-0-737">737</a></span>
+<span class="normal"><a href="#__codelineno-0-738">738</a></span>
+<span class="normal"><a href="#__codelineno-0-739">739</a></span>
+<span class="normal"><a href="#__codelineno-0-740">740</a></span>
+<span class="normal"><a href="#__codelineno-0-741">741</a></span>
+<span class="normal"><a href="#__codelineno-0-742">742</a></span>
+<span class="normal"><a href="#__codelineno-0-743">743</a></span>
+<span class="normal"><a href="#__codelineno-0-744">744</a></span>
+<span class="normal"><a href="#__codelineno-0-745">745</a></span>
+<span class="normal"><a href="#__codelineno-0-746">746</a></span>
+<span class="normal"><a href="#__codelineno-0-747">747</a></span>
+<span class="normal"><a href="#__codelineno-0-748">748</a></span>
+<span class="normal"><a href="#__codelineno-0-749">749</a></span>
+<span class="normal"><a href="#__codelineno-0-750">750</a></span>
+<span class="normal"><a href="#__codelineno-0-751">751</a></span>
+<span class="normal"><a href="#__codelineno-0-752">752</a></span>
+<span class="normal"><a href="#__codelineno-0-753">753</a></span>
+<span class="normal"><a href="#__codelineno-0-754">754</a></span>
+<span class="normal"><a href="#__codelineno-0-755">755</a></span>
+<span class="normal"><a href="#__codelineno-0-756">756</a></span>
+<span class="normal"><a href="#__codelineno-0-757">757</a></span>
+<span class="normal"><a href="#__codelineno-0-758">758</a></span>
+<span class="normal"><a href="#__codelineno-0-759">759</a></span>
+<span class="normal"><a href="#__codelineno-0-760">760</a></span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="k">def</span><span class="w"> </span><span class="nf">convert_fits_dir_to_zarr</span><span class="p">(</span>
+<a id="__codelineno-0-667" name="__codelineno-0-667"></a>    <span class="n">input_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-0-668" name="__codelineno-0-668"></a>    <span class="n">out_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="n">zarr_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ovro_lwa_full_lm_only.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-670" name="__codelineno-0-670"></a>    <span class="n">fixed_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">=</span> <span class="s2">&quot;fixed_fits&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-671" name="__codelineno-0-671"></a>    <span class="n">chunk_lm</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1024</span><span class="p">,</span>
+<a id="__codelineno-0-672" name="__codelineno-0-672"></a>    <span class="n">rebuild</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-673" name="__codelineno-0-673"></a>    <span class="n">fix_headers_on_demand</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-674" name="__codelineno-0-674"></a>    <span class="n">progress_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-675" name="__codelineno-0-675"></a>    <span class="n">duplicate_resolver</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]],</span> <span class="n">Path</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-676" name="__codelineno-0-676"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<a id="__codelineno-0-677" name="__codelineno-0-677"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert all matching FITS in a directory into a single LM-only Zarr store.</span>
+<a id="__codelineno-0-678" name="__codelineno-0-678"></a>
+<a id="__codelineno-0-679" name="__codelineno-0-679"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-680" name="__codelineno-0-680"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-681" name="__codelineno-0-681"></a><span class="sd">    input_dir</span>
+<a id="__codelineno-0-682" name="__codelineno-0-682"></a><span class="sd">        Directory containing input FITS files.</span>
+<a id="__codelineno-0-683" name="__codelineno-0-683"></a><span class="sd">    out_dir</span>
+<a id="__codelineno-0-684" name="__codelineno-0-684"></a><span class="sd">        Directory where the Zarr store will be written.</span>
+<a id="__codelineno-0-685" name="__codelineno-0-685"></a><span class="sd">    zarr_name</span>
+<a id="__codelineno-0-686" name="__codelineno-0-686"></a><span class="sd">        Name of the Zarr store directory (under ``out_dir``).</span>
+<a id="__codelineno-0-687" name="__codelineno-0-687"></a><span class="sd">    fixed_dir</span>
+<a id="__codelineno-0-688" name="__codelineno-0-688"></a><span class="sd">        Directory to place generated ``*_fixed.fits`` files.</span>
+<a id="__codelineno-0-689" name="__codelineno-0-689"></a><span class="sd">    chunk_lm</span>
+<a id="__codelineno-0-690" name="__codelineno-0-690"></a><span class="sd">        Optional LM chunk size for the in-memory xarray datasets (0 disables).</span>
+<a id="__codelineno-0-691" name="__codelineno-0-691"></a><span class="sd">    rebuild</span>
+<a id="__codelineno-0-692" name="__codelineno-0-692"></a><span class="sd">        If True, overwrite any existing Zarr; otherwise append to it.</span>
+<a id="__codelineno-0-693" name="__codelineno-0-693"></a><span class="sd">    fix_headers_on_demand</span>
+<a id="__codelineno-0-694" name="__codelineno-0-694"></a><span class="sd">        If True, fix FITS headers on-demand during conversion if they don&#39;t exist.</span>
+<a id="__codelineno-0-695" name="__codelineno-0-695"></a><span class="sd">        If False, assume headers are already fixed using :func:`fix_fits_headers`.</span>
+<a id="__codelineno-0-696" name="__codelineno-0-696"></a><span class="sd">        Default is True.</span>
+<a id="__codelineno-0-697" name="__codelineno-0-697"></a><span class="sd">    progress_callback</span>
+<a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="sd">        Optional callback function for progress reporting. Should accept</span>
+<a id="__codelineno-0-699" name="__codelineno-0-699"></a><span class="sd">        (stage: str, current: int, total: int, message: str).</span>
+<a id="__codelineno-0-700" name="__codelineno-0-700"></a><span class="sd">    duplicate_resolver</span>
+<a id="__codelineno-0-701" name="__codelineno-0-701"></a><span class="sd">        Optional callback to resolve duplicate files that map to the same</span>
+<a id="__codelineno-0-702" name="__codelineno-0-702"></a><span class="sd">        time/frequency group. Signature: ``(time_key, frequency_hz, candidates) -&gt; selected_path``.</span>
+<a id="__codelineno-0-703" name="__codelineno-0-703"></a>
+<a id="__codelineno-0-704" name="__codelineno-0-704"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-705" name="__codelineno-0-705"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-706" name="__codelineno-0-706"></a><span class="sd">    Path</span>
+<a id="__codelineno-0-707" name="__codelineno-0-707"></a><span class="sd">        Path to the resulting Zarr store directory.</span>
+<a id="__codelineno-0-708" name="__codelineno-0-708"></a>
+<a id="__codelineno-0-709" name="__codelineno-0-709"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-710" name="__codelineno-0-710"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-711" name="__codelineno-0-711"></a><span class="sd">    FileNotFoundError</span>
+<a id="__codelineno-0-712" name="__codelineno-0-712"></a><span class="sd">        If no matching FITS files are found.</span>
+<a id="__codelineno-0-713" name="__codelineno-0-713"></a><span class="sd">    RuntimeError</span>
+<a id="__codelineno-0-714" name="__codelineno-0-714"></a><span class="sd">        If LM grids differ across time steps.</span>
+<a id="__codelineno-0-715" name="__codelineno-0-715"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-716" name="__codelineno-0-716"></a>    <span class="n">input_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">input_dir</span><span class="p">)</span>
+<a id="__codelineno-0-717" name="__codelineno-0-717"></a>    <span class="n">out_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">out_dir</span><span class="p">)</span>
+<a id="__codelineno-0-718" name="__codelineno-0-718"></a>    <span class="n">out_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-719" name="__codelineno-0-719"></a>    <span class="n">fixed_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fixed_dir</span><span class="p">)</span>
+<a id="__codelineno-0-720" name="__codelineno-0-720"></a>    <span class="n">fixed_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="n">out_zarr</span> <span class="o">=</span> <span class="n">out_dir</span> <span class="o">/</span> <span class="n">zarr_name</span>
+<a id="__codelineno-0-722" name="__codelineno-0-722"></a>
+<a id="__codelineno-0-723" name="__codelineno-0-723"></a>    <span class="n">by_time</span> <span class="o">=</span> <span class="n">_discover_groups</span><span class="p">(</span><span class="n">input_dir</span><span class="p">,</span> <span class="n">duplicate_resolver</span><span class="o">=</span><span class="n">duplicate_resolver</span><span class="p">)</span>
+<a id="__codelineno-0-724" name="__codelineno-0-724"></a>    <span class="n">total_files</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">by_time</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+<a id="__codelineno-0-725" name="__codelineno-0-725"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Discovered </span><span class="si">{</span><span class="n">total_files</span><span class="si">}</span><span class="s2"> FITS across </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">by_time</span><span class="p">)</span><span class="si">}</span><span class="s2"> time step(s).&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-726" name="__codelineno-0-726"></a>    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">by_time</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="n">freqs_hz</span> <span class="o">=</span> <span class="p">[</span><span class="n">_extract_group_metadata</span><span class="p">(</span><span class="n">p</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">v</span><span class="p">]</span>
+<a id="__codelineno-0-728" name="__codelineno-0-728"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  time </span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="si">}</span><span class="s2"> file(s), frequencies (Hz): </span><span class="si">{</span><span class="n">freqs_hz</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-729" name="__codelineno-0-729"></a>
+<a id="__codelineno-0-730" name="__codelineno-0-730"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">by_time</span><span class="p">:</span>
+<a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No matching FITS found in </span><span class="si">{</span><span class="n">input_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-732" name="__codelineno-0-732"></a>
+<a id="__codelineno-0-733" name="__codelineno-0-733"></a>    <span class="c1"># Decide whether we write a fresh store or append to an existing one</span>
+<a id="__codelineno-0-734" name="__codelineno-0-734"></a>    <span class="n">first_write</span> <span class="o">=</span> <span class="ow">not</span> <span class="p">(</span><span class="n">out_zarr</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">rebuild</span><span class="p">)</span>
+<a id="__codelineno-0-735" name="__codelineno-0-735"></a>    <span class="n">lm_reference</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">],</span> <span class="n">NDArray</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">floating</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-736" name="__codelineno-0-736"></a>
+<a id="__codelineno-0-737" name="__codelineno-0-737"></a>    <span class="n">total_time_steps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">by_time</span><span class="p">)</span>
+<a id="__codelineno-0-738" name="__codelineno-0-738"></a>    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">tkey</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">by_time</span><span class="o">.</span><span class="n">keys</span><span class="p">())):</span>
+<a id="__codelineno-0-739" name="__codelineno-0-739"></a>        <span class="n">files</span> <span class="o">=</span> <span class="n">by_time</span><span class="p">[</span><span class="n">tkey</span><span class="p">]</span>
+<a id="__codelineno-0-740" name="__codelineno-0-740"></a>
+<a id="__codelineno-0-741" name="__codelineno-0-741"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[read/combine] time </span><span class="si">{</span><span class="n">tkey</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-742" name="__codelineno-0-742"></a>        <span class="n">xds_t</span><span class="p">,</span> <span class="n">freqs</span> <span class="o">=</span> <span class="n">_combine_time_step</span><span class="p">(</span>
+<a id="__codelineno-0-743" name="__codelineno-0-743"></a>            <span class="n">files</span><span class="p">,</span> <span class="n">fixed_dir</span><span class="p">,</span> <span class="n">chunk_lm</span><span class="o">=</span><span class="n">chunk_lm</span><span class="p">,</span> <span class="n">fix_headers_on_demand</span><span class="o">=</span><span class="n">fix_headers_on_demand</span>
+<a id="__codelineno-0-744" name="__codelineno-0-744"></a>        <span class="p">)</span>
+<a id="__codelineno-0-745" name="__codelineno-0-745"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  combined dims: </span><span class="si">{</span><span class="nb">dict</span><span class="p">(</span><span class="n">xds_t</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-746" name="__codelineno-0-746"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  combined freqs (Hz): </span><span class="si">{</span><span class="n">freqs</span><span class="p">[:</span><span class="mi">8</span><span class="p">]</span><span class="si">}{</span><span class="s1">&#39; ...&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">freqs</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">8</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-747" name="__codelineno-0-747"></a>
+<a id="__codelineno-0-748" name="__codelineno-0-748"></a>        <span class="n">lm_current</span> <span class="o">=</span> <span class="p">(</span><span class="n">xds_t</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">xds_t</span><span class="p">[</span><span class="s2">&quot;m&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+<a id="__codelineno-0-749" name="__codelineno-0-749"></a>        <span class="k">if</span> <span class="n">lm_reference</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>            <span class="n">lm_reference</span> <span class="o">=</span> <span class="p">(</span><span class="n">lm_current</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">lm_current</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  stored l/m grid as reference&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a>            <span class="n">_assert_same_lm</span><span class="p">(</span><span class="n">lm_reference</span><span class="p">,</span> <span class="n">lm_current</span><span class="p">)</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;  l/m grid matches reference&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="s1">&#39;write new&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">first_write</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;append&#39;</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">out_zarr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>        <span class="n">_write_or_append_zarr</span><span class="p">(</span><span class="n">xds_t</span><span class="p">,</span> <span class="n">out_zarr</span><span class="p">,</span> <span class="n">first_write</span><span class="o">=</span><span class="n">first_write</span><span class="p">)</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>        <span class="n">first_write</span> <span class="o">=</span> <span class="kc">False</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="c1"># Report progress after completing this time step</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="k">if</span> <span class="n">progress_callback</span><span class="p">:</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>            <span class="n">progress_callback</span><span class="p">(</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>                <span class="s2">&quot;converting&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>                <span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>                <span class="n">total_time_steps</span><span class="p">,</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>                <span class="sa">f</span><span class="s2">&quot;Completed time step </span><span class="si">{</span><span class="n">idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total_time_steps</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>            <span class="p">)</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[done] All times appended into: </span><span class="si">{</span><span class="n">out_zarr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="k">return</span> <span class="n">out_zarr</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2274,131 +2299,131 @@ Default is True.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/ovro_lwa_portal/fits_to_zarr_xradio.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-176">176</a></span>
-<span class="normal"><a href="#__codelineno-0-177">177</a></span>
-<span class="normal"><a href="#__codelineno-0-178">178</a></span>
-<span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span>
-<span class="normal"><a href="#__codelineno-0-214">214</a></span>
-<span class="normal"><a href="#__codelineno-0-215">215</a></span>
-<span class="normal"><a href="#__codelineno-0-216">216</a></span>
-<span class="normal"><a href="#__codelineno-0-217">217</a></span>
-<span class="normal"><a href="#__codelineno-0-218">218</a></span>
-<span class="normal"><a href="#__codelineno-0-219">219</a></span>
-<span class="normal"><a href="#__codelineno-0-220">220</a></span>
-<span class="normal"><a href="#__codelineno-0-221">221</a></span>
-<span class="normal"><a href="#__codelineno-0-222">222</a></span>
-<span class="normal"><a href="#__codelineno-0-223">223</a></span>
-<span class="normal"><a href="#__codelineno-0-224">224</a></span>
-<span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span>
-<span class="normal"><a href="#__codelineno-0-231">231</a></span>
-<span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="k">def</span><span class="w"> </span><span class="nf">fix_fits_headers</span><span class="p">(</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a>    <span class="n">files</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">],</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a>    <span class="n">fixed_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a>    <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a>    <span class="n">skip_existing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fix FITS headers for a list of files, creating ``*_fixed.fits`` files.</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="sd">    This function processes FITS files to ensure they have the necessary</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    headers for xradio conversion. It can be run ahead of time before</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    calling :func:`convert_fits_dir_to_zarr` to separate the header</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">    fixing step from the conversion process.</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    files : List[Path]</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">        List of FITS file paths to process.</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">    fixed_dir : Path</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        Directory where ``*_fixed.fits`` files will be written.</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    skip_existing : bool, optional</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">        If True, skip files that already have corresponding fixed versions.</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">        Default is True.</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">    Returns</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">    -------</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="sd">    List[Path]</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">        List of paths to the fixed FITS files.</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="sd">    * Files already ending with ``_fixed.fits`` are considered already fixed</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">      and are returned as-is.</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a><span class="sd">    * The :func:`_fix_headers` function applies BSCALE/BZERO and adds minimal</span>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="sd">      WCS/spectral keywords required by xradio.</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    Examples</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    --------</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a><span class="sd">    &gt;&gt;&gt; from pathlib import Path</span>
-<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    &gt;&gt;&gt; from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers</span>
-<a id="__codelineno-0-215" name="__codelineno-0-215"></a><span class="sd">    &gt;&gt;&gt; input_files = list(Path(&quot;input&quot;).glob(&quot;*.fits&quot;))</span>
-<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">    &gt;&gt;&gt; fixed_dir = Path(&quot;fixed_fits&quot;)</span>
-<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">    &gt;&gt;&gt; fixed_dir.mkdir(exist_ok=True)</span>
-<a id="__codelineno-0-218" name="__codelineno-0-218"></a><span class="sd">    &gt;&gt;&gt; fixed_paths = fix_fits_headers(input_files, fixed_dir)</span>
-<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    &gt;&gt;&gt; print(f&quot;Fixed {len(fixed_paths)} files&quot;)</span>
-<a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-221" name="__codelineno-0-221"></a>    <span class="n">fixed_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="n">fixed_paths</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-223" name="__codelineno-0-223"></a>
-<a id="__codelineno-0-224" name="__codelineno-0-224"></a>    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_mhz_from_name</span><span class="p">):</span>
-<a id="__codelineno-0-225" name="__codelineno-0-225"></a>        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_fixed.fits&quot;</span><span class="p">):</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a>            <span class="c1"># Already fixed, use as-is</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>            <span class="n">fixed_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping already-fixed file: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>        <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>            <span class="n">fixed</span> <span class="o">=</span> <span class="n">fixed_dir</span> <span class="o">/</span> <span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">stem</span> <span class="o">+</span> <span class="s2">&quot;_fixed.fits&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-231" name="__codelineno-0-231"></a>            <span class="k">if</span> <span class="n">skip_existing</span> <span class="ow">and</span> <span class="n">fixed</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-<a id="__codelineno-0-232" name="__codelineno-0-232"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping existing fixed file: </span><span class="si">{</span><span class="n">fixed</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fixing headers: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">fixed</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a>                <span class="n">_fix_headers</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">fixed</span><span class="p">)</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a>            <span class="n">fixed_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fixed</span><span class="p">)</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="k">return</span> <span class="n">fixed_paths</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span>
+<span class="normal"><a href="#__codelineno-0-288">288</a></span>
+<span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span>
+<span class="normal"><a href="#__codelineno-0-292">292</a></span>
+<span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span>
+<span class="normal"><a href="#__codelineno-0-296">296</a></span>
+<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+<span class="normal"><a href="#__codelineno-0-298">298</a></span>
+<span class="normal"><a href="#__codelineno-0-299">299</a></span>
+<span class="normal"><a href="#__codelineno-0-300">300</a></span>
+<span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span>
+<span class="normal"><a href="#__codelineno-0-326">326</a></span>
+<span class="normal"><a href="#__codelineno-0-327">327</a></span>
+<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+<span class="normal"><a href="#__codelineno-0-329">329</a></span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span>
+<span class="normal"><a href="#__codelineno-0-331">331</a></span>
+<span class="normal"><a href="#__codelineno-0-332">332</a></span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span>
+<span class="normal"><a href="#__codelineno-0-334">334</a></span>
+<span class="normal"><a href="#__codelineno-0-335">335</a></span>
+<span class="normal"><a href="#__codelineno-0-336">336</a></span>
+<span class="normal"><a href="#__codelineno-0-337">337</a></span>
+<span class="normal"><a href="#__codelineno-0-338">338</a></span>
+<span class="normal"><a href="#__codelineno-0-339">339</a></span>
+<span class="normal"><a href="#__codelineno-0-340">340</a></span>
+<span class="normal"><a href="#__codelineno-0-341">341</a></span>
+<span class="normal"><a href="#__codelineno-0-342">342</a></span>
+<span class="normal"><a href="#__codelineno-0-343">343</a></span>
+<span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="k">def</span><span class="w"> </span><span class="nf">fix_fits_headers</span><span class="p">(</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="n">files</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">],</span>
+<a id="__codelineno-0-288" name="__codelineno-0-288"></a>    <span class="n">fixed_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+<a id="__codelineno-0-289" name="__codelineno-0-289"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="n">skip_existing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
+<a id="__codelineno-0-292" name="__codelineno-0-292"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Fix FITS headers for a list of files, creating ``*_fixed.fits`` files.</span>
+<a id="__codelineno-0-293" name="__codelineno-0-293"></a>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="sd">    This function processes FITS files to ensure they have the necessary</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a><span class="sd">    headers for xradio conversion. It can be run ahead of time before</span>
+<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    calling :func:`convert_fits_dir_to_zarr` to separate the header</span>
+<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    fixing step from the conversion process.</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">    files : List[Path]</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">        List of FITS file paths to process.</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">    fixed_dir : Path</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">        Directory where ``*_fixed.fits`` files will be written.</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    skip_existing : bool, optional</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">        If True, skip files that already have corresponding fixed versions.</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">        Default is True.</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a><span class="sd">    Returns</span>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    -------</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    List[Path]</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">        List of paths to the fixed FITS files.</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    * Files already ending with ``_fixed.fits`` are considered already fixed</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">      and are returned as-is.</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">    * The :func:`_fix_headers` function applies BSCALE/BZERO and adds minimal</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">      WCS/spectral keywords required by xradio.</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    Examples</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a><span class="sd">    --------</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    &gt;&gt;&gt; from pathlib import Path</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    &gt;&gt;&gt; from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    &gt;&gt;&gt; input_files = list(Path(&quot;input&quot;).glob(&quot;*.fits&quot;))</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">    &gt;&gt;&gt; fixed_dir = Path(&quot;fixed_fits&quot;)</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">    &gt;&gt;&gt; fixed_dir.mkdir(exist_ok=True)</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    &gt;&gt;&gt; fixed_paths = fix_fits_headers(input_files, fixed_dir)</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    &gt;&gt;&gt; print(f&quot;Fixed {len(fixed_paths)} files&quot;)</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a>    <span class="n">fixed_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a>    <span class="n">fixed_paths</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>
+<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">files</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">_frequency_sort_tuple</span><span class="p">):</span>
+<a id="__codelineno-0-335" name="__codelineno-0-335"></a>        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_fixed.fits&quot;</span><span class="p">):</span>
+<a id="__codelineno-0-336" name="__codelineno-0-336"></a>            <span class="c1"># Already fixed, use as-is</span>
+<a id="__codelineno-0-337" name="__codelineno-0-337"></a>            <span class="n">fixed_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+<a id="__codelineno-0-338" name="__codelineno-0-338"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping already-fixed file: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-339" name="__codelineno-0-339"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-340" name="__codelineno-0-340"></a>            <span class="n">fixed</span> <span class="o">=</span> <span class="n">fixed_dir</span> <span class="o">/</span> <span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">stem</span> <span class="o">+</span> <span class="s2">&quot;_fixed.fits&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-341" name="__codelineno-0-341"></a>            <span class="k">if</span> <span class="n">skip_existing</span> <span class="ow">and</span> <span class="n">fixed</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+<a id="__codelineno-0-342" name="__codelineno-0-342"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping existing fixed file: </span><span class="si">{</span><span class="n">fixed</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-343" name="__codelineno-0-343"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-344" name="__codelineno-0-344"></a>                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fixing headers: </span><span class="si">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> -&gt; </span><span class="si">{</span><span class="n">fixed</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a>                <span class="n">_fix_headers</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">fixed</span><span class="p">)</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>            <span class="n">fixed_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fixed</span><span class="p">)</span>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a>    <span class="k">return</span> <span class="n">fixed_paths</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
