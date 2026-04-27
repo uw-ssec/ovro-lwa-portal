@@ -198,6 +198,7 @@ gh = ">=2.0.0"
 pre-commit = ">=4.3.0"
 pytest = ">=6"
 pytest-cov = ">=3.0.0"
+nodejs = ">=20"
 
 [tool.pixi.feature.pre-commit.tasks]
 pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit hooks in the git repository" }

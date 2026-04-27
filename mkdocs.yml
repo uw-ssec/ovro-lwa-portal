@@ -46,6 +46,14 @@ nav:
       - Animations: user-guide/animations.md
       - WCS Coordinates: user-guide/wcs-coordinates.md
       - FITS to Zarr Conversion: user-guide/fits-to-zarr.md
+      - Zarr chunk optimization for cloud-based object stores:
+          - Chunking Fundamentals: user-guide/zarr-optimization/chunking-fundamentals.md
+          - Write Path Pipeline: user-guide/zarr-optimization/chunking-write-path.md
+          - Read-Time Optimization: user-guide/zarr-optimization/chunking-read-optimization.md
+          - Compression Strategies: user-guide/zarr-optimization/chunking-compression.md
+          - Benchmarking Performance: user-guide/zarr-optimization/chunking-benchmarking.md
+          - Cloud Storage Configuration: user-guide/zarr-optimization/chunking-cloud-storage.md
+          - Decision Guide: user-guide/zarr-optimization/chunking-decision-guide.md
   - Tutorials:
       - Transient Analysis: tutorials/transient-analysis.md
       - Pulsar Dedispersion: tutorials/pulsar-dedispersion.md
@@ -64,7 +72,11 @@ nav:
 markdown_extensions:
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.highlight:
