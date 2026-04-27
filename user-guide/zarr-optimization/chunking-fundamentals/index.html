@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/">
+        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/user-guide/zarr-optimization/chunking-fundamentals/">
       
       
+        <link rel="prev" href="../../fits-to-zarr/">
       
-        <link rel="next" href="getting-started/installation/">
+      
+        <link rel="next" href="../chunking-write-path/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
     
     
       
-        <title>OVRO-LWA Portal</title>
+        <title>Chunking Fundamentals - OVRO-LWA Portal</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,9 +53,9 @@
       
     
     
-      <link rel="stylesheet" href="assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -78,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ovro-lwa-portal" class="md-skip">
+        <a href="#zarr-chunking-fundamentals" class="md-skip">
           Skip to content
         </a>
       
@@ -92,7 +94,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="OVRO-LWA Portal" class="md-header__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-header__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -112,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Chunking Fundamentals
             
           </span>
         </div>
@@ -223,11 +225,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
         
   
   
@@ -248,7 +248,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="getting-started/installation/" class="md-tabs__link">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
           
   
   
@@ -264,11 +264,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="user-guide/visualization/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../visualization/" class="md-tabs__link">
           
   
   
@@ -288,7 +290,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="tutorials/transient-analysis/" class="md-tabs__link">
+        <a href="../../../tutorials/transient-analysis/" class="md-tabs__link">
           
   
   
@@ -308,7 +310,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="api/radport-accessor/" class="md-tabs__link">
+        <a href="../../../api/radport-accessor/" class="md-tabs__link">
           
   
   
@@ -328,7 +330,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="guides/architecture-decisions/" class="md-tabs__link">
+        <a href="../../../guides/architecture-decisions/" class="md-tabs__link">
           
   
   
@@ -348,7 +350,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="contributing/contributing/" class="md-tabs__link">
+        <a href="../../../contributing/contributing/" class="md-tabs__link">
           
   
   
@@ -382,7 +384,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="OVRO-LWA Portal" class="md-nav__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-nav__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -409,37 +411,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
         
   
   
@@ -455,81 +430,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Features
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#technology-stack" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Technology Stack
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick Start
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#getting-help" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Getting Help
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#license" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        License
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -593,7 +493,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/installation/" class="md-nav__link">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -621,7 +521,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/loading-data/" class="md-nav__link">
+      <a href="../../../getting-started/loading-data/" class="md-nav__link">
         
   
   
@@ -649,7 +549,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/basic-plotting/" class="md-nav__link">
+      <a href="../../../getting-started/basic-plotting/" class="md-nav__link">
         
   
   
@@ -677,7 +577,7 @@
   
   
     <li class="md-nav__item">
-      <a href="getting-started/coordinate-systems/" class="md-nav__link">
+      <a href="../../../getting-started/coordinate-systems/" class="md-nav__link">
         
   
   
@@ -709,26 +609,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -746,7 +651,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -764,7 +669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/visualization/" class="md-nav__link">
+      <a href="../../visualization/" class="md-nav__link">
         
   
   
@@ -792,7 +697,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/interactive-visualization/" class="md-nav__link">
+      <a href="../../interactive-visualization/" class="md-nav__link">
         
   
   
@@ -820,7 +725,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/spectral-analysis/" class="md-nav__link">
+      <a href="../../spectral-analysis/" class="md-nav__link">
         
   
   
@@ -848,7 +753,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/source-detection/" class="md-nav__link">
+      <a href="../../source-detection/" class="md-nav__link">
         
   
   
@@ -876,7 +781,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/celestial-tracking/" class="md-nav__link">
+      <a href="../../celestial-tracking/" class="md-nav__link">
         
   
   
@@ -904,7 +809,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/dispersion-measure/" class="md-nav__link">
+      <a href="../../dispersion-measure/" class="md-nav__link">
         
   
   
@@ -932,7 +837,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/animations/" class="md-nav__link">
+      <a href="../../animations/" class="md-nav__link">
         
   
   
@@ -960,7 +865,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/wcs-coordinates/" class="md-nav__link">
+      <a href="../../wcs-coordinates/" class="md-nav__link">
         
   
   
@@ -988,7 +893,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/fits-to-zarr/" class="md-nav__link">
+      <a href="../../fits-to-zarr/" class="md-nav__link">
         
   
   
@@ -1013,26 +918,31 @@
                 
   
   
+    
   
   
+  
     
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
         
           
-          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
             
   
   
@@ -1050,7 +960,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_10">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1065,10 +975,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-fundamentals/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chunking Fundamentals
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1084,6 +1021,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-a-zarr-chunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is a Zarr Chunk?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chunks-and-cloud-object-stores" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunks and Cloud Object Stores
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-ovro-lwa-data-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The OVRO-LWA Data Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-chunk-size-sweet-spot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Chunk Size Sweet Spot
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-concepts-glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Concepts Glossary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External References
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1096,7 +1130,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-write-path/" class="md-nav__link">
+      <a href="../chunking-write-path/" class="md-nav__link">
         
   
   
@@ -1124,7 +1158,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-read-optimization/" class="md-nav__link">
+      <a href="../chunking-read-optimization/" class="md-nav__link">
         
   
   
@@ -1152,7 +1186,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-compression/" class="md-nav__link">
+      <a href="../chunking-compression/" class="md-nav__link">
         
   
   
@@ -1180,7 +1214,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-benchmarking/" class="md-nav__link">
+      <a href="../chunking-benchmarking/" class="md-nav__link">
         
   
   
@@ -1208,7 +1242,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-cloud-storage/" class="md-nav__link">
+      <a href="../chunking-cloud-storage/" class="md-nav__link">
         
   
   
@@ -1236,7 +1270,7 @@
   
   
     <li class="md-nav__item">
-      <a href="user-guide/zarr-optimization/chunking-decision-guide/" class="md-nav__link">
+      <a href="../chunking-decision-guide/" class="md-nav__link">
         
   
   
@@ -1331,7 +1365,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/transient-analysis/" class="md-nav__link">
+      <a href="../../../tutorials/transient-analysis/" class="md-nav__link">
         
   
   
@@ -1359,7 +1393,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/pulsar-dedispersion/" class="md-nav__link">
+      <a href="../../../tutorials/pulsar-dedispersion/" class="md-nav__link">
         
   
   
@@ -1387,7 +1421,7 @@
   
   
     <li class="md-nav__item">
-      <a href="tutorials/spectral-mapping/" class="md-nav__link">
+      <a href="../../../tutorials/spectral-mapping/" class="md-nav__link">
         
   
   
@@ -1474,7 +1508,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/radport-accessor/" class="md-nav__link">
+      <a href="../../../api/radport-accessor/" class="md-nav__link">
         
   
   
@@ -1502,7 +1536,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/viz-module/" class="md-nav__link">
+      <a href="../../../api/viz-module/" class="md-nav__link">
         
   
   
@@ -1530,7 +1564,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/data-loading/" class="md-nav__link">
+      <a href="../../../api/data-loading/" class="md-nav__link">
         
   
   
@@ -1558,7 +1592,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/fits-to-zarr-xradio/" class="md-nav__link">
+      <a href="../../../api/fits-to-zarr-xradio/" class="md-nav__link">
         
   
   
@@ -1586,7 +1620,7 @@
   
   
     <li class="md-nav__item">
-      <a href="api/ingest/" class="md-nav__link">
+      <a href="../../../api/ingest/" class="md-nav__link">
         
   
   
@@ -1673,7 +1707,7 @@
   
   
     <li class="md-nav__item">
-      <a href="guides/architecture-decisions/" class="md-nav__link">
+      <a href="../../../guides/architecture-decisions/" class="md-nav__link">
         
   
   
@@ -1760,7 +1794,7 @@
   
   
     <li class="md-nav__item">
-      <a href="contributing/contributing/" class="md-nav__link">
+      <a href="../../../contributing/contributing/" class="md-nav__link">
         
   
   
@@ -1815,10 +1849,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#features" class="md-nav__link">
+  <a href="#what-is-a-zarr-chunk" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Features
+        What is a Zarr Chunk?
       
     </span>
   </a>
@@ -1826,10 +1860,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#technology-stack" class="md-nav__link">
+  <a href="#chunks-and-cloud-object-stores" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Technology Stack
+        Chunks and Cloud Object Stores
       
     </span>
   </a>
@@ -1837,10 +1871,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#the-ovro-lwa-data-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        The OVRO-LWA Data Model
       
     </span>
   </a>
@@ -1848,10 +1882,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#getting-help" class="md-nav__link">
+  <a href="#the-chunk-size-sweet-spot" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Getting Help
+        The Chunk Size Sweet Spot
       
     </span>
   </a>
@@ -1859,10 +1893,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#license" class="md-nav__link">
+  <a href="#key-concepts-glossary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        License
+        Key Concepts Glossary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External References
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
       
     </span>
   </a>
@@ -1889,61 +1945,265 @@
   
 
 
-<h1 id="ovro-lwa-portal">OVRO-LWA Portal<a class="headerlink" href="#ovro-lwa-portal" title="Permanent link">&para;</a></h1>
-<p>A Python library for radio astronomy data processing and visualization for the
-Owens Valley Radio Observatory - Long Wavelength Array (OVRO-LWA).</p>
-<p>For a project overview and quick start, see the
-<a href="https://github.com/uw-ssec/ovro-lwa-portal/blob/main/README.md">README</a> on
-GitHub.</p>
-<h2 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Unified Data Loading</strong>: Load OVRO-LWA data from local paths, remote URLs
-  (S3, HTTPS), or DOI identifiers with a single <code>open_dataset()</code> function</li>
-<li><strong>Interactive Visualization</strong>: Panel/HoloViews explorers with linked views,
-  sky overlay via Aladin Lite, and click-to-inspect interactions
-  (<a href="user-guide/interactive-visualization/">guide</a>)</li>
-<li><strong>FITS to Zarr Conversion</strong>: Convert OVRO-LWA FITS image files to
-  cloud-optimized Zarr format</li>
-<li><strong>Command-Line Interface</strong>: User-friendly <code>ovro-ingest</code> CLI with progress
-  tracking</li>
-<li><strong>WCS Coordinate Preservation</strong>: Maintain celestial coordinates (RA/Dec) for
-  FITS-free analysis</li>
-<li><strong>Incremental Processing</strong>: Append new observations to existing Zarr stores</li>
-<li><strong>Concurrent Write Protection</strong>: File locking prevents data corruption from
-  simultaneous processes</li>
-<li><strong>Optional Workflow Orchestration</strong>: Prefect integration for production
-  deployments</li>
-</ul>
-<h2 id="technology-stack">Technology Stack<a class="headerlink" href="#technology-stack" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Core</strong>: Python 3.12, xarray, dask, zarr</li>
-<li><strong>Astronomy</strong>: astropy, xradio, python-casacore</li>
-<li><strong>CLI</strong>: typer, rich (progress bars and formatted output)</li>
-<li><strong>Workflow</strong>: prefect (optional orchestration)</li>
-<li><strong>Storage</strong>: Zarr format optimized for cloud access</li>
-<li><strong>Environment Management</strong>: pixi</li>
-</ul>
-<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<h1 id="zarr-chunking-fundamentals">Zarr Chunking Fundamentals<a class="headerlink" href="#zarr-chunking-fundamentals" title="Permanent link">&para;</a></h1>
+<p>Understanding how Zarr chunks work is essential for optimizing OVRO-LWA data
+access on cloud storage. This guide explains the conceptual foundations of
+chunking and how they apply to radio astronomy workflows.</p>
+<h2 id="what-is-a-zarr-chunk">What is a Zarr Chunk?<a class="headerlink" href="#what-is-a-zarr-chunk" title="Permanent link">&para;</a></h2>
+<p>A chunk is the atomic unit of storage and retrieval in Zarr. When you request
+data from a Zarr array, the entire chunk containing that data must be read, even
+if you only need a single value. This design trades fine-grained access for
+efficiency at scale.</p>
+<p>Think of a chunk as a contiguous block of array data that is compressed and
+stored as a single unit. The chunk shape defines how many elements along each
+dimension are grouped together, while the chunk size (in bytes) determines the
+actual storage footprint after compression. The total number of chunks in a
+dataset equals the product of array size divided by chunk size along each
+dimension.</p>
+<pre class="mermaid"><code>flowchart TB
+    subgraph "5D OVRO-LWA Array"
+        A["Array Shape:&lt;br/&gt;time × frequency × polarization × l × m&lt;br/&gt;10 × 48 × 1 × 4096 × 4096"]
+    end
+
+    subgraph "Chunking Strategy"
+        B["Chunk Shape:&lt;br/&gt;1 × 1 × 1 × 1024 × 1024"]
+    end
+
+    subgraph "On-Disk Storage"
+        C["Chunk Files:&lt;br/&gt;0.0.0.0.0&lt;br/&gt;0.0.0.0.1&lt;br/&gt;0.0.0.0.2&lt;br/&gt;...&lt;br/&gt;Each chunk = compressed binary blob"]
+    end
+
+    A --&gt; B
+    B --&gt; C
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#f0f0f0</code></pre>
+<p>The spatial tiling structure for a 4096×4096 image with chunk_lm=1024 creates a
+4×4 grid:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>4096×4096 spatial array chunked into 1024×1024 tiles:
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Load from local zarr store</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;/path/to/observation.zarr&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># Load from remote URL</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;s3://ovro-lwa-data/obs_12345.zarr&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># Load via DOI</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;doi:10.5281/zenodo.1234567&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    l-axis (4096 pixels) →
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>m  ┌────────┬────────┬────────┬────────┐
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│  │        │        │        │        │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>a  │ (0,0)  │ (0,1)  │ (0,2)  │ (0,3)  │  Each tile = 1024×1024 pixels
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>x  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │              = 4 MB uncompressed
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>i  │        │        │        │        │              (float32)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>s  ├────────┼────────┼────────┼────────┤
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>   │        │        │        │        │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>4  │ (1,0)  │ (1,1)  │ (1,2)  │ (1,3)  │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>0  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>9  │        │        │        │        │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>6  ├────────┼────────┼────────┼────────┤
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>   │        │        │        │        │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>p  │ (2,0)  │ (2,1)  │ (2,2)  │ (2,3)  │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>i  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>x  │        │        │        │        │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>e  ├────────┼────────┼────────┼────────┤
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>l  │        │        │        │        │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>s  │ (3,0)  │ (3,1)  │ (3,2)  │ (3,3)  │
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>↓  │ 1024²  │ 1024²  │ 1024²  │ 1024²  │
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>   │        │        │        │        │
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>   └────────┴────────┴────────┴────────┘
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>Total: 16 spatial chunks per time-frequency-polarization point
 </code></pre></div>
-<h2 id="getting-help">Getting Help<a class="headerlink" href="#getting-help" title="Permanent link">&para;</a></h2>
+<p>Each chunk maps to a single file on local storage or a single object in cloud
+storage like S3 or the Open Storage Network (OSN). The chunk's storage key is
+simply its position index in the array. For example, the chunk at time index 0,
+frequency index 1, polarization 0, l-block 0, m-block 0 is stored with the key
+<code>0.1.0.0.0</code>. This design makes it trivial to locate and retrieve any chunk
+without metadata lookups.</p>
+<h2 id="chunks-and-cloud-object-stores">Chunks and Cloud Object Stores<a class="headerlink" href="#chunks-and-cloud-object-stores" title="Permanent link">&para;</a></h2>
+<p>Cloud object stores like S3 and OSN operate fundamentally differently from
+traditional filesystems. Each chunk retrieval requires an independent HTTP GET
+request, and each request carries latency overhead of approximately 50–100
+milliseconds regardless of the data size being fetched. This per-request cost
+dominates performance when working with many small chunks.</p>
+<p>To illustrate: fetching 1,000 chunks of 100 KB each requires 1,000 separate HTTP
+requests, incurring 50–100 seconds of latency overhead alone. If those same
+chunks were consolidated into 100 chunks of 1 MB each, the latency overhead
+drops to 5–10 seconds. The network throughput remains the same, but the request
+overhead shrinks dramatically.</p>
+<p>Parallel GET requests provide the primary mechanism for achieving high
+throughput on cloud storage. Modern Python libraries like <code>s3fs</code>, <code>fsspec</code>, and
+<code>xarray</code> automatically fetch multiple chunks concurrently, allowing bandwidth to
+scale with the number of parallel workers. A properly chunked dataset can
+saturate network bandwidth by fetching dozens of chunks simultaneously, while a
+poorly chunked dataset wastes time waiting on sequential request latency.</p>
+<p>Local storage, by contrast, has negligible per-request latency. Random access to
+small blocks is cheap on local disk, so chunking matters less for performance
+and more for compression efficiency and write concurrency. This fundamental
+difference means that chunk optimization strategies for cloud storage do not
+necessarily apply to local workflows.</p>
+<p>The OVRO-LWA Portal uses the Open Storage Network (OSN) as its S3-compatible
+backend. OSN provides public datasets via HTTPS URLs and authenticated access
+via S3 endpoints. When you provide S3 credentials to <code>open_dataset()</code>, the
+library automatically converts OSN HTTPS URLs to S3 endpoints for optimal
+performance.</p>
+<h2 id="the-ovro-lwa-data-model">The OVRO-LWA Data Model<a class="headerlink" href="#the-ovro-lwa-data-model" title="Permanent link">&para;</a></h2>
+<p>OVRO-LWA datasets are stored as 5-dimensional arrays with the following
+structure:</p>
+<p><strong>Dimensions:</strong></p>
 <ul>
-<li><a href="https://github.com/uw-ssec/ovro-lwa-portal/issues">GitHub Issues</a></li>
-<li><a href="https://github.com/uw-ssec/ovro-lwa-portal/discussions">GitHub Discussions</a></li>
+<li><strong>time</strong>: Observation timestamps (Modified Julian Date)</li>
+<li><strong>frequency</strong>: Radio frequency channels in Hz</li>
+<li><strong>polarization</strong>: Stokes parameters or linear polarizations (typically 2
+  values)</li>
+<li><strong>l</strong>: Direction cosine in the east-west direction (image x-axis)</li>
+<li><strong>m</strong>: Direction cosine in the north-south direction (image y-axis)</li>
 </ul>
-<h2 id="license">License<a class="headerlink" href="#license" title="Permanent link">&para;</a></h2>
-<p>This project is licensed under the BSD License - see the
-<a href="https://github.com/uw-ssec/ovro-lwa-portal/blob/main/LICENSE">LICENSE</a> file for
-details.</p>
+<p><strong>Data Variables:</strong></p>
+<ul>
+<li><strong>SKY</strong> (required): Sky brightness as a function of time, frequency, and
+  position (float32)</li>
+<li><strong>BEAM</strong> (optional): Instrumental beam pattern (float32)</li>
+</ul>
+<p>The spatial grid spans 4096×4096 pixels in the (l, m) plane, providing a
+wide-field view of the radio sky. At single precision (float32), a single
+spatial frame occupies 4096 × 4096 × 4 bytes = 67,108,864 bytes ≈ 64 MB
+uncompressed. With 48 frequency channels and 1 polarization (typical for
+OVRO-LWA observations using Stokes I only), a single time snapshot totals
+approximately 3 GB uncompressed.</p>
+<p>Typical dimension sizes vary by observation:</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Typical Range</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>time</td>
+<td>1-100+ steps</td>
+<td>One step per FITS snapshot</td>
+</tr>
+<tr>
+<td>frequency</td>
+<td>20-48 channels</td>
+<td>27-88 MHz, ~1.3 MHz spacing</td>
+</tr>
+<tr>
+<td>polarization</td>
+<td>1-4</td>
+<td>Usually 1 (Stokes I only)</td>
+</tr>
+<tr>
+<td>l</td>
+<td>512-4096</td>
+<td>Direction cosine, spatial</td>
+</tr>
+<tr>
+<td>m</td>
+<td>512-4096</td>
+<td>Direction cosine, spatial</td>
+</tr>
+</tbody>
+</table>
+<p>The fixed spatial resolution and frequency channels come from the OVRO-LWA
+instrument design, while time coverage depends on the observation duration and
+cadence.</p>
+<h2 id="the-chunk-size-sweet-spot">The Chunk Size Sweet Spot<a class="headerlink" href="#the-chunk-size-sweet-spot" title="Permanent link">&para;</a></h2>
+<p>The industry consensus for cloud-optimized chunking targets 10–100 MB per chunk
+after compression. This range balances HTTP request overhead with bandwidth
+efficiency and memory usage.</p>
+<p>Below 1 MB, chunks become dominated by network latency rather than transfer
+time. Fetching 1,000 chunks of 500 KB each on a 100 Mbps connection takes 40
+seconds to transfer but incurs 50–100 seconds of pure request overhead. The
+requests cost more time than the data transfer itself.</p>
+<p>Above 500 MB, chunks waste bandwidth when analysis requires only a spatial
+subset or a single time slice. Reading a 1 GB chunk to extract a 10 MB region
+transfers 990 MB of unnecessary data. For interactive workflows or selective
+queries, oversized chunks create unacceptable delays.</p>
+<p>Consider a worked example for the OVRO-LWA data model. With a chunk shape of
+<code>chunk_lm=1024</code> on a 4096×4096 spatial grid, the array divides into 4 chunks per
+spatial dimension, yielding 16 spatial chunks per frame. Each spatial chunk
+contains 1024 × 1024 × 4 bytes = 4 MB uncompressed.</p>
+<p>Radio astronomy sky images typically achieve compression ratios of 3:1 to 6:1
+with Zarr's default Blosc compressor, as the spatial structure and empty sky
+regions compress efficiently. These ratios are typical for the domain based on
+published results for similar radio telescope data. For OVRO-LWA data with
+typical astronomical image characteristics and the default compressor settings,
+a 4 MB uncompressed chunk would typically compress to approximately 0.7–1.3 MB
+on disk. With 1 polarization, 48 frequency channels means 48 chunks per spatial
+tile per time step, totaling 34–62 MB per spatial region across all frequencies.
+This aligns well with the 10–100 MB target range for cloud-optimized chunking.
+Actual compression ratios depend on sky structure and noise characteristics —
+use the measurement procedures below to verify compression on your specific
+datasets.</p>
+<div class="admonition tip">
+<p class="admonition-title">Measuring Actual Compression</p>
+<p>To verify compression ratios on your data, inspect an existing Zarr store:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Get compressed size of all chunks for SKY variable</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>du<span class="w"> </span>-sh<span class="w"> </span>/path/to/store.zarr/SKY/
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Compare to uncompressed size from metadata</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import zarr; z = zarr.open(&#39;/path/to/store.zarr&#39;, &#39;r&#39;); \</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="s2">print(f&#39;Uncompressed: {z.SKY.nbytes / 1e9:.2f} GB&#39;)&quot;</span>
+</code></pre></div>
+The ratio of uncompressed to compressed size gives your empirical compression
+ratio for planning future conversions.</p>
+</div>
+<p>This chunking strategy aligns with OVRO-LWA's two primary access patterns. For
+time-frequency extraction targeting a known source position, chunking along
+spatial dimensions minimizes the number of chunks needed to cover a small region
+on the sky. The analysis typically averages over frequency channels, so loading
+a single spatial chunk across all frequencies provides efficient access. For map
+generation at a selected time or frequency range, chunking along time and
+frequency dimensions allows selective loading of specific spectral windows
+without reading the entire dataset. Reading 16 spatial chunks to reconstruct a
+full 4096×4096 map at a single time-frequency point requires 16 parallel GET
+requests, completing in approximately the same time as a single request due to
+parallelization.</p>
+<p>Chunk size optimization is not a one-size-fits-all problem. The best chunking
+strategy depends on your analysis workflow, network bandwidth, and latency
+constraints. Experimentation with representative queries is essential for
+production deployments.</p>
+<h2 id="key-concepts-glossary">Key Concepts Glossary<a class="headerlink" href="#key-concepts-glossary" title="Permanent link">&para;</a></h2>
+<p><strong>Chunk shape</strong>: The number of array elements included in a single chunk along
+each dimension. For example, a chunk shape of <code>(1, 1, 1, 1024, 1024)</code> includes 1
+time sample, 1 frequency channel, 1 polarization, and 1024×1024 spatial pixels.</p>
+<p><strong>Chunk size</strong>: The storage size of a single chunk in bytes, typically measured
+after compression. A chunk with shape <code>(1, 1, 1, 1024, 1024)</code> at float32
+precision occupies 4 MB uncompressed, with the compressed size depending on the
+compressor configuration and data characteristics.</p>
+<p><strong>Compression ratio</strong>: The factor by which data is reduced during compression. A
+compression ratio of 4:1 means that 4 MB of uncompressed data compresses to 1
+MB. Zarr supports multiple compressors including zstd, blosc, and gzip.</p>
+<p><strong>Consolidated metadata</strong>: A Zarr optimization that stores all chunk metadata in
+a single <code>.zmetadata</code> file rather than individual files per chunk. This reduces
+the number of HTTP requests required to open a dataset on cloud storage,
+eliminating metadata-lookup latency.</p>
+<p><strong>Chunk alignment</strong>: The property that data access boundaries align with chunk
+boundaries. When a query selects data that spans chunk boundaries, multiple
+chunks must be read. Aligning queries to chunk boundaries minimizes unnecessary
+data transfer.</p>
+<p><strong>Access pattern</strong>: The typical way that data is queried and subset during
+analysis. Common OVRO-LWA access patterns include time-series extraction at
+fixed sky positions, full-map generation at single time-frequency points, and
+spectral averaging over frequency ranges.</p>
+<p><strong>Dask task graph</strong>: The computational graph generated by dask when operating on
+chunked arrays. Each chunk becomes a task in the graph, and dask schedules tasks
+across workers to parallelize computation. Chunk size directly affects task
+granularity and scheduling overhead.</p>
+<h2 id="external-references">External References<a class="headerlink" href="#external-references" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://zarr.readthedocs.io/en/stable/user-guide/performance.html">Zarr Performance User Guide</a> -
+  Official Zarr performance recommendations</li>
+<li><a href="https://esipfed.github.io/cloud-computing-cluster/resources-for-optimization.html">ESIP Cloud Computing Optimization</a> -
+  Cloud-optimized data formats for Earth science</li>
+<li><a href="https://tutorial.xarray.dev/intermediate/intro-to-zarr.html">Xarray Intro to Zarr Tutorial</a> -
+  Hands-on tutorial for working with Zarr in xarray</li>
+</ul>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../fits-to-zarr/">FITS to Zarr Conversion</a> - Converting OVRO-LWA FITS files
+  to Zarr format</li>
+<li><a href="../../../api/data-loading/">Data Loading API Reference</a> - API documentation
+  for loading Zarr datasets</li>
+</ul>
 
 
 
@@ -1999,12 +2259,12 @@ details.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
-        <script src="javascripts/mathjax.js"></script>
+        <script src="../../../javascripts/mathjax.js"></script>
       
         <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
       

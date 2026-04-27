@@ -1,0 +1,2826 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Python library for radio astronomy data processing and visualization for OVRO-LWA">
+      
+      
+      
+        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/user-guide/zarr-optimization/chunking-decision-guide/">
+      
+      
+        <link rel="prev" href="../chunking-cloud-storage/">
+      
+      
+        <link rel="next" href="../../../tutorials/transient-analysis/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>Decision Guide - OVRO-LWA Portal</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#chunk-optimization-decision-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-header__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            OVRO-LWA Portal
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Decision Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/uw-ssec/ovro-lwa-portal" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    uw-ssec/ovro-lwa-portal
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../visualization/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../tutorials/transient-analysis/" class="md-tabs__link">
+          
+  
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/radport-accessor/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/architecture-decisions/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/contributing/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-nav__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    OVRO-LWA Portal
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/uw-ssec/ovro-lwa-portal" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    uw-ssec/ovro-lwa-portal
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/loading-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/basic-plotting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basic Plotting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../interactive-visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactive Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spectral-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../source-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../celestial-tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Celestial Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dispersion-measure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dispersion Measure Correction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wcs-coordinates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WCS Coordinates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fits-to-zarr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FITS to Zarr Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-fundamentals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chunking Fundamentals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-write-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write Path Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-read-optimization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read-Time Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression Strategies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarking Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-cloud-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Storage Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#decision-flowchart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Flowchart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference Table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-patterns-what-not-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-Patterns (What NOT to Do)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#my-cloud-reads-are-slow-what-should-i-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        My cloud reads are slow. What should I check?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#im-running-out-of-memory-how-do-i-reduce-memory-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I'm running out of memory. How do I reduce memory usage?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dask-is-creating-too-many-tasks-and-the-scheduler-is-slow-how-do-i-fix-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dask is creating too many tasks and the scheduler is slow. How do I fix this?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-rechunk-an-existing-zarr-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I rechunk an existing Zarr store?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-cross-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Cross-Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-page-cheat-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-Page Cheat Sheet
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="One-Page Cheat Sheet">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-numbers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Numbers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cloud-essentials-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Essentials Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Fixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-pattern-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access Pattern Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/transient-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transient Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/pulsar-dedispersion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pulsar Dedispersion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/spectral-mapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral Mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/radport-accessor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    radport Accessor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/viz-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/data-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Loading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/fits-to-zarr-xradio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FITS to Zarr (Low-Level)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/ingest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ingest Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/architecture-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#decision-flowchart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Flowchart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Reference Table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#anti-patterns-what-not-to-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-Patterns (What NOT to Do)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting-faq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting FAQ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting FAQ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#my-cloud-reads-are-slow-what-should-i-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        My cloud reads are slow. What should I check?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#im-running-out-of-memory-how-do-i-reduce-memory-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        I'm running out of memory. How do I reduce memory usage?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dask-is-creating-too-many-tasks-and-the-scheduler-is-slow-how-do-i-fix-this" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dask is creating too many tasks and the scheduler is slow. How do I fix this?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-do-i-rechunk-an-existing-zarr-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How do I rechunk an existing Zarr store?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-cross-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Cross-Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#one-page-cheat-sheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-Page Cheat Sheet
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="One-Page Cheat Sheet">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-numbers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Numbers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cloud-essentials-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Essentials Checklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debug-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug Commands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Fixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#access-pattern-quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access Pattern Quick Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="chunk-optimization-decision-guide">Chunk Optimization Decision Guide<a class="headerlink" href="#chunk-optimization-decision-guide" title="Permanent link">&para;</a></h1>
+<p>This quick-reference guide synthesizes the entire Zarr chunk optimization series
+into actionable recommendations. Use this as your starting point to choose chunk
+configurations, avoid common mistakes, and troubleshoot performance issues.</p>
+<h2 id="decision-flowchart">Decision Flowchart<a class="headerlink" href="#decision-flowchart" title="Permanent link">&para;</a></h2>
+<p>Use this flowchart to navigate from your situation to a specific recommendation:</p>
+<pre class="mermaid"><code>flowchart TD
+    Start["What is your data size?"]
+    Start --&gt; Small["&lt; 1 GB"]
+    Start --&gt; Medium["1-10 GB"]
+    Start --&gt; Large["&gt; 10 GB"]
+
+    Small --&gt; UseNone["Use chunks=None&lt;br/&gt;(load into memory)"]
+    Medium --&gt; UseAuto["Use chunks='auto'&lt;br/&gt;(good enough)"]
+
+    Large --&gt; Location{"Where is&lt;br/&gt;your data?"}
+    Location --&gt; Local["Local filesystem"]
+    Location --&gt; Cloud["Cloud storage"]
+
+    Local --&gt; LocalAuto["Use chunks='auto'&lt;br/&gt;(Dask handles it well)"]
+
+    Cloud --&gt; Pattern{"Primary&lt;br/&gt;access pattern?"}
+    Pattern --&gt; Spatial["Full spatial images&lt;br/&gt;(sky maps)"]
+    Pattern --&gt; TimeSeries["Time series&lt;br/&gt;(point sources)"]
+    Pattern --&gt; Spectral["Spectral analysis&lt;br/&gt;(frequency domain)"]
+    Pattern --&gt; Mixed["Mixed/batch&lt;br/&gt;(various analyses)"]
+
+    Spatial --&gt; RecipeA["Recipe A:&lt;br/&gt;chunks={'time': 1, 'frequency': 1,&lt;br/&gt;'l': 1024, 'm': 1024}"]
+    TimeSeries --&gt; RecipeB["Recipe B:&lt;br/&gt;chunks={'time': -1, 'frequency': 1,&lt;br/&gt;'l': 256, 'm': 256}"]
+    Spectral --&gt; RecipeC["Recipe C:&lt;br/&gt;chunks={'time': 1, 'frequency': -1,&lt;br/&gt;'l': 256, 'm': 256}"]
+    Mixed --&gt; RecipeD["Recipe D:&lt;br/&gt;chunks={'time': 5, 'frequency': 10,&lt;br/&gt;'l': 512, 'm': 512}"]
+
+    RecipeA --&gt; ReadOptDocs["See Read-Time Optimization&lt;br/&gt;for details"]
+    RecipeB --&gt; ReadOptDocs
+    RecipeC --&gt; ReadOptDocs
+    RecipeD --&gt; ReadOptDocs
+
+    style UseNone fill:#d4edda
+    style UseAuto fill:#fff4e1
+    style LocalAuto fill:#fff4e1
+    style RecipeA fill:#e1f5ff
+    style RecipeB fill:#e1f5ff
+    style RecipeC fill:#e1f5ff
+    style RecipeD fill:#e1f5ff
+    style ReadOptDocs fill:#f8d7da</code></pre>
+<p>For detailed explanations of each recipe, see
+<a href="../chunking-read-optimization/#access-pattern-recipes">Read-Time Optimization</a>.</p>
+<h2 id="quick-reference-table">Quick Reference Table<a class="headerlink" href="#quick-reference-table" title="Permanent link">&para;</a></h2>
+<p>Common scenarios with recommended configurations:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Write chunk_lm</th>
+<th>Read chunks=</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Small local dataset (&lt; 1 GB)</td>
+<td>any</td>
+<td><code>None</code></td>
+<td>Loads entire dataset to RAM</td>
+</tr>
+<tr>
+<td>Large local dataset (&gt; 10 GB)</td>
+<td>1024</td>
+<td><code>"auto"</code></td>
+<td>Dask handles memory automatically</td>
+</tr>
+<tr>
+<td>Cloud: spatial analysis</td>
+<td>1024</td>
+<td><code>{"time": 1, "frequency": 1, "l": 1024, "m": 1024}</code></td>
+<td>Aligns with write chunks, minimal HTTP</td>
+</tr>
+<tr>
+<td>Cloud: time series (point sources)</td>
+<td>512</td>
+<td><code>{"time": -1, "frequency": 1, "l": 256, "m": 256}</code></td>
+<td>Small spatial tiles reduce bandwidth waste</td>
+</tr>
+<tr>
+<td>Cloud: spectral analysis</td>
+<td>1024</td>
+<td><code>{"time": 1, "frequency": -1, "l": 256, "m": 256}</code></td>
+<td>All frequencies per spatial tile</td>
+</tr>
+<tr>
+<td>Cloud: batch processing</td>
+<td>1024</td>
+<td><code>{"time": 5, "frequency": 10, "l": 512, "m": 512}</code></td>
+<td>Balanced chunks for mixed access</td>
+</tr>
+<tr>
+<td>Cloud: exploratory (unknown pattern)</td>
+<td>1024</td>
+<td><code>"auto"</code></td>
+<td>Start with auto, optimize after profiling</td>
+</tr>
+<tr>
+<td>Local: memory-constrained environment</td>
+<td>512-1024</td>
+<td>Reduce largest dimension (e.g., <code>{"l": 512, "m": 512}</code>)</td>
+<td>Trade parallelism for memory footprint</td>
+</tr>
+<tr>
+<td>Cloud: high-frequency access</td>
+<td>1024</td>
+<td>Same as access pattern + <code>fsspec.simplecache</code> (see Caching)</td>
+<td>Cache frequently accessed chunks</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key principle:</strong> Read chunks should be multiples of write chunks for optimal
+alignment. See <a href="../chunking-fundamentals/#chunk-alignment">Chunking Fundamentals</a>
+for why alignment matters.</p>
+<h2 id="anti-patterns-what-not-to-do">Anti-Patterns (What NOT to Do)<a class="headerlink" href="#anti-patterns-what-not-to-do" title="Permanent link">&para;</a></h2>
+<p>Avoid these common mistakes that degrade performance:</p>
+<div class="admonition warning">
+<p class="admonition-title">Using chunks=None on Large Remote Datasets</p>
+<p><strong>Problem:</strong> Calling <code>open_dataset("s3://bucket/data.zarr", chunks=None)</code>
+downloads the entire dataset (potentially 10s of GB) before any analysis
+begins. This causes:</p>
+<ul>
+<li>Out-of-memory errors on datasets larger than RAM</li>
+<li>Multi-minute wait times for data transfer</li>
+<li>Unnecessary egress costs</li>
+</ul>
+<p><strong>Solution:</strong> Use <code>chunks="auto"</code> or explicit chunk dict for datasets &gt; 1 GB
+on cloud storage.</p>
+<p><strong>Reference:</strong> <a href="../chunking-fundamentals/">Chunking Fundamentals</a> explains
+when chunks=None is appropriate (small local datasets only).</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Very Small Chunks on Cloud Storage</p>
+<p><strong>Problem:</strong> Setting chunks &lt; 1 MB (e.g.,
+<code>chunks={"l": 128, "m": 128}</code>) creates excessive HTTP requests. With
+~50-100ms latency per request, a dataset with 100,000 tiny chunks takes
+5,000-10,000 seconds (~2-3 hours) of pure latency overhead.</p>
+<p><strong>Solution:</strong> Target 10-100 MB compressed chunks. For OVRO-LWA with
+chunk_lm=1024, each spatial tile is ~4 MB uncompressed, which compresses to
+~1-2 MB typically.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-fundamentals/#the-chunk-size-sweet-spot">Chunking Fundamentals</a>
+explains the latency-throughput tradeoff.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Misaligned Read Chunks</p>
+<p><strong>Problem:</strong> Reading <code>chunks={"l": 750, "m": 750}</code> from data written with
+<code>chunk_lm=1024</code> forces Zarr to fetch full 1024×1024 on-disk chunks but use
+only part of each, wasting bandwidth. Chunk utilization drops below 50%.</p>
+<p><strong>Solution:</strong> Use read chunks that are divisors or multiples of write
+chunks: 256, 512, 1024, 2048, 4096 for spatial dimensions.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-read-optimization/#chunk-alignment-and-partial-reads">Read-Time Optimization</a>
+shows worked examples of good and bad alignment.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">No Consolidated Metadata on Remote Stores</p>
+<p><strong>Problem:</strong> Opening a Zarr store without <code>.zmetadata</code> requires N+1 small
+HTTP requests (one per array + attributes). A store with 10 arrays takes
+20+ requests = 1-2 seconds of overhead before any data is read.</p>
+<p><strong>Solution:</strong> Always create consolidated metadata with
+<code>zarr.consolidate_metadata("store.zarr")</code> before deploying stores for
+production use.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-cloud-storage/#consolidated-metadata">Cloud Storage Configuration</a>
+explains how to check for and create consolidated metadata.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Too Many Dask Tasks from Tiny Chunks</p>
+<p><strong>Problem:</strong> Chunks that are too small create &gt; 100,000 Dask tasks, causing
+scheduler overhead to dominate execution time. Symptoms: Dask dashboard
+shows tasks queued for minutes, actual computation is fast once started.</p>
+<p><strong>Solution:</strong> Increase chunk sizes to consolidate tasks. Check task count
+with <code>len(ds.SKY.data.__dask_graph__())</code> and target 100-10,000 tasks for
+typical operations.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-benchmarking/#dask-task-count">Benchmarking Performance</a>
+explains how to measure and interpret task counts.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Changing chunk_lm Between Ingest Append Operations</p>
+<p><strong>Problem:</strong> The OVRO-LWA ingest pipeline's append mode rewrites the entire
+store. Changing chunk_lm between appends creates inconsistent chunk
+boundaries, breaking chunk alignment assumptions.</p>
+<p><strong>Solution:</strong> Set chunk_lm once at first ingest and keep it consistent for
+all subsequent appends to the same store.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-write-path/#append-mode-and-chunk-consistency">Write Path Pipeline</a> explains
+how append mode handles chunk boundaries.</p>
+</div>
+<h2 id="troubleshooting-faq">Troubleshooting FAQ<a class="headerlink" href="#troubleshooting-faq" title="Permanent link">&para;</a></h2>
+<h3 id="my-cloud-reads-are-slow-what-should-i-check">My cloud reads are slow. What should I check?<a class="headerlink" href="#my-cloud-reads-are-slow-what-should-i-check" title="Permanent link">&para;</a></h3>
+<p><strong>Diagnostic steps in order:</strong></p>
+<ol>
+<li><strong>Check chunk sizes</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;s3://bucket/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">chunks</span><span class="p">)</span>
+</code></pre></div>
+<p>Are read chunks &lt; 1 MB uncompressed? If so, they're likely too small for
+   cloud access.</p>
+<ol>
+<li><strong>Check chunk alignment</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Compare on-disk chunk shape to read-time chunks</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zarr</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">store</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;s3://bucket/data.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">storage_options</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;On-disk chunks:&quot;</span><span class="p">,</span> <span class="n">store</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">chunks</span><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Read chunks:&quot;</span><span class="p">,</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">chunks</span><span class="p">)</span>
+</code></pre></div>
+<p>Do read chunks evenly divide or multiply write chunks? If not, you're
+   fetching more data than needed.</p>
+<ol>
+<li><strong>Check consolidated metadata</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zarr</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">store</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;s3://bucket/data.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">storage_options</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;.zmetadata exists:&quot;</span><span class="p">,</span> <span class="s2">&quot;.zmetadata&quot;</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">store</span><span class="p">)</span>
+</code></pre></div>
+<p>If False, opening the store requires dozens of small metadata requests.
+   Create consolidated metadata with <code>zarr.consolidate_metadata("store.zarr")</code>.</p>
+<ol>
+<li><strong>Check network latency</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ping<span class="w"> </span>-c<span class="w"> </span><span class="m">10</span><span class="w"> </span>caltech1.osn.mghpcc.org
+</code></pre></div>
+<p>Average latency &gt; 200ms suggests network issues or poor routing to the
+   endpoint.</p>
+<ol>
+<li><strong>Check compression and actual chunk sizes</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Inspect on-disk chunk metadata</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import json; print(json.load(open(&#39;store.zarr/SKY/.zarray&#39;)))&quot;</span>
+</code></pre></div>
+<p>Look at <code>compressor</code> and <code>chunks</code> fields. If chunks are &lt; 1 MB after
+   compression, they may be too small.</p>
+<ol>
+<li><strong>Try caching for repeated access</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">fsspec</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">fs</span> <span class="o">=</span> <span class="n">fsspec</span><span class="o">.</span><span class="n">filesystem</span><span class="p">(</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">&quot;simplecache&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">target_protocol</span><span class="o">=</span><span class="s2">&quot;s3&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">target_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span><span class="p">},</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">cache_storage</span><span class="o">=</span><span class="s2">&quot;/tmp/zarr_cache&quot;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">)</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="n">mapper</span> <span class="o">=</span> <span class="n">fs</span><span class="o">.</span><span class="n">get_mapper</span><span class="p">(</span><span class="s2">&quot;bucket/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">open_zarr</span><span class="p">(</span><span class="n">mapper</span><span class="p">)</span>
+</code></pre></div>
+<p>If the second access is much faster, caching helps. See
+   <a href="../chunking-cloud-storage/#caching-strategies">Cloud Storage Configuration</a>
+   for caching options.</p>
+<p><strong>References:</strong></p>
+<ul>
+<li><a href="../chunking-benchmarking/">Benchmarking Performance</a> for systematic
+  performance measurement</li>
+<li><a href="../chunking-cloud-storage/#troubleshooting-cloud-access">Cloud Storage Configuration</a>
+  for cloud-specific troubleshooting</li>
+</ul>
+<h3 id="im-running-out-of-memory-how-do-i-reduce-memory-usage">I'm running out of memory. How do I reduce memory usage?<a class="headerlink" href="#im-running-out-of-memory-how-do-i-reduce-memory-usage" title="Permanent link">&para;</a></h3>
+<p><strong>Solutions in order of preference:</strong></p>
+<ol>
+<li><strong>Reduce chunk sizes in the largest dimensions</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># If spatial dimensions are large, reduce them</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="s2">&quot;data.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">}</span>  <span class="c1"># was 1024</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>Smaller chunks mean less memory per task, but more tasks overall. Find the
+   balance.</p>
+<ol>
+<li><strong>Process in smaller batches with explicit .compute() calls</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Instead of:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>  <span class="c1"># loads all times at once</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Do this:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">time</span><span class="p">),</span> <span class="mi">5</span><span class="p">):</span>  <span class="c1"># process 5 time steps at a time</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">batch</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">t</span><span class="o">+</span><span class="mi">5</span><span class="p">))</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">result</span> <span class="o">=</span> <span class="n">xr</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">)</span>
+</code></pre></div>
+<ol>
+<li><strong>Use Dask distributed scheduler for larger-than-memory processing</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dask.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">n_workers</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">threads_per_worker</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">memory_limit</span><span class="o">=</span><span class="s2">&quot;2GB&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># Now .compute() uses distributed workers with explicit memory limits</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="s2">&quot;time&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</code></pre></div>
+<ol>
+<li><strong>Avoid chunks=None on large datasets</strong></li>
+</ol>
+<p>Never use <code>chunks=None</code> if the dataset is larger than available RAM. Always
+   use chunked loading with Dask for large datasets.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-read-optimization/#how-open_datasetchunks-works">Read-Time Optimization</a>
+explains the memory implications of different chunk modes.</p>
+<h3 id="dask-is-creating-too-many-tasks-and-the-scheduler-is-slow-how-do-i-fix-this">Dask is creating too many tasks and the scheduler is slow. How do I fix this?<a class="headerlink" href="#dask-is-creating-too-many-tasks-and-the-scheduler-is-slow-how-do-i-fix-this" title="Permanent link">&para;</a></h3>
+<p><strong>Problem:</strong> Task count &gt; 100,000 causes scheduler overhead to dominate.</p>
+<p><strong>Solutions:</strong></p>
+<ol>
+<li><strong>Increase chunk sizes (fewer, larger chunks)</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Check current task count</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">__dask_graph__</span><span class="p">()))</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Increase chunk sizes</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">chunk</span><span class="p">({</span><span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">2048</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">2048</span><span class="p">})</span>  <span class="c1"># was 1024</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="nb">print</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">__dask_graph__</span><span class="p">()))</span>  <span class="c1"># should be 4× fewer</span>
+</code></pre></div>
+<ol>
+<li><strong>Use <code>.chunk()</code> to consolidate existing chunks</strong></li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># If you&#39;ve already opened with small chunks, rechunk in memory</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">chunk</span><span class="p">({</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">})</span>  <span class="c1"># consolidate time/freq</span>
+</code></pre></div>
+<ol>
+<li><strong>Avoid operations that expand the task graph unnecessarily</strong></li>
+</ol>
+<p>Some operations create intermediate tasks. Use built-in reductions when
+   possible:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Efficient: built-in reduction</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Inefficient: manual iteration creates many intermediate tasks</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">result</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">l</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="n">j</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">...</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="o">...</span><span class="p">))</span>
+</code></pre></div>
+<p><strong>Target:</strong> Aim for 100-10,000 tasks for typical operations. Fewer than 100
+limits parallelism; more than 100,000 creates scheduling overhead.</p>
+<p><strong>Reference:</strong>
+<a href="../chunking-benchmarking/#dask-task-count">Benchmarking Performance</a> explains
+how task count affects performance.</p>
+<h3 id="how-do-i-rechunk-an-existing-zarr-store">How do I rechunk an existing Zarr store?<a class="headerlink" href="#how-do-i-rechunk-an-existing-zarr-store" title="Permanent link">&para;</a></h3>
+<p><strong>Two approaches depending on your needs:</strong></p>
+<p><strong>Option 1: Simple rechunking with xarray (for small-medium datasets)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">xarray</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xr</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Load with new chunk configuration</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;old_store.zarr&quot;</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">512</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="p">})</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="c1"># Write to new store with new chunks</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">ds</span><span class="o">.</span><span class="n">to_zarr</span><span class="p">(</span><span class="s2">&quot;new_store.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Pros:</strong> Simple, one command <strong>Cons:</strong> Loads entire dataset into memory (in
+chunks), slow for large data</p>
+<p><strong>Option 2: Efficient out-of-core rechunking with rechunker (for large
+datasets)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rechunker</span><span class="w"> </span><span class="kn">import</span> <span class="n">rechunk</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zarr</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">source</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;old_store.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">target</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;new_store.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># Define target chunks</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="n">target_chunks</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">}</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="n">rechunk_plan</span> <span class="o">=</span> <span class="n">rechunk</span><span class="p">(</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="n">source</span><span class="p">,</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="n">target_chunks</span><span class="o">=</span><span class="n">target_chunks</span><span class="p">,</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="n">max_mem</span><span class="o">=</span><span class="s2">&quot;2GB&quot;</span><span class="p">,</span>  <span class="c1"># memory limit for intermediate storage</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>    <span class="n">target_store</span><span class="o">=</span><span class="n">target</span><span class="p">,</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>    <span class="n">temp_store</span><span class="o">=</span><span class="s2">&quot;temp_rechunk.zarr&quot;</span>  <span class="c1"># temporary intermediate store</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="p">)</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="n">rechunk_plan</span><span class="o">.</span><span class="n">execute</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>Pros:</strong> Efficient for datasets larger than memory, optimized algorithm
+<strong>Cons:</strong> Requires additional dependency (<code>pip install rechunker</code>)</p>
+<p><strong>When to rechunk vs. when to tune read-time chunks:</strong></p>
+<ul>
+<li><strong>Rechunk the store</strong> when you need to change on-disk chunk layout permanently
+  for all users (e.g., preparing data for public release)</li>
+<li><strong>Tune read-time chunks</strong> when you want to optimize for your specific access
+  pattern without modifying the source data (recommended for most users)</li>
+</ul>
+<p><strong>References:</strong></p>
+<ul>
+<li><a href="../chunking-write-path/">Write Path Pipeline</a> for how write-time chunks are
+  created</li>
+<li><a href="../chunking-read-optimization/">Read-Time Optimization</a> for tuning read chunks
+  without rechunking</li>
+</ul>
+<h2 id="documentation-cross-reference">Documentation Cross-Reference<a class="headerlink" href="#documentation-cross-reference" title="Permanent link">&para;</a></h2>
+<p>Each document in the Zarr optimization series covers a specific aspect:</p>
+<ul>
+<li>
+<p><strong><a href="../chunking-fundamentals/">Chunking Fundamentals</a></strong> — Conceptual
+  foundations: what chunks are, how they map to cloud objects, the 10-100 MB
+  sweet spot, and why chunk size matters for cloud performance. Start here if
+  you're new to Zarr or cloud-native data.</p>
+</li>
+<li>
+<p><strong><a href="../chunking-write-path/">Write Path Pipeline</a></strong> — How the OVRO-LWA ingest
+  pipeline creates chunks during FITS-to-Zarr conversion, the <code>chunk_lm</code>
+  parameter, what happens in append mode, and how to inspect on-disk chunk
+  metadata. Read this if you're running the ingest pipeline or debugging
+  write-time chunk issues.</p>
+</li>
+<li>
+<p><strong><a href="../chunking-read-optimization/">Read-Time Optimization</a></strong> — Choosing the
+  right <code>chunks=</code> parameter for your workflow, four access pattern recipes with
+  worked examples (spatial, time-series, spectral, batch), chunk alignment
+  principles, and Dask monitoring. The most immediately actionable guide for
+  researchers.</p>
+</li>
+<li>
+<p><strong><a href="../chunking-compression/">Compression Strategies</a></strong> — Codec selection
+  (Blosc, Zstd, LZ4), how compression interacts with chunk sizes, configuring
+  compression via xarray encoding, <code>write_empty_chunks</code> for sparse data, and
+  compression ratio expectations. Read this when setting up the write pipeline
+  or optimizing storage costs.</p>
+</li>
+<li>
+<p><strong><a href="../chunking-benchmarking/">Benchmarking Performance</a></strong> — Systematic
+  methodology for measuring chunk performance, key metrics (wall-clock time,
+  HTTP requests, throughput, task count), benchmarking script template, using
+  Dask diagnostics, and interpreting results. Essential for performance-
+  conscious users and when optimizing isn't intuitive.</p>
+</li>
+<li>
+<p><strong><a href="../chunking-cloud-storage/">Cloud Storage Configuration</a></strong> — How fsspec
+  works, consolidated metadata setup, provider-specific configuration (S3, GCS,
+  OSN), caching strategies (simplecache, filecache, local download), concurrent
+  access tuning, cost considerations, and troubleshooting cloud errors. Read
+  this when setting up cloud access or debugging remote storage issues.</p>
+</li>
+</ul>
+<h2 id="one-page-cheat-sheet">One-Page Cheat Sheet<a class="headerlink" href="#one-page-cheat-sheet" title="Permanent link">&para;</a></h2>
+<p>Condensed reference for quick lookup:</p>
+<h3 id="key-numbers">Key Numbers<a class="headerlink" href="#key-numbers" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Chunk size sweet spot:</strong> 10-100 MB compressed per chunk</li>
+<li><strong>Cloud latency:</strong> ~50-100ms per HTTP GET request</li>
+<li><strong>Default write config:</strong> <code>chunk_lm=1024</code> (4 MB uncompressed per spatial tile)</li>
+<li><strong>Default read config:</strong> <code>chunks="auto"</code> (Dask/xarray decide)</li>
+<li><strong>Task count target:</strong> 100-10,000 tasks per operation</li>
+</ul>
+<h3 id="default-configuration">Default Configuration<a class="headerlink" href="#default-configuration" title="Permanent link">&para;</a></h3>
+<p><strong>Write time (ingest):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># CLI</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>ovro-lwa-ingest<span class="w"> </span>fits-to-zarr<span class="w"> </span>--chunk-lm<span class="w"> </span><span class="m">1024</span><span class="w"> </span>input.fits<span class="w"> </span>output.zarr
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Python API</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>from<span class="w"> </span>ovro_lwa_portal.ingest<span class="w"> </span>import<span class="w"> </span>FITSToZarrConverter
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="nv">converter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>FITSToZarrConverter<span class="o">(</span><span class="nv">chunk_lm</span><span class="o">=</span><span class="m">1024</span><span class="o">)</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>converter.convert<span class="o">(</span><span class="s2">&quot;input.fits&quot;</span>,<span class="w"> </span><span class="s2">&quot;output.zarr&quot;</span><span class="o">)</span>
+</code></pre></div>
+<p><strong>Read time (analysis):</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="c1"># Default: auto chunking</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="c1"># Cloud-optimized: explicit alignment</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="s2">&quot;s3://bucket/data.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">},</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    <span class="n">storage_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;key&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">:</span> <span class="s2">&quot;...&quot;</span><span class="p">}</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="cloud-essentials-checklist">Cloud Essentials Checklist<a class="headerlink" href="#cloud-essentials-checklist" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Consolidated metadata:</strong> Verify <code>.zmetadata</code> exists, create with
+   <code>zarr.consolidate_metadata("store.zarr")</code> if missing</li>
+<li><strong>Aligned chunks:</strong> Read chunks should be divisors/multiples of write chunks
+   (256, 512, 1024, 2048)</li>
+<li><strong>Caching:</strong> Use <code>fsspec.simplecache</code> for repeated access to the same chunks</li>
+<li><strong>Credentials:</strong> Set <code>storage_options={"key": "...", "secret": "..."}</code> for
+   S3/OSN</li>
+</ol>
+<h3 id="debug-commands">Debug Commands<a class="headerlink" href="#debug-commands" title="Permanent link">&para;</a></h3>
+<p><strong>Inspect chunk configuration:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Read-time chunks (what Dask uses)</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">chunks</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="c1"># Returns: ((1, 1, 1, ...), (1, 1, 1, ...), (1024, 1024, ...), (1024, 1024, ...))</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="c1"># Number of chunks per dimension</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">numblocks</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1"># Returns: (10, 48, 1, 4, 4) for 10 time × 48 freq × 1 pol × 4×4 spatial tiles</span>
+</code></pre></div>
+<p><strong>Count Dask tasks:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Total tasks in computation graph</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">__dask_graph__</span><span class="p">())</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1"># Returns: integer (aim for 1000-10000)</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1"># Tasks for a specific operation</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">__dask_graph__</span><span class="p">())</span>
+</code></pre></div>
+<p><strong>Check on-disk chunk shape:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Read .zarray metadata</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;store.zarr/SKY/.zarray&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="n">metadata</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;On-disk chunks:&quot;</span><span class="p">,</span> <span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;chunks&quot;</span><span class="p">])</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Compressor:&quot;</span><span class="p">,</span> <span class="n">metadata</span><span class="p">[</span><span class="s2">&quot;compressor&quot;</span><span class="p">])</span>
+</code></pre></div>
+<p><strong>Verify consolidated metadata:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zarr</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">store</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;store.zarr&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;r&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="nb">print</span><span class="p">(</span><span class="s2">&quot;.zmetadata exists:&quot;</span><span class="p">,</span> <span class="s2">&quot;.zmetadata&quot;</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">store</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="quick-fixes">Quick Fixes<a class="headerlink" href="#quick-fixes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Quick Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Slow cloud reads</td>
+<td>Check alignment: <code>ds.SKY.chunks</code> vs on-disk chunks</td>
+</tr>
+<tr>
+<td>Out of memory</td>
+<td>Reduce chunk sizes: <code>ds.chunk({"l": 512, "m": 512})</code></td>
+</tr>
+<tr>
+<td>Too many Dask tasks</td>
+<td>Increase chunk sizes: <code>ds.chunk({"l": 2048, "m": 2048})</code></td>
+</tr>
+<tr>
+<td>Missing consolidated metadata</td>
+<td><code>zarr.consolidate_metadata("store.zarr")</code></td>
+</tr>
+<tr>
+<td>Can't connect to OSN</td>
+<td>Verify endpoint: <code>storage_options={"client_kwargs": {"endpoint_url": "..."}}</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="access-pattern-quick-reference">Access Pattern Quick Reference<a class="headerlink" href="#access-pattern-quick-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>chunks=</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spatial maps</td>
+<td><code>{"time": 1, "frequency": 1, "l": 1024, "m": 1024}</code></td>
+<td>Aligns with write chunks</td>
+</tr>
+<tr>
+<td>Time series</td>
+<td><code>{"time": -1, "frequency": 1, "l": 256, "m": 256}</code></td>
+<td>Minimize spatial waste</td>
+</tr>
+<tr>
+<td>Spectral</td>
+<td><code>{"time": 1, "frequency": -1, "l": 256, "m": 256}</code></td>
+<td>All frequencies per tile</td>
+</tr>
+<tr>
+<td>Batch</td>
+<td><code>{"time": 5, "frequency": 10, "l": 512, "m": 512}</code></td>
+<td>Balanced general purpose</td>
+</tr>
+<tr>
+<td>Small data</td>
+<td><code>None</code></td>
+<td>Load to RAM, skip Dask</td>
+</tr>
+<tr>
+<td>Unknown/mixed</td>
+<td><code>"auto"</code></td>
+<td>Let Dask decide, profile it</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p>This cheat sheet covers the most common scenarios. For detailed explanations,
+refer to the specific documentation pages linked throughout this guide.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

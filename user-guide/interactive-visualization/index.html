@@ -1110,6 +1110,265 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-fundamentals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chunking Fundamentals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-write-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write Path Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-read-optimization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read-Time Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression Strategies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarking Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-cloud-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Storage Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zarr-optimization/chunking-decision-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2109,13 +2368,12 @@ downsampling large images to 512x512 for overlay performance.</p>
 <h2 id="performance-notes">Performance Notes<a class="headerlink" href="#performance-notes" title="Permanent link">&para;</a></h2>
 <h3 id="data-access-strategy">Data Access Strategy<a class="headerlink" href="#data-access-strategy" title="Permanent link">&para;</a></h3>
 <p>Each explorer uses the optimal data access pattern for its use case:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>graph TD
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    A[PreloadedCube] --&gt;|&quot;LRU cache&lt;br/&gt;(32 slices)&quot;| B[ImageExplorer]
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    A --&gt;|&quot;LRU cache&lt;br/&gt;(spatial subset)&quot;| C[CutoutExplorer]
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    D[accessor.dynamic_spectrum] --&gt;|&quot;batched&lt;br/&gt;dask.compute()&quot;| E[DynamicSpectrumExplorer]
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    F[accessor.spectrum / light_curve] --&gt;|&quot;single chunk&quot;| E
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    G[&quot;_build_fits_hdu&lt;br/&gt;(downsample + WCS)&quot;] --&gt; H[SkyViewer]
-</code></pre></div>
+<pre class="mermaid"><code>graph TD
+    A[PreloadedCube] --&gt;|"LRU cache&lt;br/&gt;(32 slices)"| B[ImageExplorer]
+    A --&gt;|"LRU cache&lt;br/&gt;(spatial subset)"| C[CutoutExplorer]
+    D[accessor.dynamic_spectrum] --&gt;|"batched&lt;br/&gt;dask.compute()"| E[DynamicSpectrumExplorer]
+    F[accessor.spectrum / light_curve] --&gt;|"single chunk"| E
+    G["_build_fits_hdu&lt;br/&gt;(downsample + WCS)"] --&gt; H[SkyViewer]</code></pre>
 <ul>
 <li><strong>ImageExplorer / CutoutExplorer</strong>: Use <code>PreloadedCube</code> with stride-based
   downsampling (4096x4096 to 512x512) and an LRU cache of 32 slices. First
@@ -2135,16 +2393,16 @@ keeps interactive controls responsive even with 4096x4096 production data.</p>
 cache ensures each chunk is read at most once per explorer session.</p>
 <h2 id="serving-as-a-web-app">Serving as a Web App<a class="headerlink" href="#serving-as-a-web-app" title="Permanent link">&para;</a></h2>
 <p>Panel explorers can be served as standalone web applications:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>panel<span class="w"> </span>serve<span class="w"> </span>notebook.ipynb<span class="w"> </span>--show<span class="w"> </span>--autoreload
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>panel<span class="w"> </span>serve<span class="w"> </span>notebook.ipynb<span class="w"> </span>--show<span class="w"> </span>--autoreload
 </code></pre></div>
 <p>Or from a Python script:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">panel</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pn</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;path/to/data.zarr&quot;</span><span class="p">)</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">dashboard</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore</span><span class="p">()</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">dashboard</span><span class="o">.</span><span class="n">servable</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">panel</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pn</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;path/to/data.zarr&quot;</span><span class="p">)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="n">dashboard</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">radport</span><span class="o">.</span><span class="n">explore</span><span class="p">()</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">dashboard</span><span class="o">.</span><span class="n">servable</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>

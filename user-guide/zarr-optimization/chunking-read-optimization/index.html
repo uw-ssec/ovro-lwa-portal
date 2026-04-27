@@ -1,0 +1,2661 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Python library for radio astronomy data processing and visualization for OVRO-LWA">
+      
+      
+      
+        <link rel="canonical" href="https://uw-ssec.github.io/ovro-lwa-portal/user-guide/zarr-optimization/chunking-read-optimization/">
+      
+      
+        <link rel="prev" href="../chunking-write-path/">
+      
+      
+        <link rel="next" href="../chunking-compression/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>Read-Time Optimization - OVRO-LWA Portal</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#read-time-chunk-optimization" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-header__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            OVRO-LWA Portal
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Read-Time Optimization
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/uw-ssec/ovro-lwa-portal" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    uw-ssec/ovro-lwa-portal
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../visualization/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../tutorials/transient-analysis/" class="md-tabs__link">
+          
+  
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/radport-accessor/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../guides/architecture-decisions/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../contributing/contributing/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="OVRO-LWA Portal" class="md-nav__button md-logo" aria-label="OVRO-LWA Portal" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    OVRO-LWA Portal
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/uw-ssec/ovro-lwa-portal" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    uw-ssec/ovro-lwa-portal
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/loading-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/basic-plotting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Basic Plotting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/coordinate-systems/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coordinate Systems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../interactive-visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactive Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spectral-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../source-detection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Source Detection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../celestial-tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Celestial Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../dispersion-measure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dispersion Measure Correction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../animations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Animations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wcs-coordinates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WCS Coordinates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fits-to-zarr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FITS to Zarr Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Zarr chunk optimization for cloud-based object stores
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-fundamentals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Chunking Fundamentals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-write-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write Path Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read-Time Optimization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read-Time Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-open_datasetchunks-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How open_dataset(chunks=...) Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#access-pattern-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access Pattern Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Access Pattern Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recipe-a-full-spatial-images-snapshot-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe A: Full Spatial Images (Snapshot Analysis)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-b-time-series-at-a-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe B: Time Series at a Point
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-c-spectral-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe C: Spectral Analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-d-full-dataset-batch-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe D: Full Dataset Batch Processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chunk-alignment-and-partial-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunk Alignment and Partial Reads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-decision-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Decision Guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-your-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying Your Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-dask-scheduler-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring Dask Scheduler Activity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring Dask Scheduler Activity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#distributed-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distributed Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#estimating-computation-before-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimating Computation Before Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression Strategies
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarking Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-cloud-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cloud Storage Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../chunking-decision-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decision Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/transient-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transient Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/pulsar-dedispersion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pulsar Dedispersion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tutorials/spectral-mapping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectral Mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/radport-accessor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    radport Accessor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/viz-module/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/data-loading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Loading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/fits-to-zarr-xradio/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FITS to Zarr (Low-Level)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api/ingest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ingest Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../guides/architecture-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-open_datasetchunks-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How open_dataset(chunks=...) Works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#access-pattern-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access Pattern Recipes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Access Pattern Recipes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recipe-a-full-spatial-images-snapshot-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe A: Full Spatial Images (Snapshot Analysis)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-b-time-series-at-a-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe B: Time Series at a Point
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-c-spectral-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe C: Spectral Analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recipe-d-full-dataset-batch-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe D: Full Dataset Batch Processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chunk-alignment-and-partial-reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunk Alignment and Partial Reads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-decision-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Decision Guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verifying-your-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verifying Your Configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-dask-scheduler-activity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring Dask Scheduler Activity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring Dask Scheduler Activity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#distributed-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Distributed Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#estimating-computation-before-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimating Computation Before Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="read-time-chunk-optimization">Read-Time Chunk Optimization<a class="headerlink" href="#read-time-chunk-optimization" title="Permanent link">&para;</a></h1>
+<p>When opening OVRO-LWA datasets with <code>open_dataset()</code>, the <code>chunks</code> parameter
+controls how data is divided for lazy loading and parallel processing. Choosing
+the right chunk configuration for your access pattern can reduce HTTP requests
+by orders of magnitude and dramatically improve read performance on cloud
+storage.</p>
+<p>This guide explains how read-time chunking works, provides optimized
+configurations for common analysis workflows, and shows how to align chunks with
+on-disk layout for maximum efficiency.</p>
+<h2 id="how-open_datasetchunks-works">How open_dataset(chunks=...) Works<a class="headerlink" href="#how-open_datasetchunks-works" title="Permanent link">&para;</a></h2>
+<p>The <code>chunks</code> parameter in <code>open_dataset()</code> has three distinct modes that control
+how xarray and Dask partition your data:</p>
+<p><strong>Mode 1: chunks="auto" (default)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;s3://bucket/obs.zarr&quot;</span><span class="p">)</span>  <span class="c1"># Uses &quot;auto&quot;</span>
+</code></pre></div>
+<p>The "auto" mode delegates chunk selection to xarray's heuristic, which considers
+two factors:</p>
+<ol>
+<li><strong>Available memory</strong>: Dask estimates available memory per worker and sizes
+   chunks to fit within memory constraints, typically targeting 128 MB per chunk
+   by default</li>
+<li><strong>On-disk chunk shape</strong>: xarray reads the Zarr <code>.zarray</code> metadata to discover
+   how chunks were written and prefers to align with on-disk boundaries when
+   possible</li>
+</ol>
+<p>In practice, "auto" works well for exploratory analysis on moderately-sized
+datasets, but it doesn't account for your specific access pattern or cloud
+storage latency characteristics. For production workflows with known query
+patterns, explicit chunk configuration usually outperforms "auto."</p>
+<p><strong>Mode 2: Explicit dictionary (recommended for cloud)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="s2">&quot;s3://bucket/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">}</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+</code></pre></div>
+<p>Passing a dictionary specifies the exact chunk size along each dimension. This
+mode gives you full control and is essential for optimizing cloud access
+patterns. The chunk shape you specify determines the Dask task graph structure
+and the number of HTTP requests required for operations.</p>
+<p>Use <code>-1</code> to load an entire dimension into a single chunk:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">}</span>  <span class="c1"># All times in one chunk</span>
+</code></pre></div>
+<p><strong>Mode 3: chunks=None (load entire dataset)</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span><span class="s2">&quot;local/obs.zarr&quot;</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</code></pre></div>
+<p>Setting <code>chunks=None</code> loads the entire dataset into memory as NumPy arrays
+rather than lazy Dask arrays. Operations execute immediately without task
+scheduling overhead, but memory usage equals the full dataset size.</p>
+<p><strong>When chunks=None makes sense:</strong></p>
+<ul>
+<li>Datasets smaller than available RAM (typically &lt; 1 GB)</li>
+<li>Local filesystem access where latency isn't a concern</li>
+<li>Interactive analysis where you'll access most of the data anyway</li>
+<li>Debugging when Dask task graphs complicate troubleshooting</li>
+</ul>
+<p><strong>When to avoid chunks=None:</strong></p>
+<ul>
+<li>Cloud storage access (would download the entire dataset on open)</li>
+<li>Datasets larger than available memory</li>
+<li>Workflows that only access subsets of the data</li>
+</ul>
+<p>For OVRO-LWA datasets, a typical observation with 10 time steps, 48 frequency
+channels, 1 polarization, and 4096×4096 spatial resolution occupies
+approximately 30 GB uncompressed. Loading this entirely into memory with
+<code>chunks=None</code> from cloud storage would require downloading all 30 GB before any
+analysis begins, which is almost never the right choice.</p>
+<h2 id="access-pattern-recipes">Access Pattern Recipes<a class="headerlink" href="#access-pattern-recipes" title="Permanent link">&para;</a></h2>
+<p>These recipes provide optimized chunk configurations for common OVRO-LWA
+workflows. Each recipe includes a concrete worked example showing expected HTTP
+request counts for typical operations.</p>
+<div class="admonition note">
+<p class="admonition-title">Why Polarization is Omitted from Recipes</p>
+<p>The polarization dimension is not specified in the <code>chunks</code> parameter because
+it's already chunked optimally at size 1 on disk (one chunk per polarization).
+When a dimension is omitted from the chunks dict, Xarray uses the on-disk
+chunk size by default. Since OVRO-LWA observations typically contain only 1
+polarization (Stokes I), explicitly setting <code>"polarization": 1</code> would be
+redundant. For datasets with multiple polarizations, the on-disk chunking of
+1 per polarization is already optimal for analysis workflows that process one
+polarization at a time.</p>
+</div>
+<h3 id="recipe-a-full-spatial-images-snapshot-analysis">Recipe A: Full Spatial Images (Snapshot Analysis)<a class="headerlink" href="#recipe-a-full-spatial-images-snapshot-analysis" title="Permanent link">&para;</a></h3>
+<p><strong>Configuration:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">}</span>
+</code></pre></div>
+<p><strong>Use case:</strong> Plotting sky maps, spatial statistics, source detection,
+image-based analysis</p>
+<p><strong>Why these values:</strong></p>
+<ul>
+<li>Aligns exactly with the default on-disk chunk shape (<code>chunk_lm=1024</code> from the
+  write pipeline)</li>
+<li>Minimizes partial chunk reads; each Dask chunk maps to exactly one Zarr chunk
+  on disk</li>
+<li>Loads one complete spatial tile per HTTP request with no wasted bandwidth</li>
+</ul>
+<p><strong>Worked example:</strong></p>
+<p>Assume a dataset written with the default <code>chunk_lm=1024</code> on a 4096×4096 spatial
+grid. The spatial plane divides into a 4×4 grid of 1024×1024 tiles, yielding 16
+spatial chunks per time-frequency-polarization point.</p>
+<p>Accessing a full spatial map at a single time-frequency point:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">}</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">sky_map</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>  <span class="c1"># 4096×4096 image</span>
+</code></pre></div>
+<p><strong>HTTP requests:</strong> 16 (one per spatial tile)</p>
+<p>Each request fetches exactly one 1024×1024×4-byte chunk = 4 MB uncompressed.
+With typical astronomical data compression, each request may transfer
+significantly less than the uncompressed 4 MB chunk. However, the actual
+compressed size depends on the compressor configuration used by xradio's
+write_image() and has not been empirically verified for OVRO-LWA data. Use the
+.zarray inspection method in chunking-write-path.md to check your actual store.</p>
+<p>For comparison, using misaligned chunks like
+<code>chunks={"time": 1, "frequency": 1, "l": 512, "m": 512}</code> would require reading
+the same 16 on-disk chunks but with additional overhead from partial chunk
+assembly, offering no performance benefit while increasing Dask task graph
+complexity.</p>
+<h3 id="recipe-b-time-series-at-a-point">Recipe B: Time Series at a Point<a class="headerlink" href="#recipe-b-time-series-at-a-point" title="Permanent link">&para;</a></h3>
+<p><strong>Configuration:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">}</span>
+</code></pre></div>
+<p><strong>Use case:</strong> Light curves, transient monitoring, extracting time-frequency
+evolution at a known source position</p>
+<p><strong>Why these values:</strong></p>
+<ul>
+<li><code>time: -1</code> loads the entire time axis into a single chunk, enabling efficient
+  time-domain operations</li>
+<li>Small spatial chunks (256×256) minimize wasted bandwidth when accessing a
+  small sky region</li>
+<li><code>frequency: 1</code> allows selective frequency channel access without loading the
+  full spectrum</li>
+</ul>
+<p><strong>Worked example:</strong></p>
+<p>Extracting a time series at a point source location across 10 time steps and 48
+frequency channels:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">}</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># Select a 256×256 region around a source</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">source_data</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">l</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">),</span> <span class="n">m</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">))</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>HTTP requests (for 256×256 region, all times, all frequencies):</strong></p>
+<p>With <code>chunk_lm=1024</code> on-disk, a 256×256 region falls entirely within a single
+on-disk spatial chunk. However, because we're accessing all time steps and all
+frequency channels:</p>
+<ul>
+<li>1 spatial chunk position</li>
+<li>10 time steps</li>
+<li>48 frequency channels</li>
+<li><strong>Total: 480 HTTP requests</strong> (1 × 10 × 48)</li>
+</ul>
+<p>Each request transfers ~4 MB uncompressed but you only use ~256 KB of each chunk
+(the 256×256 subregion). Chunk utilization: ~6%. This is the inherent cost of
+point source access with spatially-oriented chunking.</p>
+<p><strong>Alternative for better efficiency:</strong> If you frequently access point sources,
+consider rechunking the dataset offline with smaller spatial chunks like
+<code>chunk_lm=256</code> at write time. This would reduce each request's size and improve
+utilization, though it increases the total chunk count.</p>
+<h3 id="recipe-c-spectral-analysis">Recipe C: Spectral Analysis<a class="headerlink" href="#recipe-c-spectral-analysis" title="Permanent link">&para;</a></h3>
+<p><strong>Configuration:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">}</span>
+</code></pre></div>
+<p><strong>Use case:</strong> Spectral index maps, broadband averaging, radio frequency
+interference (RFI) flagging, spectral energy distribution (SED) extraction</p>
+<p><strong>Why these values:</strong></p>
+<ul>
+<li><code>frequency: -1</code> loads all frequency channels for a spatial region in one pass</li>
+<li>Small spatial chunks (256×256) enable efficient processing of spatial tiles
+  without excessive memory</li>
+<li><code>time: 1</code> isolates individual time steps for independent processing</li>
+</ul>
+<p><strong>Worked example:</strong></p>
+<p>Computing a spectral index map for a 512×512 region at a single time step:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">256</span><span class="p">}</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># Select a 512×512 region</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">region</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sel</span><span class="p">(</span><span class="n">l</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">),</span> <span class="n">m</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="o">-</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">))</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># All 48 frequencies loaded per spatial chunk</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">spectral_index</span> <span class="o">=</span> <span class="n">compute_spectral_index</span><span class="p">(</span><span class="n">region</span><span class="p">)</span>  <span class="c1"># User-defined function</span>
+</code></pre></div>
+<p><strong>HTTP requests (for 512×512 region, 1 time, all frequencies):</strong></p>
+<p>A 512×512 region with <code>chunk_lm=1024</code> on-disk spans 4 on-disk spatial chunks in
+a 2×2 grid. With <code>frequency: -1</code> read chunking:</p>
+<ul>
+<li>4 spatial chunk positions (2×2 grid)</li>
+<li>1 time step</li>
+<li>1 frequency "chunk" containing all 48 channels (but this must read all 48
+  on-disk frequency chunks)</li>
+<li><strong>Total: 192 HTTP requests</strong> (4 spatial × 1 time × 48 frequency)</li>
+</ul>
+<p>Each spatial chunk position requires fetching all 48 frequency channels from
+storage. Dask parallelizes these requests, fetching multiple spatial-frequency
+combinations concurrently.</p>
+<h3 id="recipe-d-full-dataset-batch-processing">Recipe D: Full Dataset Batch Processing<a class="headerlink" href="#recipe-d-full-dataset-batch-processing" title="Permanent link">&para;</a></h3>
+<p><strong>Configuration:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">}</span>
+</code></pre></div>
+<p><strong>Use case:</strong> Computing statistics across all dimensions, batch reprocessing,
+generating summary products, quality metrics</p>
+<p><strong>Why these values:</strong></p>
+<ul>
+<li>Balanced chunk sizes across all dimensions for mixed access patterns</li>
+<li><code>time: 5</code> and <code>frequency: 10</code> group multiple frames for efficient batch
+  operations</li>
+<li><code>l: 512, m: 512</code> is a submultiple of the default <code>chunk_lm=1024</code>, maintaining
+  alignment</li>
+<li>Total chunk size: 5 × 10 × 512 × 512 × 4 bytes = 51.2 MB uncompressed per
+  chunk</li>
+</ul>
+<p><strong>Worked example:</strong></p>
+<p>Computing per-pixel RMS across the entire dataset (10 time steps, 48 frequency
+channels):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">512</span><span class="p">}</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="p">)</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">rms_map</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</code></pre></div>
+<p><strong>HTTP requests (full dataset access):</strong></p>
+<ul>
+<li>Time chunks: ⌈10 / 5⌉ = 2</li>
+<li>Frequency chunks: ⌈48 / 10⌉ = 5</li>
+<li>Spatial l chunks: ⌈4096 / 512⌉ = 8</li>
+<li>Spatial m chunks: ⌈4096 / 512⌉ = 8</li>
+<li><strong>Total Dask chunks: 2 × 5 × 8 × 8 = 640 chunks</strong></li>
+</ul>
+<p>However, each 512×512 read chunk requires reading four 1024×1024 on-disk chunks
+(since 512 is half of 1024). The on-disk chunk structure has:</p>
+<ul>
+<li>10 time steps (chunked as 1 per)</li>
+<li>48 frequency channels (chunked as 1 per)</li>
+<li>4×4 spatial chunks of 1024×1024</li>
+</ul>
+<p><strong>Total on-disk chunks: 10 × 48 × 4 × 4 = 7,680 chunks</strong></p>
+<p>With perfect caching and the read chunking specified, Dask would ideally fetch
+each on-disk chunk once. <strong>Practical HTTP requests: ~7,680</strong> (one per unique
+on-disk chunk, fetched once and reused across Dask tasks).</p>
+<p>This highlights the importance of chunk alignment: the 512×512 read chunks are
+submultiples of 1024, so each on-disk chunk gets reused efficiently by multiple
+Dask tasks.</p>
+<h2 id="chunk-alignment-and-partial-reads">Chunk Alignment and Partial Reads<a class="headerlink" href="#chunk-alignment-and-partial-reads" title="Permanent link">&para;</a></h2>
+<p>Read-time chunks should be multiples or divisors of write-time chunk shapes to
+avoid inefficient partial chunk reads. When read chunks don't align with on-disk
+chunks, Zarr must fetch and stitch together multiple on-disk chunks to assemble
+the requested data, downloading unnecessary bytes.</p>
+<p><strong>The alignment rule:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>read_chunk_size % write_chunk_size == 0  OR  write_chunk_size % read_chunk_size == 0
+</code></pre></div>
+<p>For OVRO-LWA data written with the default <code>chunk_lm=1024</code>:</p>
+<ul>
+<li>✅ <strong>Good alignments:</strong> 256, 512, 1024, 2048, 4096 (divisors or multiples
+  of 1024)</li>
+<li>❌ <strong>Bad alignments:</strong> 500, 750, 1500, 3000 (not evenly divisible)</li>
+</ul>
+<p><strong>Worked example of misalignment:</strong></p>
+<p>Consider reading with <code>chunks={"l": 512, "m": 512}</code> from a dataset written with
+<code>chunk_lm=1024</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>On-disk layout (1024×1024 chunks):
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>┌─────────┬─────────┬─────────┬─────────┐
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>│ (0,0)   │ (0,1)   │ (0,2)   │ (0,3)   │
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>│ 1024×1024│ 1024×1024│ 1024×1024│ 1024×1024│
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>├─────────┼─────────┼─────────┼─────────┤
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>│ (1,0)   │ (1,1)   │ (1,2)   │ (1,3)   │
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>│ ...     │ ...     │ ...     │ ...     │
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>└─────────┴─────────┴─────────┴─────────┘
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>Read request for 512×512 region at (0:512, 0:512):
+</code></pre></div>
+<p>This 512×512 region fits entirely within the on-disk chunk <code>(0,0)</code>, so only one
+HTTP request is needed. <strong>This alignment works because 512 divides 1024
+evenly.</strong></p>
+<p>Each on-disk 1024×1024 chunk can serve four 512×512 read chunks:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>┌──────┬──────┐
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>│ 512  │ 512  │  One 1024×1024 on-disk chunk
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>├──────┼──────┤  contains four 512×512 regions
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>│ 512  │ 512  │
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>└──────┴──────┘
+</code></pre></div>
+<p><strong>Example of poor alignment:</strong></p>
+<p>Now consider reading with <code>chunks={"l": 750, "m": 750}</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>Read request for 750×750 region at (0:750, 0:750):
+</code></pre></div>
+<p>This 750×750 region partially overlaps the on-disk chunk boundaries. To retrieve
+it, Zarr must:</p>
+<ol>
+<li>Fetch chunk <code>(0,0)</code>: contributes 750×750 pixels (full coverage)</li>
+<li>The read chunk is smaller than the on-disk chunk, so only one fetch is
+   needed, but we download 1024×1024 and use only 750×750</li>
+</ol>
+<p>Chunk utilization: (750 × 750) / (1024 × 1024) ≈ 53%</p>
+<p><strong>Worse case - non-aligned straddling:</strong></p>
+<p>Reading with <code>chunks={"l": 1500, "m": 1500}</code> where the region crosses on-disk
+boundaries:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>Read request for 1500×1500 region at (0:1500, 0:1500):
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>On-disk:              Read chunk spans multiple on-disk chunks:
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>┌───────┬───────┐     ┌───────────────────┐
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>│(0,0)  │(0,1)  │     │ 1500×1500 read    │
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>│1024   │1024   │     │ overlaps four     │
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>├───────┼───────┤     │ on-disk chunks    │
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>│(1,0)  │(1,1)  │     └───────────────────┘
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>└───────┴───────┘
+</code></pre></div>
+<p>To satisfy this read, Zarr must fetch all four on-disk chunks: <code>(0,0)</code>, <code>(0,1)</code>,
+<code>(1,0)</code>, <code>(1,1)</code>. Each is 1024×1024, so we download 4 × (1024×1024) = 4,194,304
+pixels to extract 1500×1500 = 2,250,000 pixels.</p>
+<p>Chunk utilization: 2,250,000 / 4,194,304 ≈ 54%</p>
+<p><strong>Key takeaway:</strong> Stick to powers of 2 that align with the on-disk <code>chunk_lm</code>
+value (typically 1024). Safe choices for spatial dimensions: 256, 512, 1024,
+2048, 4096.</p>
+<h2 id="practical-decision-guide">Practical Decision Guide<a class="headerlink" href="#practical-decision-guide" title="Permanent link">&para;</a></h2>
+<p><strong>Quick reference for choosing chunks:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Your workflow</th>
+<th>Recommended configuration</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plotting sky maps from cloud</td>
+<td><code>{"time": 1, "frequency": 1, "l": 1024, "m": 1024}</code></td>
+<td>Aligns with on-disk chunks, minimal requests</td>
+</tr>
+<tr>
+<td>Extracting time series (cloud)</td>
+<td><code>{"time": -1, "frequency": 1, "l": 256, "m": 256}</code></td>
+<td>Small spatial tiles reduce wasted bandwidth</td>
+</tr>
+<tr>
+<td>Spectral index mapping (cloud)</td>
+<td><code>{"time": 1, "frequency": -1, "l": 256, "m": 256}</code></td>
+<td>All frequencies per spatial region</td>
+</tr>
+<tr>
+<td>Batch statistics (cloud)</td>
+<td><code>{"time": 5, "frequency": 10, "l": 512, "m": 512}</code></td>
+<td>Balanced chunks for mixed access</td>
+</tr>
+<tr>
+<td>Local filesystem, any workflow</td>
+<td><code>"auto"</code> or <code>{"l": 1024, "m": 1024}</code></td>
+<td>Local I/O is fast; alignment still helps with memory</td>
+</tr>
+<tr>
+<td>Small datasets (&lt; 1 GB)</td>
+<td><code>chunks=None</code></td>
+<td>Skip Dask overhead, load directly to NumPy</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Decision flowchart:</strong></p>
+<pre class="mermaid"><code>flowchart TD
+    A[Choose chunk configuration] --&gt; B{Data size?}
+    B --&gt;|&lt; 1 GB| C[chunks=None]
+    B --&gt;|&gt; 1 GB| D{Storage location?}
+    D --&gt;|Local| E["auto" or align&lt;br/&gt;with write chunks]
+    D --&gt;|Cloud S3/OSN| F{Primary access pattern?}
+    F --&gt;|Full images| G["time: 1, freq: 1&lt;br/&gt;l: 1024, m: 1024"]
+    F --&gt;|Time series| H["time: -1, freq: 1&lt;br/&gt;l: 256, m: 256"]
+    F --&gt;|Spectral| I["time: 1, freq: -1&lt;br/&gt;l: 256, m: 256"]
+    F --&gt;|Mixed/batch| J["time: 5, freq: 10&lt;br/&gt;l: 512, m: 512"]
+
+    G --&gt; K[Verify alignment&lt;br/&gt;with write chunks]
+    H --&gt; K
+    I --&gt; K
+    J --&gt; K
+
+    style C fill:#d4edda
+    style E fill:#fff4e1
+    style G fill:#e1f5ff
+    style H fill:#e1f5ff
+    style I fill:#e1f5ff
+    style J fill:#e1f5ff</code></pre>
+<p><strong>Common mistakes to avoid:</strong></p>
+<ul>
+<li>Using <code>chunks=None</code> on large cloud datasets (forces complete download)</li>
+<li>Choosing chunk sizes that don't align with on-disk layout (wastes bandwidth)</li>
+<li>Over-chunking time/frequency dimensions (creates excessive Dask tasks)</li>
+<li>Under-chunking spatial dimensions (each chunk too small, too many HTTP
+  requests)</li>
+</ul>
+<h2 id="verifying-your-configuration">Verifying Your Configuration<a class="headerlink" href="#verifying-your-configuration" title="Permanent link">&para;</a></h2>
+<p>After choosing a chunk configuration, verify it loads correctly and check the
+resulting Dask task graph:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ovro_lwa_portal</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">}</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="p">)</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="c1"># Check chunk shape</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">chunks</span><span class="p">)</span>
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="c1"># Output: ((1, 1, 1, ...), (1, 1, 1, ...), (1024, 1024, 1024, 1024), (1024, 1024, 1024, 1024))</span>
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="c1"># Check total number of chunks</span>
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total chunks: </span><span class="si">{</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">npartitions</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="c1"># For 10 time × 48 freq × 1 pol × (4×4 spatial): 10 × 48 × 1 × 16 = 7,680 chunks</span>
+</code></pre></div>
+<p>If the chunk count seems excessive (&gt; 10,000 for typical workflows), consider
+consolidating chunks. If chunks are too large (&gt; 500 MB), consider splitting
+them to improve parallelism.</p>
+<p>For cloud access, monitor HTTP request counts during a test <code>.compute()</code> call
+using Dask diagnostics:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dask.diagnostics</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProgressBar</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="k">with</span> <span class="n">ProgressBar</span><span class="p">():</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">frequency</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</code></pre></div>
+<p>The progress bar shows task execution. Each task typically corresponds to one or
+more chunk fetches. Comparing task count to expected HTTP requests helps
+validate your chunking strategy.</p>
+<h2 id="monitoring-dask-scheduler-activity">Monitoring Dask Scheduler Activity<a class="headerlink" href="#monitoring-dask-scheduler-activity" title="Permanent link">&para;</a></h2>
+<p>When working with large datasets, it's valuable to observe what computation is
+happening in the background. Dask provides several tools for monitoring
+scheduler activity and estimating resource usage before execution.</p>
+<h3 id="distributed-dashboard">Distributed Dashboard<a class="headerlink" href="#distributed-dashboard" title="Permanent link">&para;</a></h3>
+<p>For distributed workloads, Dask's distributed scheduler provides a real-time web
+dashboard showing worker status, task progress, memory usage, and communication
+patterns:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dask.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="c1"># Start a local cluster with dashboard</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">()</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Dashboard available at: </span><span class="si">{</span><span class="n">client</span><span class="o">.</span><span class="n">dashboard_link</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># Now operations will be visible in the dashboard</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="n">ds</span> <span class="o">=</span> <span class="n">ovro_lwa_portal</span><span class="o">.</span><span class="n">open_dataset</span><span class="p">(</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a>    <span class="s2">&quot;s3://ovro-lwa/obs.zarr&quot;</span><span class="p">,</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="n">chunks</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;time&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;frequency&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;l&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">:</span> <span class="mi">1024</span><span class="p">}</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="p">)</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;l&quot;</span><span class="p">,</span> <span class="s2">&quot;m&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">compute</span><span class="p">()</span>
+</code></pre></div>
+<p>The dashboard provides views including:</p>
+<ul>
+<li><strong>Task Stream</strong>: Shows individual task execution timing and worker assignment</li>
+<li><strong>Progress</strong>: Real-time progress bars for active computations</li>
+<li><strong>Memory</strong>: Memory usage per worker and data transfer volumes</li>
+<li><strong>Workers</strong>: Status and resource utilization of each worker</li>
+</ul>
+<p>Access the dashboard by opening the URL printed by <code>client.dashboard_link</code> in
+your browser (typically <code>http://localhost:8787/status</code>).</p>
+<h3 id="estimating-computation-before-execution">Estimating Computation Before Execution<a class="headerlink" href="#estimating-computation-before-execution" title="Permanent link">&para;</a></h3>
+<p>To understand what work will be performed before calling <code>.compute()</code>, inspect
+the Dask task graph:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Check number of tasks</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Number of tasks: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">__dask_graph__</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1"># Estimate number of chunks to fetch</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="n">n_chunks</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">npartitions</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Chunks to fetch: </span><span class="si">{</span><span class="n">n_chunks</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="c1"># Estimate uncompressed data volume</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="n">chunk_shape</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">chunks</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a><span class="n">total_elements</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>    <span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">c</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">chunk_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">chunk_shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="p">)</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a><span class="n">data_volume_mb</span> <span class="o">=</span> <span class="p">(</span><span class="n">total_elements</span> <span class="o">*</span> <span class="mi">4</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># float32 = 4 bytes</span>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Estimated data volume: </span><span class="si">{</span><span class="n">data_volume_mb</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> MB uncompressed&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>For cloud storage, multiply the number of chunks by your typical chunk size
+(after compression) to estimate network transfer volume. Add ~100ms latency
+overhead per chunk for HTTP request timing.</p>
+<div class="admonition tip">
+<p class="admonition-title">Visualizing Task Graphs</p>
+<p>For small computations, visualize the task graph structure:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">ds</span><span class="o">.</span><span class="n">SKY</span><span class="o">.</span><span class="n">isel</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">l</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1024</span><span class="p">),</span> <span class="n">m</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1024</span><span class="p">))</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">visualize</span><span class="p">()</span>
+</code></pre></div>
+This generates a graph image showing task dependencies. Large graphs become
+unreadable, but this is useful for understanding chunking impact on small
+subsets.</p>
+</div>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../chunking-fundamentals/">Chunking Fundamentals</a> - Background on Zarr chunks
+  and the 10-100 MB sweet spot</li>
+<li><a href="../chunking-write-path/">Write Path Pipeline</a> - How <code>chunk_lm</code> controls
+  on-disk chunk layout</li>
+<li><a href="https://zarr.readthedocs.io/en/stable/user-guide/performance.html">Zarr Performance Guide</a> -
+  Official Zarr performance recommendations</li>
+<li><a href="https://docs.xarray.dev/en/stable/user-guide/dask.html#optimization-tips">Xarray Chunking Guide</a> -
+  Xarray-specific chunking best practices</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
