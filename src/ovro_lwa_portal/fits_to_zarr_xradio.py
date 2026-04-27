@@ -40,9 +40,13 @@ Library usage
 
 Notes
 -----
-* The code assumes filenames of the form:
-  YYYYMMDD_HHMMSS_<SB>MHz_averaged_* -I-image[ _fixed].fits
-* LM grids must match across time steps; a mismatch raises a RuntimeError.
+* Discovery groups files by observation time/frequency from FITS headers first.
+  Filename parsing is only used as a fallback when header metadata is missing.
+* LM grids must match across time steps after global and per-step mixed-resolution normalization;
+  a mismatch raises a RuntimeError.
+* Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
+* Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
+  Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
 * On append, the existing Zarr is read and re-written with the appended time step.
 """
 
@@ -56,6 +60,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import xarray as xr
 from astropy.io import fits
+from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
 from xradio.image import read_image, write_image
@@ -69,6 +74,14 @@ PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
 )
 MHZ_RE = re.compile(r"_(\d+)MHz_")
+
+
+def _time_key_from_name(p: Path) -> Optional[str]:
+    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from filename when possible."""
+    m = PAT.match(p.name)
+    if not m:
+        return None
+    return f"{m.group('date')}_{m.group('hms')}"
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -86,6 +99,107 @@ def _mhz_from_name(p: Path) -> int:
     """
     m = MHZ_RE.search(p.name)
     return int(m.group(1)) if m else 10**9
+
+
+def _time_key_from_header(header: fits.Header) -> Optional[str]:
+    """Extract observation time from FITS headers as ``YYYYMMDD_HHMMSS``.
+
+    Header precedence:
+      1) ``DATE-OBS`` (optionally with ``TIME-OBS`` if date-only)
+      2) ``MJD-OBS``
+      3) ``MJD``
+
+    Returns ``None`` when no usable timestamp is found.
+    """
+    date_obs = header.get("DATE-OBS")
+    if date_obs:
+        date_obs = str(date_obs).strip()
+        time_obs = header.get("TIME-OBS")
+        if time_obs and "T" not in date_obs:
+            dt_value = f"{date_obs}T{str(time_obs).strip()}"
+        else:
+            dt_value = date_obs
+        try:
+            t = Time(dt_value, format="isot", scale="utc")
+            return t.to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            logger.debug(f"Could not parse DATE-OBS/TIME-OBS timestamp: {dt_value}")
+
+    for mjd_key in ("MJD-OBS", "MJD"):
+        if mjd_key in header:
+            try:
+                t = Time(float(header[mjd_key]), format="mjd", scale="utc")
+                return t.to_datetime().strftime("%Y%m%d_%H%M%S")
+            except Exception:
+                logger.debug(f"Could not parse {mjd_key} timestamp: {header.get(mjd_key)}")
+
+    return None
+
+
+def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
+    """Extract frequency in Hz from FITS headers.
+
+    Header precedence:
+      1) ``RESTFREQ``
+      2) ``RESTFRQ``
+      3) ``CRVAL3``
+      4) ``FREQ``
+    """
+    for key in ("RESTFREQ", "RESTFRQ", "CRVAL3", "FREQ"):
+        value = header.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logger.debug(f"Could not parse {key} frequency: {value}")
+    return None
+
+
+def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], List[str]]:
+    """Extract grouping metadata from headers with filename fallback.
+
+    Returns
+    -------
+    Tuple[Optional[str], Optional[float], List[str]]
+        Tuple of ``(time_key, frequency_hz, fallback_notes)`` where fallback_notes
+        records when filename-based fallback was used.
+    """
+    time_key: Optional[str] = None
+    frequency_hz: Optional[float] = None
+    notes: List[str] = []
+
+    header: Optional[fits.Header] = None
+    try:
+        header = fits.getheader(fp, ext=0)
+    except Exception as e:
+        logger.warning(f"Could not read FITS header for {fp.name}: {e}")
+
+    if header is not None:
+        time_key = _time_key_from_header(header)
+        frequency_hz = _frequency_hz_from_header(header)
+
+    if time_key is None:
+        name_time_key = _time_key_from_name(fp)
+        if name_time_key is not None:
+            time_key = name_time_key
+            notes.append("time-from-filename")
+
+    if frequency_hz is None:
+        mhz = _mhz_from_name(fp)
+        if mhz != 10**9:
+            frequency_hz = float(mhz * 1e6)
+            notes.append("frequency-from-filename")
+
+    return time_key, frequency_hz, notes
+
+
+def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
+    """Sort key for deterministic frequency ordering with fallback."""
+    _, frequency_hz, _ = _extract_group_metadata(fp)
+    if frequency_hz is None:
+        return (float(10**15), fp.name)
+    return (float(frequency_hz), fp.name)
 
 
 def _fix_headers(path_in: Path, path_out: Path) -> None:
@@ -114,6 +228,24 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
             for k in ("BSCALE", "BZERO"):
                 if k in hdr:
                     del hdr[k]
+
+        # xradio expects a STOKES axis in image metadata. Some OVRO-LWA FITS files
+        # are 3D cubes with only (RA, DEC, FREQ). Promote these to a 4D cube by
+        # adding a singleton STOKES axis so FITS parsing is accepted.
+        ctype_values = [
+            str(hdr.get(f"CTYPE{i}", "")).strip().upper()
+            for i in range(1, int(hdr.get("NAXIS", 0)) + 1)
+        ]
+        has_stokes = any("STOKES" in c for c in ctype_values)
+        if data is not None and int(hdr.get("NAXIS", 0)) == 3 and not has_stokes:
+            data = np.expand_dims(data, axis=0)
+            hdr["NAXIS"] = 4
+            hdr["CTYPE4"] = "STOKES"
+            hdr["CRVAL4"] = 1.0
+            hdr["CRPIX4"] = 1.0
+            hdr["CDELT4"] = 1.0
+            if "CUNIT4" not in hdr:
+                hdr["CUNIT4"] = ""
 
         phdu = fits.PrimaryHDU(data=data, header=hdr)
         H = phdu.header
@@ -164,7 +296,7 @@ def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
         List of paths to fixed FITS files, sorted by frequency.
     """
     fixed_paths: List[Path] = []
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             fixed_paths.append(f)
         else:
@@ -221,7 +353,7 @@ def fix_fits_headers(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     fixed_paths: List[Path] = []
 
-    for f in sorted(files, key=_mhz_from_name):
+    for f in sorted(files, key=_frequency_sort_tuple):
         if f.name.endswith("_fixed.fits"):
             # Already fixed, use as-is
             fixed_paths.append(f)
@@ -330,13 +462,179 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     return xds
 
 
-def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
-    """Group input FITS by time key 'YYYYMMDD_HHMMSS' using PAT.
+def _lm_shape(xds: xr.Dataset) -> Tuple[int, int]:
+    """Return dataset LM shape as ``(m, l)``."""
+    return int(xds.sizes["m"]), int(xds.sizes["l"])
+
+
+def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
+    """Select deterministic reference index from LM shapes.
+
+    Selection rule:
+      1) largest pixel count (m * l)
+      2) largest m
+      3) largest l
+      4) first occurrence on ties
+    """
+    if not shapes:
+        msg = "Cannot select reference shape from empty list."
+        raise RuntimeError(msg)
+
+    best_idx = 0
+    best_shape = shapes[0]
+    best_score = (best_shape[0] * best_shape[1], best_shape[0], best_shape[1])
+
+    for idx, shape in enumerate(shapes[1:], start=1):
+        score = (shape[0] * shape[1], shape[0], shape[1])
+        if score > best_score:
+            best_idx = idx
+            best_shape = shape
+            best_score = score
+
+    return best_idx
+
+
+def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
+    """Return LM shape ``(m, l)`` from FITS using xradio, without full WCS attachment."""
+    xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
+    return int(xds.sizes["m"]), int(xds.sizes["l"])
+
+
+def _load_global_lm_reference_dataset(
+    by_time: Dict[str, List[Path]],
+    fixed_dir: Path,
+    *,
+    chunk_lm: int,
+    fix_headers_on_demand: bool,
+) -> xr.Dataset:
+    """Load the dataset whose LM grid has the largest shape across *all* time steps.
+
+    Per-time reprojection alone is insufficient: different observation times can
+    imply different in-step max shapes (e.g. only 3122² files in one step and
+    mixed 4096²+3122² in another). A single global reference ensures every step
+    normalizes to the same ``l``/``m`` so :func:`_assert_same_lm` can succeed.
+    """
+    candidates: List[Tuple[Path, Tuple[int, int]]] = []
+    for tkey in sorted(by_time.keys()):
+        files = by_time[tkey]
+        if fix_headers_on_demand:
+            fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
+        else:
+            fixed_paths = _get_fixed_paths(files, fixed_dir)
+        for fp in fixed_paths:
+            candidates.append((fp, _peek_lm_shape(fp)))
+
+    if not candidates:
+        msg = "No FITS paths available to build a global LM reference."
+        raise RuntimeError(msg)
+
+    shapes = [sh for _, sh in candidates]
+    win_idx = _select_reference_shape_index(shapes)
+    ref_fp, ref_shape = candidates[win_idx]
+    logger.info(
+        "Global LM reference grid (m,l)=%s from %s",
+        ref_shape,
+        ref_fp.name,
+    )
+    return _load_for_combine(ref_fp, chunk_lm=chunk_lm)
+
+
+def _regrid_to_reference_lm(
+    xds: xr.Dataset,
+    ref: xr.Dataset,
+    *,
+    source_label: Optional[str] = None,
+) -> xr.Dataset:
+    """Interpolate ``xds`` onto ``ref``'s ``l`` / ``m`` coordinate grid.
+
+    Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
+    WCS header metadata are taken from ``ref`` so the result is consistent with the
+    reference pixel grid. No-op when ``xds`` already matches ``ref`` LM shape.
+
+    Parameters
+    ----------
+    xds
+        Source dataset (e.g. from :func:`_load_for_combine`).
+    ref
+        Reference dataset whose ``l`` and ``m`` define the target grid.
+    source_label
+        Optional filename or path for error messages when regridding fails.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset on the reference LM grid with writer-safe encodings cleared.
+
+    Raises
+    ------
+    RuntimeError
+        If interpolation fails (e.g. incompatible coordinates).
+    """
+    if _lm_shape(xds) == _lm_shape(ref):
+        return xds
+
+    if "l" not in xds.coords or "m" not in xds.coords:
+        who = f"{source_label}: " if source_label else ""
+        msg = f"{who}cannot regrid: dataset is missing ``l`` and/or ``m`` coordinates."
+        raise RuntimeError(msg)
+
+    # Materialize for scipy-backed interp; reference coords may be lazy.
+    xds = xds.load()
+    target_l = ref["l"].load() if hasattr(ref["l"].data, "compute") else ref["l"]
+    target_m = ref["m"].load() if hasattr(ref["m"].data, "compute") else ref["m"]
+
+    try:
+        regridded = xds.interp(l=target_l, m=target_m, method="linear")
+    except Exception as exc:
+        who = f"{source_label}: " if source_label else ""
+        msg = f"{who}LM regridding onto reference grid failed: {exc}"
+        raise RuntimeError(msg) from exc
+
+    # Sky coords and WCS metadata match the reference physical grid.
+    regridded = regridded.assign_coords(
+        right_ascension=ref["right_ascension"].load()
+        if hasattr(ref["right_ascension"].data, "compute")
+        else ref["right_ascension"],
+        declination=ref["declination"].load()
+        if hasattr(ref["declination"].data, "compute")
+        else ref["declination"],
+    )
+
+    hdr_str = ref.attrs.get("fits_wcs_header")
+    if hdr_str is None and "wcs_header_str" in ref:
+        raw = ref["wcs_header_str"].values.item()
+        hdr_str = raw.decode("utf-8") if isinstance(raw, (bytes, np.bytes_)) else str(raw)
+
+    regridded.attrs.pop("history", None)
+    if hdr_str is not None:
+        regridded.attrs["fits_wcs_header"] = hdr_str
+        regridded["right_ascension"].attrs["fits_wcs_header"] = hdr_str
+        regridded["declination"].attrs["fits_wcs_header"] = hdr_str
+        for dv in regridded.data_vars:
+            regridded[dv].attrs["fits_wcs_header"] = hdr_str
+
+    if "wcs_header_str" in ref:
+        regridded["wcs_header_str"] = ref["wcs_header_str"].copy()
+
+    for v in regridded.data_vars:
+        regridded[v].encoding = {}
+
+    return regridded
+
+
+def _discover_groups(
+    in_dir: Path,
+    duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
+) -> Dict[str, List[Path]]:
+    """Group input FITS by observation time and frequency (headers first, filename fallback).
 
     Parameters
     ----------
     in_dir : Path
         Directory containing input FITS files.
+    duplicate_resolver
+        Optional callback ``(time_key, frequency_hz, candidates) -> Path`` when multiple
+        files share the same time and frequency.
 
     Returns
     -------
@@ -344,17 +642,77 @@ def _discover_groups(in_dir: Path) -> Dict[str, List[Path]]:
         Dictionary mapping time keys to lists of FITS file paths.
     """
     by_time: Dict[str, List[Path]] = {}
+    by_time_freq: Dict[str, Dict[int, List[Path]]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        m = PAT.match(f.name)
-        if not m:
+        time_key, frequency_hz, notes = _extract_group_metadata(f)
+        if time_key is None:
+            logger.warning(
+                f"Skipping {f.name}: missing usable observation time in FITS headers and filename."
+            )
             continue
-        key = f"{m.group('date')}_{m.group('hms')}"
-        by_time.setdefault(key, []).append(f)
+        if frequency_hz is None:
+            logger.warning(
+                f"Could not determine frequency for {f.name}; duplicate detection disabled for this file."
+            )
+            by_time.setdefault(time_key, []).append(f)
+            continue
+
+        freq_key = int(round(frequency_hz))
+        time_freq_map = by_time_freq.setdefault(time_key, {})
+        candidates = time_freq_map.setdefault(freq_key, [])
+        candidates.append(f)
+
+        if len(candidates) > 1:
+            duplicate_names = [p.name for p in candidates]
+            if duplicate_resolver is None:
+                msg = (
+                    "Duplicate FITS files detected for the same time/frequency group "
+                    f"(time={time_key}, frequency_hz={float(freq_key)}): {duplicate_names}. "
+                    "Provide unique inputs or pass duplicate_resolver to choose one."
+                )
+                raise RuntimeError(msg)
+
+            selected = duplicate_resolver(time_key, float(freq_key), candidates.copy())
+            if selected not in candidates:
+                msg = (
+                    f"Duplicate resolver returned unknown file {selected} for "
+                    f"time={time_key}, frequency_hz={float(freq_key)}."
+                )
+                raise RuntimeError(msg)
+
+            by_time.setdefault(time_key, [])
+            by_time[time_key] = [p for p in by_time[time_key] if p not in candidates]
+            by_time[time_key].append(selected)
+            # Replace the pending duplicate bucket so the next file with this (time, freq)
+            # starts from the chosen file only. Otherwise `candidates` never shrinks and
+            # grows as [f1, f2, f3, ...], re-invoking the resolver with stale paths and
+            # widening the filter that strips `by_time[time_key]`.
+            time_freq_map[freq_key] = [selected]
+            logger.warning(
+                "Duplicate FITS files for time=%s, frequency_hz=%.1f. Selected: %s. Candidates: %s",
+                time_key,
+                float(freq_key),
+                selected.name,
+                duplicate_names,
+            )
+            continue
+
+        if notes:
+            logger.warning(f"Using fallback metadata for {f.name}: {', '.join(notes)}")
+        by_time.setdefault(time_key, []).append(f)
+
+    for time_key, files in by_time.items():
+        by_time[time_key] = sorted(files, key=_frequency_sort_tuple)
     return by_time
 
 
 def _combine_time_step(
-    files: List[Path], fixed_dir: Path, *, chunk_lm: int, fix_headers_on_demand: bool = True
+    files: List[Path],
+    fixed_dir: Path,
+    *,
+    chunk_lm: int,
+    fix_headers_on_demand: bool = True,
+    lm_reference_ds: Optional[xr.Dataset] = None,
 ) -> Tuple[xr.Dataset, List[float]]:
     """Create a single-time dataset by combining frequency slices from subbands.
 
@@ -369,6 +727,10 @@ def _combine_time_step(
     fix_headers_on_demand : bool, optional
         If True, fix headers on-demand if they don't exist. If False,
         assume headers are already fixed. Default is True.
+    lm_reference_ds : xarray.Dataset, optional
+        If provided, regrid all slices to this dataset's ``l``/``m`` grid (used for
+        a conversion-wide max-shape reference). If omitted, the largest slice in
+        this time step is the reference.
 
     Returns
     -------
@@ -389,6 +751,37 @@ def _combine_time_step(
         fvals = np.atleast_1d(xds.frequency.values)
         freqs_seen.extend([float(f) for f in fvals])
         xds_list.append(xds)
+
+    lm_shapes = [_lm_shape(xds) for xds in xds_list]
+    reference_idx = _select_reference_shape_index(lm_shapes)
+    unique_shapes = sorted(set(lm_shapes))
+
+    if lm_reference_ds is not None:
+        ref_ds = lm_reference_ds
+        if len(unique_shapes) > 1 or any(_lm_shape(xds) != _lm_shape(ref_ds) for xds in xds_list):
+            logger.info(
+                "Using global LM reference grid (m,l)=%s; this time step shapes: %s",
+                _lm_shape(ref_ds),
+                unique_shapes,
+            )
+    else:
+        ref_ds = xds_list[reference_idx]
+        if len(unique_shapes) > 1:
+            logger.info(
+                "Detected mixed LM shapes %s; selected reference shape %s from %s",
+                unique_shapes,
+                lm_shapes[reference_idx],
+                fixed_paths[reference_idx].name,
+            )
+    for i, xds in enumerate(xds_list):
+        if _lm_shape(xds) != _lm_shape(ref_ds):
+            logger.info(
+                "Regridding %s from LM shape %s onto reference %s",
+                fixed_paths[i].name,
+                _lm_shape(xds),
+                _lm_shape(ref_ds),
+            )
+        xds_list[i] = _regrid_to_reference_lm(xds, ref_ds, source_label=str(fixed_paths[i]))
 
     try:
         xds_t = xr.combine_by_coords(
@@ -415,7 +808,31 @@ def _combine_time_step(
     for v in xds_t.data_vars:
         xds_t[v].encoding = {}
 
+    xds_t = _rechunk_lm_for_zarr(xds_t, chunk_lm)
+
     return xds_t, sorted(set(freqs_seen))
+
+
+def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
+    """Rechunk ``l`` and ``m`` so Dask-backed arrays use uniform spatial chunk sizes.
+
+    ``combine_by_coords`` / ``concat`` can fuse slices into irregular chunk
+    boundaries along ``l``/``m``. Zarr encoding (via xradio) requires uniform
+    chunk sizes per dimension except possibly the final chunk.
+
+    Parameters
+    ----------
+    xds
+        Dataset whose spatial dimensions are named ``l`` and ``m``.
+    chunk_lm
+        Target chunk length for each of ``l`` and ``m``. If zero, each spatial
+        axis is stored as a single chunk (still uniform).
+    """
+    if not {"l", "m"} <= set(xds.dims):
+        return xds
+    if chunk_lm and chunk_lm > 0:
+        return xds.chunk({"l": chunk_lm, "m": chunk_lm})
+    return xds.chunk({"l": -1, "m": -1})
 
 
 def _assert_same_lm(
@@ -436,13 +853,30 @@ def _assert_same_lm(
     RuntimeError
         If l or m grids differ across time steps.
     """
-    same_l = np.allclose(reference[0], current[0])
-    same_m = np.allclose(reference[1], current[1])
+    ref_l, ref_m = reference[0], reference[1]
+    cur_l, cur_m = current[0], current[1]
+    if ref_l.shape != cur_l.shape or ref_m.shape != cur_m.shape:
+        msg = (
+            "l/m coordinate length mismatch across time steps "
+            f"(l: {ref_l.shape} vs {cur_l.shape}, m: {ref_m.shape} vs {cur_m.shape}). "
+            "After mixed-resolution normalization, every time step must share one LM grid."
+        )
+        raise RuntimeError(msg)
+    same_l = np.allclose(ref_l, cur_l)
+    same_m = np.allclose(ref_m, cur_m)
     if not (same_l and same_m):
-        raise RuntimeError("l/m grids differ across times; aborting to avoid misalignment.")
+        raise RuntimeError(
+            "l/m grids differ across times after normalization; aborting to avoid misalignment."
+        )
 
 
-def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) -> None:
+def _write_or_append_zarr(
+    xds_t: xr.Dataset,
+    out_zarr: Path,
+    first_write: bool,
+    *,
+    chunk_lm: int,
+) -> None:
     """Safe write/append to Zarr store.
 
     First write: write directly.
@@ -458,11 +892,19 @@ def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) 
         Path to output Zarr store.
     first_write : bool
         If True, write a new Zarr store; if False, append to existing.
+    chunk_lm
+        Spatial chunk size passed to :func:`_rechunk_lm_for_zarr` so appended
+        stores match uniform Zarr chunking requirements.
     """
     from shutil import rmtree, move
 
     if first_write or (not out_zarr.exists()):
-        write_image(xds_t, str(out_zarr), out_format="zarr", overwrite=True)
+        write_image(
+            _rechunk_lm_for_zarr(xds_t, chunk_lm),
+            str(out_zarr),
+            out_format="zarr",
+            overwrite=True,
+        )
         return
 
     # 1) Open existing lazily
@@ -486,7 +928,12 @@ def _write_or_append_zarr(xds_t: xr.Dataset, out_zarr: Path, first_write: bool) 
     tmp = out_zarr.with_suffix(out_zarr.suffix + ".tmpwrite")
     if tmp.exists():
         rmtree(tmp)
-    write_image(combined, str(tmp), out_format="zarr", overwrite=True)
+    write_image(
+        _rechunk_lm_for_zarr(combined, chunk_lm),
+        str(tmp),
+        out_format="zarr",
+        overwrite=True,
+    )
 
     # 5) Swap: remove old store, move tmp into place
     if out_zarr.exists():
@@ -504,6 +951,7 @@ def convert_fits_dir_to_zarr(
     rebuild: bool = False,
     fix_headers_on_demand: bool = True,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
+    duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -528,6 +976,15 @@ def convert_fits_dir_to_zarr(
     progress_callback
         Optional callback function for progress reporting. Should accept
         (stage: str, current: int, total: int, message: str).
+    duplicate_resolver
+        Optional callback to resolve duplicate files that map to the same
+        time/frequency group. Signature: ``(time_key, frequency_hz, candidates) -> selected_path``.
+
+    Mixed-resolution inputs (different ``l``/``m`` pixel shapes) are supported: the
+    largest LM grid among all selected files becomes the conversion-wide reference,
+    and smaller images are linearly interpolated onto that grid before combine. The
+    same reference is used for every time step so output Zarr has one consistent
+    sky pixel grid.
 
     Returns
     -------
@@ -548,19 +1005,26 @@ def convert_fits_dir_to_zarr(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     out_zarr = out_dir / zarr_name
 
-    by_time = _discover_groups(input_dir)
+    by_time = _discover_groups(input_dir, duplicate_resolver=duplicate_resolver)
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
-        mhz_sorted = sorted(_mhz_from_name(p) for p in v)
-        logger.info(f"  time {k}: {len(v)} file(s), subbands (MHz): {mhz_sorted}")
+        freqs_hz = [_extract_group_metadata(p)[1] for p in v]
+        logger.info(f"  time {k}: {len(v)} file(s), frequencies (Hz): {freqs_hz}")
 
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
 
+    lm_ref_ds = _load_global_lm_reference_dataset(
+        by_time,
+        fixed_dir,
+        chunk_lm=chunk_lm,
+        fix_headers_on_demand=fix_headers_on_demand,
+    )
+    lm_reference = (lm_ref_ds["l"].values.copy(), lm_ref_ds["m"].values.copy())
+
     # Decide whether we write a fresh store or append to an existing one
     first_write = not (out_zarr.exists() and not rebuild)
-    lm_reference: Tuple[NDArray[np.floating], NDArray[np.floating]] | None = None
 
     total_time_steps = len(by_time)
     for idx, tkey in enumerate(sorted(by_time.keys())):
@@ -568,21 +1032,21 @@ def convert_fits_dir_to_zarr(
 
         logger.info(f"[read/combine] time {tkey}")
         xds_t, freqs = _combine_time_step(
-            files, fixed_dir, chunk_lm=chunk_lm, fix_headers_on_demand=fix_headers_on_demand
+            files,
+            fixed_dir,
+            chunk_lm=chunk_lm,
+            fix_headers_on_demand=fix_headers_on_demand,
+            lm_reference_ds=lm_ref_ds,
         )
         logger.info(f"  combined dims: {dict(xds_t.dims)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)
-        if lm_reference is None:
-            lm_reference = (lm_current[0].copy(), lm_current[1].copy())
-            logger.info("  stored l/m grid as reference")
-        else:
-            _assert_same_lm(lm_reference, lm_current)
-            logger.info("  l/m grid matches reference")
+        _assert_same_lm(lm_reference, lm_current)
+        logger.info("  l/m grid matches global reference")
 
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
-        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write)
+        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
         first_write = False
 
         # Report progress after completing this time step

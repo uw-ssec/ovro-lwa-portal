@@ -156,3 +156,65 @@ EQUINOX =               2000.0"""
     ds["SKY"].attrs["fits_wcs_header"] = wcs_header
 
     return ds
+
+
+@pytest.fixture
+def valid_ovro_dataset_with_tracking_wcs() -> xr.Dataset:
+    """Create a dataset with WCS for per-time celestial coordinate tracking.
+
+    The WCS phase center is at OVRO-LWA zenith (Dec=37.2339) with CRVAL1
+    set to the LST at MJD 60000.0 at the OVRO-LWA longitude. The dataset
+    has 10 time steps separated by 0.01 MJD (~14.4 minutes) and a 50x50 image
+    to produce measurable pixel drift when tracking a source.
+    """
+    np.random.seed(42)
+
+    n_times = 10
+    t0 = 60000.0
+    dt = 0.01  # ~14.4 minutes
+    times = [t0 + i * dt for i in range(n_times)]
+
+    # Compute LST at t0 for OVRO-LWA longitude to set CRVAL1
+    # This makes the WCS phase center match the zenith at t0
+    from astropy.time import Time
+    from astropy import units as u
+
+    t_ref = Time(t0, format="mjd", scale="utc")
+    lst_deg = float(t_ref.sidereal_time("mean", longitude=-118.2817 * u.deg).deg)
+
+    # SIN projection WCS with phase center at zenith
+    wcs_header = f"""NAXIS   =                    2
+NAXIS1  =                   50
+NAXIS2  =                   50
+CTYPE1  = 'RA---SIN'
+CTYPE2  = 'DEC--SIN'
+CRPIX1  =                 25.0
+CRPIX2  =                 25.0
+CRVAL1  =  {lst_deg:18.10f}
+CRVAL2  =           37.2339000
+CDELT1  =                 -3.6
+CDELT2  =                  3.6
+CUNIT1  = 'deg'
+CUNIT2  = 'deg'
+RADESYS = 'FK5'
+EQUINOX =               2000.0"""
+
+    ds = xr.Dataset(
+        data_vars={
+            "SKY": (
+                ["time", "frequency", "polarization", "l", "m"],
+                np.random.rand(n_times, 3, 2, 50, 50) * 10,
+            ),
+        },
+        coords={
+            "time": times,
+            "frequency": [46e6, 50e6, 54e6],
+            "polarization": [0, 1],
+            "l": np.linspace(-1, 1, 50),
+            "m": np.linspace(-1, 1, 50),
+        },
+    )
+
+    ds["SKY"].attrs["fits_wcs_header"] = wcs_header
+
+    return ds

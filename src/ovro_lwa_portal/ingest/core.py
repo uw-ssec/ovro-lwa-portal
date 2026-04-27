@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import portalocker
 
@@ -74,6 +74,7 @@ class ConversionConfig:
         chunk_lm: int = 1024,
         rebuild: bool = False,
         fix_headers_on_demand: bool = True,
+        duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         verbose: bool = False,
     ) -> None:
         self.input_dir = input_dir
@@ -83,6 +84,7 @@ class ConversionConfig:
         self.chunk_lm = chunk_lm
         self.rebuild = rebuild
         self.fix_headers_on_demand = fix_headers_on_demand
+        self.duplicate_resolver = duplicate_resolver
         self.verbose = verbose
 
     @property
@@ -225,6 +227,7 @@ class FITSToZarrConverter:
                     rebuild=self.config.rebuild,
                     fix_headers_on_demand=self.config.fix_headers_on_demand,
                     progress_callback=self.progress_callback,
+                    duplicate_resolver=self.config.duplicate_resolver,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")
