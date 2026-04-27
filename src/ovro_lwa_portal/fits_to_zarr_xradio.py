@@ -495,9 +495,14 @@ def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
 
 
 def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
-    """Return LM shape ``(m, l)`` from FITS using xradio, without full WCS attachment."""
-    xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
-    return int(xds.sizes["m"]), int(xds.sizes["l"])
+    """Return LM shape ``(m, l)`` from FITS header without loading pixel data."""
+    header = fits.getheader(fp, ext=0)
+    naxis = int(header.get("NAXIS", 0))
+    if naxis < 2:
+        msg = f"FITS file {fp} has NAXIS={naxis}; expected at least 2 for LM dimensions."
+        raise RuntimeError(msg)
+
+    return int(header["NAXIS2"]), int(header["NAXIS1"])
 
 
 def _load_global_lm_reference_dataset(
