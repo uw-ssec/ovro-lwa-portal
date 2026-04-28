@@ -143,6 +143,14 @@ def convert(
         "-s",
         help="Skip header fixing (assume headers already fixed with fix-headers command)",
     ),
+    cleanup_fixed_fits: bool = typer.Option(
+        False,
+        "--cleanup-fixed-fits",
+        help=(
+            "Delete temporary *_fixed.fits files created during on-demand conversion "
+            "after each time-step is written (reduces peak disk usage)"
+        ),
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -192,6 +200,7 @@ def convert(
         chunk_lm=chunk_lm,
         rebuild=rebuild,
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
+        cleanup_fixed_fits=cleanup_fixed_fits,
         duplicate_resolver=None,
         verbose=verbose,
     )
@@ -205,6 +214,7 @@ def convert(
     console.print(f"  Chunk size (l,m): {chunk_lm}")
     console.print(f"  Mode:             {'REBUILD' if rebuild else 'APPEND'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
+    console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     # Temporarily suppress INFO-level logging during progress display

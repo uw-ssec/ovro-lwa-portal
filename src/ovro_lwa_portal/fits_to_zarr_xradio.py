@@ -55,8 +55,10 @@ Notes
 
 from __future__ import annotations
 
+import os
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -288,7 +290,47 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         if "BUNIT" not in H:
             H["BUNIT"] = "Jy/beam"
 
-        phdu.writeto(path_out, overwrite=True)
+        # Write via temporary file + atomic replace to avoid leaving a partial
+        # output file when the underlying filesystem intermittently short-writes.
+        # Retry short-write failures a few times because they can be transient.
+        max_attempts = 3
+        last_error: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
+            tmp_out = path_out.with_name(f"{path_out.name}.tmp.{os.getpid()}.{attempt}")
+            try:
+                phdu.writeto(tmp_out, overwrite=True)
+                os.replace(tmp_out, path_out)
+                return
+            except OSError as exc:
+                last_error = exc
+                msg = str(exc)
+                short_write = "requested" in msg and "written" in msg
+                try:
+                    if tmp_out.exists():
+                        tmp_out.unlink()
+                except OSError:
+                    pass
+                if short_write and attempt < max_attempts:
+                    logger.warning(
+                        "Short write while fixing %s (attempt %d/%d): %s; retrying",
+                        path_in.name,
+                        attempt,
+                        max_attempts,
+                        exc,
+                    )
+                    time.sleep(0.2 * attempt)
+                    continue
+                raise
+            except Exception:
+                try:
+                    if tmp_out.exists():
+                        tmp_out.unlink()
+                except OSError:
+                    pass
+                raise
+
+        if last_error is not None:
+            raise last_error
 
 
 def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
@@ -543,11 +585,14 @@ def _load_global_lm_reference_dataset(
     candidates: List[Tuple[Path, Tuple[int, int]]] = []
     for tkey in sorted(by_time.keys()):
         files = by_time[tkey]
+        # Avoid eagerly fixing every FITS file just to inspect LM shape.
+        # Header LM dimensions (NAXIS1/NAXIS2) are sufficient for choosing
+        # the global reference grid and dramatically reduce temporary disk use.
         if fix_headers_on_demand:
-            fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
+            shape_paths = sorted(files, key=_frequency_sort_tuple)
         else:
-            fixed_paths = _get_fixed_paths(files, fixed_dir)
-        for fp in fixed_paths:
+            shape_paths = _get_fixed_paths(files, fixed_dir)
+        for fp in shape_paths:
             candidates.append((fp, _peek_lm_shape(fp)))
 
     if not candidates:
@@ -562,6 +607,8 @@ def _load_global_lm_reference_dataset(
         ref_shape,
         ref_fp.name,
     )
+    if fix_headers_on_demand and not ref_fp.name.endswith("_fixed.fits"):
+        ref_fp = fix_fits_headers([ref_fp], fixed_dir, skip_existing=True)[0]
     return _load_for_combine(ref_fp, chunk_lm=chunk_lm)
 
 
@@ -757,7 +804,7 @@ def _combine_time_step(
     chunk_lm: int,
     fix_headers_on_demand: bool = True,
     lm_reference_ds: Optional[xr.Dataset] = None,
-) -> Tuple[xr.Dataset, List[float]]:
+) -> Tuple[xr.Dataset, List[float], List[Path]]:
     """Create a single-time dataset by combining frequency slices from subbands.
 
     Parameters
@@ -778,12 +825,26 @@ def _combine_time_step(
 
     Returns
     -------
-    Tuple[xr.Dataset, List[float]]
-        Tuple of (combined dataset, sorted list of unique frequencies in Hz).
+    Tuple[xr.Dataset, List[float], List[Path]]
+        Tuple of (combined dataset, sorted list of unique frequencies in Hz,
+        newly-created ``*_fixed.fits`` paths for optional cleanup).
     """
+    created_fixed_paths: List[Path] = []
     if fix_headers_on_demand:
+        existed_before: Dict[Path, bool] = {}
+        for f in sorted(files, key=_frequency_sort_tuple):
+            if f.name.endswith("_fixed.fits"):
+                continue
+            candidate = fixed_dir / (f.stem + "_fixed.fits")
+            existed_before[candidate] = candidate.exists()
         # Fix headers if needed (skips existing fixed files)
         fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
+        for f in sorted(files, key=_frequency_sort_tuple):
+            if f.name.endswith("_fixed.fits"):
+                continue
+            candidate = fixed_dir / (f.stem + "_fixed.fits")
+            if not existed_before.get(candidate, False) and candidate.exists():
+                created_fixed_paths.append(candidate)
     else:
         # Just get the paths to already-fixed files
         fixed_paths = _get_fixed_paths(files, fixed_dir)
@@ -854,7 +915,7 @@ def _combine_time_step(
 
     xds_t = _rechunk_lm_for_zarr(xds_t, chunk_lm)
 
-    return xds_t, sorted(set(freqs_seen))
+    return xds_t, sorted(set(freqs_seen)), created_fixed_paths
 
 
 def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
@@ -1077,6 +1138,7 @@ def convert_fits_dir_to_zarr(
     chunk_lm: int = 1024,
     rebuild: bool = False,
     fix_headers_on_demand: bool = True,
+    cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
 ) -> Path:
@@ -1100,6 +1162,10 @@ def convert_fits_dir_to_zarr(
         If True, fix FITS headers on-demand during conversion if they don't exist.
         If False, assume headers are already fixed using :func:`fix_fits_headers`.
         Default is True.
+    cleanup_fixed_fits
+        If True (and ``fix_headers_on_demand`` is enabled), delete temporary
+        ``*_fixed.fits`` files created during each time-step after writing that
+        step to Zarr. Use this to reduce peak disk usage.
     progress_callback
         Optional callback function for progress reporting. Should accept
         (stage: str, current: int, total: int, message: str).
@@ -1158,7 +1224,7 @@ def convert_fits_dir_to_zarr(
         files = by_time[tkey]
 
         logger.info(f"[read/combine] time {tkey}")
-        xds_t, freqs = _combine_time_step(
+        xds_t, freqs, created_fixed_paths = _combine_time_step(
             files,
             fixed_dir,
             chunk_lm=chunk_lm,
@@ -1175,6 +1241,15 @@ def convert_fits_dir_to_zarr(
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
         _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
         first_write = False
+        if cleanup_fixed_fits and fix_headers_on_demand and created_fixed_paths:
+            removed = 0
+            for fixed_path in created_fixed_paths:
+                try:
+                    fixed_path.unlink(missing_ok=True)
+                    removed += 1
+                except OSError as exc:
+                    logger.warning("Could not remove temporary fixed FITS %s: %s", fixed_path, exc)
+            logger.info("Cleaned up %d temporary fixed FITS file(s) for time %s", removed, tkey)
 
         # Report progress after completing this time step
         if progress_callback:
