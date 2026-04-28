@@ -590,6 +590,37 @@ def test_rechunk_lm_for_zarr_strips_coord_encoding_conflicts(tmp_path):
     out.to_zarr(tmp_path / "coord.zarr", mode="w", consolidated=False)
 
 
+def test_rechunk_lm_for_zarr_fixes_nonuniform_coord_time_chunks(tmp_path):
+    """Coords with time chunks like (2,1,1) should be rechunked to Zarr-safe layout."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nt, ny, nx = 4, 32, 32
+    sky = da.random.random((nt, ny, nx), chunks=(1, 16, 16))
+    # Deliberately non-uniform time chunks to match runtime failure.
+    ra_np = np.random.default_rng(2).random((nt, ny, nx))
+    dec_np = np.random.default_rng(3).random((nt, ny, nx))
+    ra = da.from_array(ra_np, chunks=((2, 1, 1), (16, 16), (16, 16)))
+    dec = da.from_array(dec_np, chunks=((2, 1, 1), (16, 16), (16, 16)))
+
+    ds = xr.Dataset(
+        {"SKY": (("time", "m", "l"), sky)},
+        coords={
+            "time": np.arange(nt),
+            "l": np.linspace(-1, 1, nx),
+            "m": np.linspace(-1, 1, ny),
+            "right_ascension": (("time", "m", "l"), ra),
+            "declination": (("time", "m", "l"), dec),
+        },
+    )
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=8)
+    assert hasattr(out["right_ascension"].data, "chunks")
+    assert out["right_ascension"].data.chunks[0] == (4,)
+    out.to_zarr(tmp_path / "coord_nonuniform_time.zarr", mode="w", consolidated=False)
+
+
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
     mod = _import_module()

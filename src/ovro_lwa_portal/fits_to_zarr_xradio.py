@@ -78,6 +78,12 @@ logger = logging.getLogger(__name__)
 # while keeping distinct LWA subbands (MHz-scale) separate.
 _DISCOVERY_FREQ_BIN_HZ: float = 10_000.0
 
+# Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
+# Many OVRO-LWA subbands at one time share the same LM grid, so recomputing
+# all_pix2world for every file dominates runtime.
+_SKY_COORD_CACHE: Dict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]] = {}
+
+
 # Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
 PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
@@ -432,8 +438,16 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     # 3) Compute RA/Dec at pixel centers (origin=0) with shape (m,l)
     ny = int(xds.sizes["m"])
     nx = int(xds.sizes["l"])
-    yy, xx = np.indices((ny, nx), dtype=float)
-    ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, pixel centers
+    cel_hdr = w2d.to_header()
+    hdr_str = cel_hdr.tostring(sep="\n")
+    cache_key = (ny, nx, hdr_str)
+    cached = _SKY_COORD_CACHE.get(cache_key)
+    if cached is None:
+        yy, xx = np.indices((ny, nx), dtype=float)
+        ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, pixel centers
+        _SKY_COORD_CACHE[cache_key] = (ra2d, dec2d, hdr_str)
+    else:
+        ra2d, dec2d, hdr_str = cached
 
     # 4) Attach coords exactly equal to FITS WCS
     xds = xds.assign_coords(
@@ -444,8 +458,6 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     xds["declination"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
 
     # 5) Persist the exact celestial WCS header so we can re-create WCSAxes later without FITS
-    cel_hdr = w2d.to_header()                 # astropy.io.fits.Header
-    hdr_str = cel_hdr.tostring(sep="\n")
     xds.attrs["fits_wcs_header"] = hdr_str
 
     # 6) Hygiene + optional LM chunking
@@ -881,6 +893,30 @@ def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
     return out
 
 
+def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk coordinate arrays that have non-uniform Dask chunks.
+
+    Coordinates like ``right_ascension``/``declination`` can gain a leading
+    ``time`` dimension during append. If that axis chunks as ``(2, 1, 1)``,
+    xarray's Zarr writer rejects it as non-uniform. Rechunk only the offending
+    dimensions (e.g. ``time``) and keep already-uniform spatial chunks unchanged.
+    """
+    out = xds
+    for name in list(out.coords):
+        c = out[name]
+        da_ = c.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad_dims: list[str] = []
+        for dim_name, dim_chunks in zip(c.dims, da_.chunks, strict=True):
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad_dims.append(dim_name)
+        if bad_dims:
+            chunk_arg = {d: -1 for d in bad_dims}
+            out = out.assign_coords({name: c.chunk(chunk_arg)})
+    return out
+
+
 def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
     """Clear encodings on coordinates and data variables before Zarr write.
 
@@ -919,7 +955,9 @@ def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
         else:
             xds = xds.chunk({"l": -1, "m": -1})
     xds = _rechunk_nonuniform_aux_vars_for_zarr(xds)
-    return _strip_encodings_for_zarr_write(xds)
+    xds = _rechunk_nonuniform_coords_for_zarr(xds)
+    xds = _strip_encodings_for_zarr_write(xds)
+    return xds
 
 
 def _assert_same_lm(
@@ -986,8 +1024,9 @@ def _write_or_append_zarr(
     from shutil import rmtree, move
 
     if first_write or (not out_zarr.exists()):
+        to_write = _rechunk_lm_for_zarr(xds_t, chunk_lm)
         write_image(
-            _rechunk_lm_for_zarr(xds_t, chunk_lm),
+            to_write,
             str(out_zarr),
             out_format="zarr",
             overwrite=True,
@@ -1015,8 +1054,9 @@ def _write_or_append_zarr(
     tmp = out_zarr.with_suffix(out_zarr.suffix + ".tmpwrite")
     if tmp.exists():
         rmtree(tmp)
+    combined_to_write = _rechunk_lm_for_zarr(combined, chunk_lm)
     write_image(
-        _rechunk_lm_for_zarr(combined, chunk_lm),
+        combined_to_write,
         str(tmp),
         out_format="zarr",
         overwrite=True,
