@@ -1337,6 +1337,12 @@ def _discover_groups(
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
     are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
 
+    Files are associated with a **coarse** frequency key (10~kHz bins) so small
+    header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
+    in the Zarr for the same physical subband. For multiple paths in the same
+    (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
+    are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
+
     Parameters
     ----------
     in_dir : Path
@@ -1622,6 +1628,59 @@ def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
         if bad_dims:
             chunk_arg = {d: -1 for d in bad_dims}
             out = out.assign_coords({name: c.chunk(chunk_arg)})
+    return out
+
+
+def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
+    """Clear encodings on coordinates and data variables before Zarr write.
+
+    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
+    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
+    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
+    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
+    encodings matches the pattern already used for data variables after
+    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
+    """
+    for name in xds.coords:
+        xds[name].encoding = {}
+    for name in xds.data_vars:
+        xds[name].encoding = {}
+    return xds
+
+
+def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
+
+    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
+    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
+    along one dimension). ``xarray``'s Zarr writer requires all non-final
+    chunks to share the same size along each dimension; otherwise it raises
+    (``wcs_header_str`` is a known case).
+
+    Parameters
+    ----------
+    xds
+        Dataset possibly containing small dask-backed aux variables.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with offending variables rechunks to one chunk per dimension.
+    """
+    out = xds
+    for name in list(out.data_vars):
+        v = out[name]
+        da_ = v.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad = False
+        for dim_chunks in da_.chunks:
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad = True
+                break
+        if bad:
+            chunk_arg = {d: -1 for d in v.dims}
+            out = out.assign(**{name: v.chunk(chunk_arg)})
     return out
 
 
