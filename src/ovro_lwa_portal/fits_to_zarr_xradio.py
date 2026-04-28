@@ -40,8 +40,11 @@ Library usage
 
 Notes
 -----
-* Discovery groups files by observation time/frequency from FITS headers first.
-  Filename parsing is only used as a fallback when header metadata is missing.
+* Discovery groups files by observation time and by a **10~kHz binned** frequency key
+  from FITS headers (so Hz-level jitter does not create extra ``frequency`` planes for
+  one subband). Multiple files in the same (time, bin) without a duplicate resolver
+  keep the first and skip the rest (with a warning). Filename parsing is only used as
+  a fallback when header metadata is missing.
 * LM grids must match across time steps after global and per-step mixed-resolution normalization;
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
@@ -68,6 +71,12 @@ from xradio.image import read_image, write_image
 __all__ = ["convert_fits_dir_to_zarr", "fix_fits_headers"]
 
 logger = logging.getLogger(__name__)
+
+# Grouping key for "same subband" when discovering FITS. Raw ``int(round(hz))`` can differ
+# by 1--1000+ Hz between files for the same 55~MHz (etc.) product; that produced multiple
+# ``frequency`` planes in the Zarr from one logical band. Bins of 10~kHz merge that jitter
+# while keeping distinct LWA subbands (MHz-scale) separate.
+_DISCOVERY_FREQ_BIN_HZ: float = 10_000.0
 
 # Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
 PAT = re.compile(
@@ -633,13 +642,19 @@ def _discover_groups(
 ) -> Dict[str, List[Path]]:
     """Group input FITS by observation time and frequency (headers first, filename fallback).
 
+    Files are associated with a **coarse** frequency key (10~kHz bins) so small
+    header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
+    in the Zarr for the same physical subband. For multiple paths in the same
+    (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
+    are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
+
     Parameters
     ----------
     in_dir : Path
         Directory containing input FITS files.
     duplicate_resolver
         Optional callback ``(time_key, frequency_hz, candidates) -> Path`` when multiple
-        files share the same time and frequency.
+        files share the same time and binned frequency group.
 
     Returns
     -------
@@ -662,7 +677,7 @@ def _discover_groups(
             by_time.setdefault(time_key, []).append(f)
             continue
 
-        freq_key = int(round(frequency_hz))
+        freq_key = int(round(frequency_hz / _DISCOVERY_FREQ_BIN_HZ))
         time_freq_map = by_time_freq.setdefault(time_key, {})
         candidates = time_freq_map.setdefault(freq_key, [])
         candidates.append(f)
@@ -670,18 +685,30 @@ def _discover_groups(
         if len(candidates) > 1:
             duplicate_names = [p.name for p in candidates]
             if duplicate_resolver is None:
-                msg = (
-                    "Duplicate FITS files detected for the same time/frequency group "
-                    f"(time={time_key}, frequency_hz={float(freq_key)}): {duplicate_names}. "
-                    "Provide unique inputs or pass duplicate_resolver to choose one."
+                # Same time + same binned subband: stacking would be wrong; keep the first
+                # file and drop the rest (typical: symlink pairs or header jitter in Hz).
+                kept = candidates[0]
+                logger.warning(
+                    "Multiple FITS share time=%s and the same %g Hz frequency bin "
+                    "(binned key=%s, ~%.3f MHz): %s. Using only %s. "
+                    "Remove extras or pass duplicate_resolver to select a file.",
+                    time_key,
+                    _DISCOVERY_FREQ_BIN_HZ,
+                    freq_key,
+                    frequency_hz / 1e6,
+                    duplicate_names,
+                    kept.name,
                 )
-                raise RuntimeError(msg)
+                time_freq_map[freq_key] = [kept]
+                continue
 
-            selected = duplicate_resolver(time_key, float(freq_key), candidates.copy())
+            rep_hz, _, _ = _extract_group_metadata(candidates[0])
+            resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * _DISCOVERY_FREQ_BIN_HZ
+            selected = duplicate_resolver(time_key, resolver_hz, candidates.copy())
             if selected not in candidates:
                 msg = (
                     f"Duplicate resolver returned unknown file {selected} for "
-                    f"time={time_key}, frequency_hz={float(freq_key)}."
+                    f"time={time_key}, frequency_hz={resolver_hz}."
                 )
                 raise RuntimeError(msg)
 
@@ -696,7 +723,7 @@ def _discover_groups(
             logger.warning(
                 "Duplicate FITS files for time=%s, frequency_hz=%.1f. Selected: %s. Candidates: %s",
                 time_key,
-                float(freq_key),
+                resolver_hz,
                 selected.name,
                 duplicate_names,
             )
@@ -818,6 +845,59 @@ def _combine_time_step(
     return xds_t, sorted(set(freqs_seen))
 
 
+def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
+
+    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
+    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
+    along one dimension). ``xarray``'s Zarr writer requires all non-final
+    chunks to share the same size along each dimension; otherwise it raises
+    (``wcs_header_str`` is a known case).
+
+    Parameters
+    ----------
+    xds
+        Dataset possibly containing small dask-backed aux variables.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with offending variables rechunks to one chunk per dimension.
+    """
+    out = xds
+    for name in list(out.data_vars):
+        v = out[name]
+        da_ = v.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad = False
+        for dim_chunks in da_.chunks:
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad = True
+                break
+        if bad:
+            chunk_arg = {d: -1 for d in v.dims}
+            out = out.assign(**{name: v.chunk(chunk_arg)})
+    return out
+
+
+def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
+    """Clear encodings on coordinates and data variables before Zarr write.
+
+    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
+    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
+    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
+    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
+    encodings matches the pattern already used for data variables after
+    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
+    """
+    for name in xds.coords:
+        xds[name].encoding = {}
+    for name in xds.data_vars:
+        xds[name].encoding = {}
+    return xds
+
+
 def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
     """Rechunk ``l`` and ``m`` so Dask-backed arrays use uniform spatial chunk sizes.
 
@@ -833,11 +913,13 @@ def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
         Target chunk length for each of ``l`` and ``m``. If zero, each spatial
         axis is stored as a single chunk (still uniform).
     """
-    if not {"l", "m"} <= set(xds.dims):
-        return xds
-    if chunk_lm and chunk_lm > 0:
-        return xds.chunk({"l": chunk_lm, "m": chunk_lm})
-    return xds.chunk({"l": -1, "m": -1})
+    if {"l", "m"} <= set(xds.dims):
+        if chunk_lm and chunk_lm > 0:
+            xds = xds.chunk({"l": chunk_lm, "m": chunk_lm})
+        else:
+            xds = xds.chunk({"l": -1, "m": -1})
+    xds = _rechunk_nonuniform_aux_vars_for_zarr(xds)
+    return _strip_encodings_for_zarr_write(xds)
 
 
 def _assert_same_lm(
