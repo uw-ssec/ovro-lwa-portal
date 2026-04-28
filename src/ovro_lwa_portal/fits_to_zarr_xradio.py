@@ -62,7 +62,7 @@ import shutil
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import xarray as xr
@@ -120,14 +120,18 @@ PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
 )
 MHZ_RE = re.compile(r"_(\d+)MHz_")
+_IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 
 
 def _time_key_from_name(p: Path) -> Optional[str]:
-    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from filename when possible."""
+    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from basename when possible."""
     m = PAT.match(p.name)
-    if not m:
+    if m:
+        return f"{m.group('date')}_{m.group('hms')}"
+    m_img = _IMAGE_TIME_RE.search(p.name)
+    if not m_img:
         return None
-    return f"{m.group('date')}_{m.group('hms')}"
+    return f"{m_img.group(1)}_{m_img.group(2)}"
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -511,14 +515,22 @@ def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
     return None
 
 
-def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], List[str]]:
-    """Extract grouping metadata from headers with filename fallback.
+def _extract_group_metadata(
+    fp: Path,
+    *,
+    time_key_source: Literal["header", "filename"] = "header",
+) -> Tuple[Optional[str], Optional[float], List[str]]:
+    """Extract grouping metadata from headers with optional filename time preference.
 
     Returns
     -------
     Tuple[Optional[str], Optional[float], List[str]]
         Tuple of ``(time_key, frequency_hz, fallback_notes)`` where fallback_notes
         records when filename-based fallback was used.
+
+    When *time_key_source* is ``"filename"``, a parseable basename (legacy averaged pattern
+    or ``-image-YYYYMMDD_HHMMSS``) wins over header times so multi-band pipeline products
+    group together when ``DATE-OBS`` differs across symlink targets.
     """
     time_key: Optional[str] = None
     frequency_hz: Optional[float] = None
@@ -531,14 +543,23 @@ def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], L
         logger.warning(f"Could not read FITS header for {fp.name}: {e}")
 
     if header is not None:
-        time_key = _time_key_from_header(header)
         frequency_hz = _frequency_hz_from_header(header)
 
-    if time_key is None:
-        name_time_key = _time_key_from_name(fp)
-        if name_time_key is not None:
-            time_key = name_time_key
+    if time_key_source == "filename":
+        tk_name = _time_key_from_name(fp)
+        if tk_name is not None:
+            time_key = tk_name
             notes.append("time-from-filename")
+        elif header is not None:
+            time_key = _time_key_from_header(header)
+    else:
+        if header is not None:
+            time_key = _time_key_from_header(header)
+        if time_key is None:
+            tk_name = _time_key_from_name(fp)
+            if tk_name is not None:
+                time_key = tk_name
+                notes.append("time-from-filename")
 
     if frequency_hz is None:
         mhz = _mhz_from_name(fp)
@@ -1089,10 +1110,13 @@ def _regrid_to_reference_lm(
 def _discover_groups(
     in_dir: Path,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
+    *,
+    freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
+    time_key_source: Literal["header", "filename"] = "header",
 ) -> Dict[str, List[Path]]:
     """Group input FITS by observation time and frequency (headers first, filename fallback).
 
-    Files are associated with a **coarse** frequency key (10~kHz bins) so small
+    Files are associated with a **coarse** frequency key (default 10~kHz bins) so small
     header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
     in the Zarr for the same physical subband. For multiple paths in the same
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
@@ -1105,20 +1129,34 @@ def _discover_groups(
     duplicate_resolver
         Optional callback ``(time_key, frequency_hz, candidates) -> Path`` when multiple
         files share the same time and binned frequency group.
+    freq_bin_hz
+        Width in Hz for rounding header frequencies to a discovery key,
+        ``int(round(frequency_hz / freq_bin_hz))``. Frequencies in the same bin are treated
+        as one subband for grouping (up to ~``freq_bin_hz`` separation at bin edges).
+    time_key_source
+        ``"header"`` (default): prefer header time, then basename patterns when missing.
+        ``"filename"``: prefer basename time when parseable (see :func:`_extract_group_metadata`).
 
     Returns
     -------
     Dict[str, List[Path]]
         Dictionary mapping time keys to lists of FITS file paths.
     """
+    if freq_bin_hz <= 0.0:
+        msg = f"freq_bin_hz must be positive, got {freq_bin_hz}"
+        raise ValueError(msg)
+
     by_time: Dict[str, List[Path]] = {}
     by_time_freq: Dict[str, Dict[int, List[Path]]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        time_key, frequency_hz, notes = _extract_group_metadata(f)
+        time_key, frequency_hz, notes = _extract_group_metadata(f, time_key_source=time_key_source)
         if time_key is None:
-            logger.warning(
-                f"Skipping {f.name}: missing usable observation time in FITS headers and filename."
+            t_hint = (
+                "-image-YYYYMMDD_HHMMSS in basename, legacy averaged name, or DATE-OBS"
+                if time_key_source == "filename"
+                else "DATE-OBS or filename time pattern"
             )
+            logger.warning(f"Skipping {f.name}: missing usable observation time ({t_hint}).")
             continue
         if frequency_hz is None:
             logger.warning(
@@ -1127,7 +1165,7 @@ def _discover_groups(
             by_time.setdefault(time_key, []).append(f)
             continue
 
-        freq_key = int(round(frequency_hz / _DISCOVERY_FREQ_BIN_HZ))
+        freq_key = int(round(frequency_hz / freq_bin_hz))
         time_freq_map = by_time_freq.setdefault(time_key, {})
         candidates = time_freq_map.setdefault(freq_key, [])
         candidates.append(f)
@@ -1143,7 +1181,7 @@ def _discover_groups(
                     "(binned key=%s, ~%.3f MHz): %s. Using only %s. "
                     "Remove extras or pass duplicate_resolver to select a file.",
                     time_key,
-                    _DISCOVERY_FREQ_BIN_HZ,
+                    freq_bin_hz,
                     freq_key,
                     frequency_hz / 1e6,
                     duplicate_names,
@@ -1152,8 +1190,8 @@ def _discover_groups(
                 time_freq_map[freq_key] = [kept]
                 continue
 
-            _, rep_hz, _ = _extract_group_metadata(candidates[0])
-            resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * _DISCOVERY_FREQ_BIN_HZ
+            _, rep_hz, _ = _extract_group_metadata(candidates[0], time_key_source=time_key_source)
+            resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * freq_bin_hz
             selected = duplicate_resolver(time_key, resolver_hz, candidates.copy())
             if selected not in candidates:
                 msg = (
@@ -1366,6 +1404,59 @@ def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
         if bad_dims:
             chunk_arg = {d: -1 for d in bad_dims}
             out = out.assign_coords({name: c.chunk(chunk_arg)})
+    return out
+
+
+def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
+    """Clear encodings on coordinates and data variables before Zarr write.
+
+    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
+    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
+    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
+    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
+    encodings matches the pattern already used for data variables after
+    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
+    """
+    for name in xds.coords:
+        xds[name].encoding = {}
+    for name in xds.data_vars:
+        xds[name].encoding = {}
+    return xds
+
+
+def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
+
+    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
+    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
+    along one dimension). ``xarray``'s Zarr writer requires all non-final
+    chunks to share the same size along each dimension; otherwise it raises
+    (``wcs_header_str`` is a known case).
+
+    Parameters
+    ----------
+    xds
+        Dataset possibly containing small dask-backed aux variables.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with offending variables rechunks to one chunk per dimension.
+    """
+    out = xds
+    for name in list(out.data_vars):
+        v = out[name]
+        da_ = v.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad = False
+        for dim_chunks in da_.chunks:
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad = True
+                break
+        if bad:
+            chunk_arg = {d: -1 for d in v.dims}
+            out = out.assign(**{name: v.chunk(chunk_arg)})
     return out
 
 

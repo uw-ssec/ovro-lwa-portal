@@ -396,6 +396,45 @@ def test_extract_group_metadata_fallback_to_filename(tmp_path: Path):
     assert "frequency-from-filename" in notes
 
 
+def test_extract_group_metadata_filename_time_overrides_header(tmp_path: Path) -> None:
+    """``time_key_source='filename'`` prefers ``-image-`` basename over DATE-OBS."""
+    mod = _import_module()
+    fpath = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_x.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-21T00:00:00", "RESTFREQ": 18e6}),
+    ).writeto(fpath)
+
+    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath, time_key_source="filename")
+
+    assert time_key == "20241221_102109"
+    assert frequency_hz == pytest.approx(18e6)
+    assert "time-from-filename" in notes
+
+
+def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> None:
+    """Same ``-image-YYYYMMDD_HHMMSS`` basename groups together even if DATE-OBS differs."""
+    mod = _import_module()
+    a = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_a.fits"
+    b = tmp_path / "73MHz-I-Deep-Taper-Robust-0-image-20241221_102109_b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-21T01:00:00", "RESTFREQ": 18e6}),
+    ).writeto(a)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-22T23:00:00", "RESTFREQ": 73e6}),
+    ).writeto(b)
+
+    by_header = mod._discover_groups(tmp_path, time_key_source="header")
+    by_name = mod._discover_groups(tmp_path, time_key_source="filename")
+
+    assert len(by_header) == 2
+    assert len(by_name) == 1
+    assert list(by_name.keys()) == ["20241221_102109"]
+    assert {p.name for p in by_name["20241221_102109"]} == {a.name, b.name}
+
+
 def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
     """Same time + same 10 kHz bin: keep the first file and warn; do not stack duplicates."""
     mod = _import_module()
