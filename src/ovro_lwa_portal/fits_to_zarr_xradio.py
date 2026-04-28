@@ -702,7 +702,7 @@ def _discover_groups(
                 time_freq_map[freq_key] = [kept]
                 continue
 
-            rep_hz, _, _ = _extract_group_metadata(candidates[0])
+            _, rep_hz, _ = _extract_group_metadata(candidates[0])
             resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * _DISCOVERY_FREQ_BIN_HZ
             selected = duplicate_resolver(time_key, resolver_hz, candidates.copy())
             if selected not in candidates:
