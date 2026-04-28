@@ -1513,6 +1513,30 @@ def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
     return out
 
 
+def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk coordinate arrays that have non-uniform Dask chunks.
+
+    Coordinates like ``right_ascension``/``declination`` can gain a leading
+    ``time`` dimension during append. If that axis chunks as ``(2, 1, 1)``,
+    xarray's Zarr writer rejects it as non-uniform. Rechunk only the offending
+    dimensions (e.g. ``time``) and keep already-uniform spatial chunks unchanged.
+    """
+    out = xds
+    for name in list(out.coords):
+        c = out[name]
+        da_ = c.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad_dims: list[str] = []
+        for dim_name, dim_chunks in zip(c.dims, da_.chunks, strict=True):
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad_dims.append(dim_name)
+        if bad_dims:
+            chunk_arg = {d: -1 for d in bad_dims}
+            out = out.assign_coords({name: c.chunk(chunk_arg)})
+    return out
+
+
 def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
     """Clear encodings on coordinates and data variables before Zarr write.
 
