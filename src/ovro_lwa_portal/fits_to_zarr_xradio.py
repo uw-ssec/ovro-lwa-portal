@@ -135,6 +135,12 @@ def _sky_coord_cache_set(
         _SKY_COORD_CACHE.popitem(last=False)
 
 
+# Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
+# Many OVRO-LWA subbands at one time share the same LM grid, so recomputing
+# all_pix2world for every file dominates runtime.
+_SKY_COORD_CACHE: Dict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]] = {}
+
+
 # Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
 PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
@@ -1681,6 +1687,30 @@ def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
         if bad:
             chunk_arg = {d: -1 for d in v.dims}
             out = out.assign(**{name: v.chunk(chunk_arg)})
+    return out
+
+
+def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk coordinate arrays that have non-uniform Dask chunks.
+
+    Coordinates like ``right_ascension``/``declination`` can gain a leading
+    ``time`` dimension during append. If that axis chunks as ``(2, 1, 1)``,
+    xarray's Zarr writer rejects it as non-uniform. Rechunk only the offending
+    dimensions (e.g. ``time``) and keep already-uniform spatial chunks unchanged.
+    """
+    out = xds
+    for name in list(out.coords):
+        c = out[name]
+        da_ = c.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad_dims: list[str] = []
+        for dim_name, dim_chunks in zip(c.dims, da_.chunks, strict=True):
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad_dims.append(dim_name)
+        if bad_dims:
+            chunk_arg = {d: -1 for d in bad_dims}
+            out = out.assign_coords({name: c.chunk(chunk_arg)})
     return out
 
 
