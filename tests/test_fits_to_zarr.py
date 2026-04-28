@@ -396,15 +396,35 @@ def test_extract_group_metadata_fallback_to_filename(tmp_path: Path):
     assert "frequency-from-filename" in notes
 
 
-def test_discover_groups_duplicate_without_resolver_raises(tmp_path: Path):
-    """Duplicate time/frequency files should raise without a resolver."""
+def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
+    """Same time + same 10 kHz bin: keep the first file and warn; do not stack duplicates."""
     mod = _import_module()
     hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
-    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(tmp_path / "first_name.fits")
-    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(tmp_path / "second_name.fits")
+    f1 = tmp_path / "first_name.fits"
+    f2 = tmp_path / "second_name.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(f1)
+    fits.PrimaryHDU(data=[[1.0]], header=hdr).writeto(f2)
 
-    with pytest.raises(RuntimeError, match="Duplicate FITS files detected"):
-        mod._discover_groups(tmp_path)
+    groups = mod._discover_groups(tmp_path)
+    assert groups["20240524_050009"] == [f1]
+
+
+def test_discover_groups_header_frequency_jitter_single_plane(tmp_path: Path):
+    """RESTFREQ differing by <<10 kHz should map to one binned subband (one FITS kept)."""
+    mod = _import_module()
+    t = "2024-05-24T05:00:09.0"
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7}),
+    ).writeto(f1)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7 + 100.0}),
+    ).writeto(f2)
+    groups = mod._discover_groups(tmp_path)
+    assert groups["20240524_050009"] == [f1]
 
 
 def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
@@ -514,6 +534,60 @@ def test_rechunk_lm_for_zarr_chunk_lm_zero_single_spatial_chunk():
     ds = xr.Dataset({"SKY": (("m", "l"), data)}, coords={"l": ("l", l), "m": ("m", m)})
     out = mod._rechunk_lm_for_zarr(ds, chunk_lm=0)
     assert out["SKY"].data.chunks == ((100,), (100,))
+
+
+def test_rechunk_lm_for_zarr_fixes_irregular_wcs_header_str_chunks(tmp_path):
+    """Non-uniform dask chunks on aux vars (e.g. wcs along frequency) must be Zarr-safe."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    n = 4
+    l = np.linspace(-1.0, 1.0, 32)
+    m = np.linspace(-1.0, 1.0, 32)
+    sky = da.random.random((32, 32), chunks=(16, 16))
+    hdr = np.array([np.bytes_(b"x" * 20) for _ in range(n)], dtype=np.bytes_)
+    w = da.from_array(hdr, chunks=((2, 1, 1),))
+    ds = xr.Dataset(
+        {"SKY": (("m", "l"), sky), "wcs_header_str": (("frequency",), w)},
+        coords={
+            "l": ("l", l),
+            "m": ("m", m),
+            "frequency": np.arange(n, dtype=np.float64),
+        },
+    )
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=8)
+    assert out["wcs_header_str"].data.chunks == ((4,),)
+    out.to_zarr(tmp_path / "t.zarr", mode="w", consolidated=False)
+
+
+def test_rechunk_lm_for_zarr_strips_coord_encoding_conflicts(tmp_path):
+    """Stale ``encoding['chunks']`` on coords must not break ``to_zarr`` (Dask vs Zarr grid)."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nf, ny, nx = 2, 32, 32
+    sky = da.random.random((nf, ny, nx), chunks=(1, 16, 16))
+    ra = da.random.random((nf, ny, nx), chunks=(1, 16, 16))
+    dec = da.random.random((nf, ny, nx), chunks=(1, 16, 16))
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), sky)},
+        coords={
+            "frequency": np.arange(nf),
+            "l": np.linspace(-1, 1, nx),
+            "m": np.linspace(-1, 1, ny),
+            "right_ascension": (("frequency", "m", "l"), ra),
+            "declination": (("frequency", "m", "l"), dec),
+        },
+    )
+    ds["right_ascension"].encoding = {"chunks": (2, 128, 128)}
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=8)
+    assert out["right_ascension"].encoding == {}
+    assert out["declination"].encoding == {}
+    out.to_zarr(tmp_path / "coord.zarr", mode="w", consolidated=False)
 
 
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
