@@ -137,6 +137,11 @@ def convert(
         "-r",
         help="Overwrite existing Zarr store instead of appending",
     ),
+    resume: bool = typer.Option(
+        False,
+        "--resume",
+        help="Skip time steps already present in the existing output Zarr time coordinate",
+    ),
     skip_header_fixing: bool = typer.Option(
         False,
         "--skip-header-fixing",
@@ -199,6 +204,7 @@ def convert(
         fixed_dir=fixed_dir,
         chunk_lm=chunk_lm,
         rebuild=rebuild,
+        resume=resume,
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
         cleanup_fixed_fits=cleanup_fixed_fits,
         duplicate_resolver=None,
@@ -213,6 +219,7 @@ def convert(
     console.print(f"  Fixed FITS dir:   {config.fixed_dir}")
     console.print(f"  Chunk size (l,m): {chunk_lm}")
     console.print(f"  Mode:             {'REBUILD' if rebuild else 'APPEND'}")
+    console.print(f"  Resume mode:      {'ON' if resume else 'OFF'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
