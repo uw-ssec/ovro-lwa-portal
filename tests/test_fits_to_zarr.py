@@ -689,6 +689,15 @@ def test_normalize_time_key_from_datetime64():
     assert out == "20241218_063336"
 
 
+def test_normalize_time_key_from_mjd_float():
+    """Numeric MJD time coordinates should normalize to discovery-style keys."""
+    mod = _import_module()
+    # 2024-12-20T03:00:00 UTC in MJD.
+    out = mod._normalize_time_key(60664.125)
+
+    assert out == "20241220_030000"
+
+
 def test_existing_time_keys_from_zarr(tmp_path: Path):
     """Existing Zarr time coordinates should map to a set of normalized keys."""
     import numpy as np

@@ -162,6 +162,15 @@ def _normalize_time_key(value: object) -> Optional[str]:
     if value is None:
         return None
 
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        if not np.isfinite(value):
+            return None
+        # Many existing OVRO-LWA Zarr stores encode time as MJD floats.
+        try:
+            return Time(float(value), format="mjd", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            return None
+
     if isinstance(value, (bytes, np.bytes_)):
         text_value = value.decode("utf-8").strip()
     elif isinstance(value, str):
