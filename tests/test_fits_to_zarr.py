@@ -726,3 +726,102 @@ def test_existing_time_keys_from_zarr_missing_time_raises(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="has no 'time' coordinate"):
         mod._existing_time_keys_from_zarr(out_zarr)
+
+
+def test_convert_resume_skips_already_ingested_times(monkeypatch, tmp_path: Path):
+    """Resume mode should only process discovered timesteps missing from output Zarr."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_zarr = out_dir / "ovro_lwa_full_lm_only.zarr"
+    out_zarr.mkdir()
+
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    f1.touch()
+    f2.touch()
+
+    by_time = {"20241218_063336": [f1], "20241218_063337": [f2]}
+    monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
+    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+
+    ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
+    monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
+
+    xds_t = xr.Dataset(
+        {"SKY": (("time", "m", "l"), np.zeros((1, 2, 2), dtype=np.float32))},
+        coords={
+            "time": np.array(["2024-12-18T06:33:37"], dtype="datetime64[s]"),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+            "frequency": np.array([4.1e7]),
+        },
+    )
+    monkeypatch.setattr(mod, "_combine_time_step", lambda *_args, **_kwargs: (xds_t, [4.1e7], []))
+
+    write_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_write_or_append_zarr",
+        lambda _xds, _out, *, first_write, chunk_lm: write_calls.append(first_write),
+    )
+
+    result = mod.convert_fits_dir_to_zarr(
+        input_dir=tmp_path,
+        out_dir=out_dir,
+        resume=True,
+        rebuild=False,
+    )
+
+    assert result == out_zarr
+    assert len(write_calls) == 1
+    assert write_calls == [False]
+
+
+def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Path):
+    """Resume mode should exit without combine/write when all times already exist."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_zarr = out_dir / "ovro_lwa_full_lm_only.zarr"
+    out_zarr.mkdir()
+
+    f1 = tmp_path / "a.fits"
+    f1.touch()
+
+    by_time = {"20241218_063336": [f1]}
+    monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
+    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+
+    ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
+    monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
+
+    combine_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_combine_time_step",
+        lambda *_args, **_kwargs: combine_calls.append(True),  # pragma: no cover
+    )
+    write_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_write_or_append_zarr",
+        lambda *_args, **_kwargs: write_calls.append(True),  # pragma: no cover
+    )
+
+    result = mod.convert_fits_dir_to_zarr(
+        input_dir=tmp_path,
+        out_dir=out_dir,
+        resume=True,
+        rebuild=False,
+    )
+
+    assert result == out_zarr
+    assert combine_calls == []
+    assert write_calls == []

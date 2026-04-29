@@ -1213,6 +1213,7 @@ def convert_fits_dir_to_zarr(
     fixed_dir: str | Path = "fixed_fits",
     chunk_lm: int = 1024,
     rebuild: bool = False,
+    resume: bool = False,
     fix_headers_on_demand: bool = True,
     cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
@@ -1234,6 +1235,9 @@ def convert_fits_dir_to_zarr(
         Optional LM chunk size for the in-memory xarray datasets (0 disables).
     rebuild
         If True, overwrite any existing Zarr; otherwise append to it.
+    resume
+        If True and an existing output Zarr is present, skip input time steps
+        that already exist in the Zarr ``time`` coordinate.
     fix_headers_on_demand
         If True, fix FITS headers on-demand during conversion if they don't exist.
         If False, assume headers are already fixed using :func:`fix_fits_headers`.
@@ -1295,8 +1299,25 @@ def convert_fits_dir_to_zarr(
     # Decide whether we write a fresh store or append to an existing one
     first_write = not (out_zarr.exists() and not rebuild)
 
-    total_time_steps = len(by_time)
-    for idx, tkey in enumerate(sorted(by_time.keys())):
+    all_time_keys = sorted(by_time.keys())
+    pending_time_keys = all_time_keys
+    if resume and out_zarr.exists() and not rebuild:
+        existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
+        pending_time_keys = [k for k in all_time_keys if k not in existing_time_keys]
+        skipped = len(all_time_keys) - len(pending_time_keys)
+        logger.info(
+            "Resume mode: %d/%d time step(s) already present in output Zarr; %d pending.",
+            skipped,
+            len(all_time_keys),
+            len(pending_time_keys),
+        )
+
+    if not pending_time_keys:
+        logger.info("No pending time steps to process; output already up to date: %s", out_zarr)
+        return out_zarr
+
+    total_time_steps = len(pending_time_keys)
+    for idx, tkey in enumerate(pending_time_keys):
         files = by_time[tkey]
 
         logger.info(f"[read/combine] time {tkey}")
@@ -1307,7 +1328,7 @@ def convert_fits_dir_to_zarr(
             fix_headers_on_demand=fix_headers_on_demand,
             lm_reference_ds=lm_ref_ds,
         )
-        logger.info(f"  combined dims: {dict(xds_t.dims)}")
+        logger.info(f"  combined dims: {dict(xds_t.sizes)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)
