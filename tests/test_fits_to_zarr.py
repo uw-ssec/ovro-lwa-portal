@@ -677,3 +677,52 @@ def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
     assert hdr["CDELT4"] == pytest.approx(1.0)
     assert out_data is not None
     assert out_data.shape == (1, 1, 4, 4)
+
+
+def test_normalize_time_key_from_datetime64():
+    """Datetime64 values should normalize to discovery-style time keys."""
+    mod = _import_module()
+    value = mod.np.datetime64("2024-12-18T06:33:36.987654321")
+
+    out = mod._normalize_time_key(value)
+
+    assert out == "20241218_063336"
+
+
+def test_existing_time_keys_from_zarr(tmp_path: Path):
+    """Existing Zarr time coordinates should map to a set of normalized keys."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_zarr = tmp_path / "existing.zarr"
+    ds = xr.Dataset(
+        {"SKY": (("time", "m", "l"), np.zeros((2, 2, 2), dtype=np.float32))},
+        coords={
+            "time": np.array(["2024-12-18T06:33:36", "2024-12-18T06:33:37"], dtype="datetime64[ns]"),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+        },
+    )
+    ds.to_zarr(out_zarr, mode="w", consolidated=False)
+
+    keys = mod._existing_time_keys_from_zarr(out_zarr)
+
+    assert keys == {"20241218_063336", "20241218_063337"}
+
+
+def test_existing_time_keys_from_zarr_missing_time_raises(tmp_path: Path):
+    """Resume helper should fail clearly when existing Zarr has no time coordinate."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_zarr = tmp_path / "no_time.zarr"
+    ds = xr.Dataset(
+        {"SKY": (("m", "l"), np.zeros((2, 2), dtype=np.float32))},
+        coords={"m": np.array([0.0, 1.0]), "l": np.array([0.0, 1.0])},
+    )
+    ds.to_zarr(out_zarr, mode="w", consolidated=False)
+
+    with pytest.raises(RuntimeError, match="has no 'time' coordinate"):
+        mod._existing_time_keys_from_zarr(out_zarr)

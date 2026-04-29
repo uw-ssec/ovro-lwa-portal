@@ -153,6 +153,82 @@ def _time_key_from_header(header: fits.Header) -> Optional[str]:
     return None
 
 
+def _normalize_time_key(value: object) -> Optional[str]:
+    """Normalize mixed time representations to ``YYYYMMDD_HHMMSS`` in UTC.
+
+    This helper is used to compare discovery keys against time values loaded
+    from an existing Zarr store.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, (bytes, np.bytes_)):
+        text_value = value.decode("utf-8").strip()
+    elif isinstance(value, str):
+        text_value = value.strip()
+    elif isinstance(value, np.datetime64):
+        if np.isnat(value):
+            return None
+        dt64_s = value.astype("datetime64[s]")
+        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
+        try:
+            return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            return None
+    else:
+        text_value = str(value).strip()
+
+    if not text_value:
+        return None
+
+    if re.match(r"^\d{8}_\d{6}$", text_value):
+        return text_value
+
+    for fmt in ("isot", "fits"):
+        try:
+            return Time(text_value, format=fmt, scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            continue
+
+    try:
+        dt64 = np.datetime64(text_value)
+        if np.isnat(dt64):
+            return None
+        dt64_s = dt64.astype("datetime64[s]")
+        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
+        return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+    except Exception:
+        return None
+
+
+def _existing_time_keys_from_zarr(out_zarr: Path) -> set[str]:
+    """Read and normalize timestep keys from an existing Zarr store."""
+    try:
+        xds = xr.open_zarr(str(out_zarr), consolidated=False)
+    except Exception as exc:
+        msg = f"Could not open existing Zarr store {out_zarr}: {exc}"
+        raise RuntimeError(msg) from exc
+
+    try:
+        if "time" not in xds.coords:
+            msg = f"Existing Zarr store {out_zarr} has no 'time' coordinate; cannot resume safely."
+            raise RuntimeError(msg)
+
+        keys: set[str] = set()
+        for raw_value in np.atleast_1d(xds["time"].values):
+            key = _normalize_time_key(raw_value)
+            if key is None:
+                msg = (
+                    f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
+                    "cannot resume safely."
+                )
+                raise RuntimeError(msg)
+            keys.add(key)
+        return keys
+    finally:
+        xds.close()
+
+
 def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
     """Extract frequency in Hz from FITS headers.
 
