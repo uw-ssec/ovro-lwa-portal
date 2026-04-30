@@ -50,7 +50,7 @@ Notes
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
 * Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
   Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
-* On append, the existing Zarr is read and re-written with the appended time step.
+* On append, only the pending time step is appended along the ``time`` dimension.
 """
 
 from __future__ import annotations
@@ -59,6 +59,7 @@ import os
 import logging
 import re
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -81,9 +82,30 @@ logger = logging.getLogger(__name__)
 _DISCOVERY_FREQ_BIN_HZ: float = 10_000.0
 
 # Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
-# Many OVRO-LWA subbands at one time share the same LM grid, so recomputing
-# all_pix2world for every file dominates runtime.
-_SKY_COORD_CACHE: Dict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]] = {}
+# Keep this bounded so long-running conversions do not accumulate unlimited RA/Dec grids.
+_SKY_COORD_CACHE_MAX_ENTRIES = 64
+_SKY_COORD_CACHE: "OrderedDict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]]" = OrderedDict()
+
+
+def _sky_coord_cache_get(
+    key: Tuple[int, int, str],
+) -> Optional[Tuple[NDArray[np.floating], NDArray[np.floating], str]]:
+    """Lookup in LRU sky-coordinate cache and refresh recency on hit."""
+    cached = _SKY_COORD_CACHE.get(key)
+    if cached is not None:
+        _SKY_COORD_CACHE.move_to_end(key)
+    return cached
+
+
+def _sky_coord_cache_set(
+    key: Tuple[int, int, str],
+    value: Tuple[NDArray[np.floating], NDArray[np.floating], str],
+) -> None:
+    """Insert into LRU sky-coordinate cache and evict oldest entry when full."""
+    _SKY_COORD_CACHE[key] = value
+    _SKY_COORD_CACHE.move_to_end(key)
+    if len(_SKY_COORD_CACHE) > _SKY_COORD_CACHE_MAX_ENTRIES:
+        _SKY_COORD_CACHE.popitem(last=False)
 
 
 # Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
@@ -568,11 +590,11 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     cel_hdr = w2d.to_header()
     hdr_str = cel_hdr.tostring(sep="\n")
     cache_key = (ny, nx, hdr_str)
-    cached = _SKY_COORD_CACHE.get(cache_key)
+    cached = _sky_coord_cache_get(cache_key)
     if cached is None:
         yy, xx = np.indices((ny, nx), dtype=float)
         ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, pixel centers
-        _SKY_COORD_CACHE[cache_key] = (ra2d, dec2d, hdr_str)
+        _sky_coord_cache_set(cache_key, (ra2d, dec2d, hdr_str))
     else:
         ra2d, dec2d, hdr_str = cached
 
@@ -1148,12 +1170,7 @@ def _write_or_append_zarr(
     *,
     chunk_lm: int,
 ) -> None:
-    """Safe write/append to Zarr store.
-
-    First write: write directly.
-    Append: read existing lazily, build combined, write to a TEMP path,
-    then atomically swap into place so we never delete the source store
-    while still reading from it.
+    """Write first time-step, then append incrementally on ``time``.
 
     Parameters
     ----------
@@ -1162,13 +1179,12 @@ def _write_or_append_zarr(
     out_zarr : Path
         Path to output Zarr store.
     first_write : bool
-        If True, write a new Zarr store; if False, append to existing.
+        If True, write a new Zarr store; if False, append this dataset
+        along the ``time`` dimension.
     chunk_lm
         Spatial chunk size passed to :func:`_rechunk_lm_for_zarr` so appended
         stores match uniform Zarr chunking requirements.
     """
-    from shutil import rmtree, move
-
     if first_write or (not out_zarr.exists()):
         to_write = _rechunk_lm_for_zarr(xds_t, chunk_lm)
         write_image(
@@ -1179,39 +1195,14 @@ def _write_or_append_zarr(
         )
         return
 
-    # 1) Open existing lazily
-    existing = xr.open_zarr(str(out_zarr))
-    existing.attrs = {}
-    for v in existing.data_vars:
-        existing[v].encoding = {}
+    to_append = _rechunk_lm_for_zarr(xds_t, chunk_lm)
+    if "frequency" in to_append.coords:
+        to_append = to_append.sortby("frequency")
+    if "time" in to_append.coords:
+        to_append = to_append.sortby("time")
 
-    # 2) Sort for determinism
-    if "time" in existing.coords: existing = existing.sortby("time")
-    if "frequency" in existing.coords: existing = existing.sortby("frequency")
-    if "time" in xds_t.coords:       xds_t = xds_t.sortby("time")
-    if "frequency" in xds_t.coords:  xds_t = xds_t.sortby("frequency")
-
-    # 3) Build combined (still lazy)
-    combined = xr.concat([existing, xds_t], dim="time")
-    if "time" in combined.coords:      combined = combined.sortby("time")
-    if "frequency" in combined.coords: combined = combined.sortby("frequency")
-
-    # 4) Write to a temporary path (so the original store remains readable)
-    tmp = out_zarr.with_suffix(out_zarr.suffix + ".tmpwrite")
-    if tmp.exists():
-        rmtree(tmp)
-    combined_to_write = _rechunk_lm_for_zarr(combined, chunk_lm)
-    write_image(
-        combined_to_write,
-        str(tmp),
-        out_format="zarr",
-        overwrite=True,
-    )
-
-    # 5) Swap: remove old store, move tmp into place
-    if out_zarr.exists():
-        rmtree(out_zarr)
-    move(str(tmp), str(out_zarr))
+    # True incremental append: write only new time samples.
+    to_append.to_zarr(str(out_zarr), mode="a", append_dim="time")
 
 
 
