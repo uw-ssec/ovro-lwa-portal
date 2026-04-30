@@ -737,6 +737,38 @@ def test_existing_time_keys_from_zarr_missing_time_raises(tmp_path: Path):
         mod._existing_time_keys_from_zarr(out_zarr)
 
 
+def test_reindex_time_step_to_expected_frequencies_fills_missing_with_nan():
+    """Per-time datasets should be expanded to the expected subband axis."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    xds_t = xr.Dataset(
+        {
+            "SKY": (
+                ("time", "frequency", "m", "l"),
+                np.arange(8, dtype=np.float32).reshape(1, 2, 2, 2),
+            )
+        },
+        coords={
+            "time": np.array(["2024-12-18T06:33:36"], dtype="datetime64[s]"),
+            "frequency": np.array([41_000_000.0, 55_000_000.0]),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+        },
+    )
+
+    out = mod._reindex_time_step_to_expected_frequencies(
+        xds_t,
+        [41_000_000.0, 48_000_000.0, 55_000_000.0],
+    )
+
+    assert out.sizes["frequency"] == 3
+    assert np.allclose(out["frequency"].values, [41_000_000.0, 48_000_000.0, 55_000_000.0])
+    # Added frequency plane is all NaN in data variables.
+    assert np.isnan(out["SKY"].isel(frequency=1).values).all()
+
+
 def test_convert_resume_skips_already_ingested_times(monkeypatch, tmp_path: Path):
     """Resume mode should only process discovered timesteps missing from output Zarr."""
     import numpy as np

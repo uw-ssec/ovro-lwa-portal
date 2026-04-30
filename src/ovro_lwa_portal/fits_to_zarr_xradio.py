@@ -65,6 +65,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import xarray as xr
+import zarr
 from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -237,8 +238,23 @@ def _existing_time_keys_from_zarr(out_zarr: Path) -> set[str]:
     try:
         xds = xr.open_zarr(str(out_zarr), consolidated=False)
     except Exception as exc:
-        msg = f"Could not open existing Zarr store {out_zarr}: {exc}"
-        raise RuntimeError(msg) from exc
+        try:
+            zg = zarr.open_group(str(out_zarr), mode="r")
+            time_arr = zg["time"][:]
+            fallback_keys: set[str] = set()
+            for raw_value in np.atleast_1d(time_arr):
+                key = _normalize_time_key(raw_value)
+                if key is None:
+                    msg = (
+                        f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
+                        "cannot resume safely."
+                    )
+                    raise RuntimeError(msg)
+                fallback_keys.add(key)
+            return fallback_keys
+        except Exception:
+            msg = f"Could not open existing Zarr store {out_zarr}: {exc}"
+            raise RuntimeError(msg) from exc
 
     try:
         if "time" not in xds.coords:
@@ -324,6 +340,59 @@ def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
     if frequency_hz is None:
         return (float(10**15), fp.name)
     return (float(frequency_hz), fp.name)
+
+
+def _expected_frequencies_from_groups(by_time: Dict[str, List[Path]]) -> List[float]:
+    """Build a stable expected frequency axis from discovered input groups.
+
+    Frequencies are binned with the discovery bin width so small header jitter
+    does not inflate the expected axis.
+    """
+    representative_by_bin: Dict[int, float] = {}
+    for time_key in sorted(by_time.keys()):
+        for fp in sorted(by_time[time_key], key=_frequency_sort_tuple):
+            _, frequency_hz, _ = _extract_group_metadata(fp)
+            if frequency_hz is None:
+                continue
+            freq_key = int(round(float(frequency_hz) / _DISCOVERY_FREQ_BIN_HZ))
+            representative_by_bin.setdefault(freq_key, float(frequency_hz))
+    return [representative_by_bin[k] for k in sorted(representative_by_bin.keys())]
+
+
+def _reindex_time_step_to_expected_frequencies(
+    xds_t: xr.Dataset,
+    expected_frequencies_hz: List[float],
+) -> xr.Dataset:
+    """Ensure each time-step has the full expected frequency axis.
+
+    Missing subbands are introduced as NaN values in data variables.
+    """
+    if "frequency" not in xds_t.coords or not expected_frequencies_hz:
+        return xds_t
+
+    expected = np.asarray(expected_frequencies_hz, dtype=float)
+    observed = np.asarray(np.atleast_1d(xds_t["frequency"].values), dtype=float)
+    if observed.size == 0:
+        return xds_t.reindex({"frequency": expected}, fill_value=np.nan)
+
+    # Snap observed frequencies to the nearest expected bin representative to
+    # tolerate small Hz-level jitter while keeping one stable frequency axis.
+    mapped = observed.copy()
+    max_jitter_hz = _DISCOVERY_FREQ_BIN_HZ / 2.0
+    for i, freq in enumerate(observed):
+        nearest_idx = int(np.argmin(np.abs(expected - freq)))
+        if abs(float(expected[nearest_idx] - freq)) <= max_jitter_hz:
+            mapped[i] = expected[nearest_idx]
+
+    xds_norm = xds_t.assign_coords(frequency=("frequency", mapped))
+
+    # If snapping produced duplicate labels, keep first occurrence per frequency.
+    _, first_indices = np.unique(mapped, return_index=True)
+    if len(first_indices) != len(mapped):
+        xds_norm = xds_norm.isel(frequency=np.sort(first_indices))
+
+    xds_norm = xds_norm.sortby("frequency")
+    return xds_norm.reindex({"frequency": expected}, fill_value=np.nan)
 
 
 def _fix_headers(path_in: Path, path_out: Path) -> None:
@@ -1163,6 +1232,81 @@ def _assert_same_lm(
         )
 
 
+def _zarr_array_dims_and_lengths(
+    var_name: str,
+    *,
+    zgroup: zarr.Group | None = None,
+    store_path: Path | None = None,
+) -> Tuple[Tuple[str, ...], Dict[str, int]]:
+    """Return dimension order and axis lengths for one Zarr array using xarray conventions.
+
+    Reads ``_ARRAY_DIMENSIONS`` from array metadata (xarray/zarr convention).
+    """
+    zg = zgroup if zgroup is not None else zarr.open_group(str(store_path), mode="r")
+    node = zg[var_name]
+    if not hasattr(node, "shape"):
+        msg = f"Zarr node {var_name!r} in {store_path} is not an array; cannot read schema."
+        raise RuntimeError(msg)
+    arr = node
+    dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+    if dims_attr is None:
+        msg = (
+            f"Zarr array {var_name!r} has no _ARRAY_DIMENSIONS metadata; "
+            "cannot align append schema without opening the store as xarray."
+        )
+        raise RuntimeError(msg)
+    if isinstance(dims_attr, str):
+        dims = (dims_attr,)
+    else:
+        dims = tuple(str(d) for d in dims_attr)
+    shape = tuple(int(s) for s in arr.shape)
+    if len(dims) != len(shape):
+        msg = f"Zarr array {var_name!r} dims {dims} do not match shape {shape}."
+        raise RuntimeError(msg)
+    return dims, dict(zip(dims, shape, strict=True))
+
+
+def _align_incoming_with_zarr_schema(
+    incoming: xr.Dataset,
+    existing_path: Path,
+) -> xr.Dataset:
+    """Broadcast shared variables to match on-disk Zarr dimension order (no full Dataset open).
+
+    Used when ``xr.open_zarr`` fails due to inconsistent lengths across arrays in the store.
+    """
+    aligned = incoming
+    zg = zarr.open_group(str(existing_path), mode="r")
+    existing_names = {k for k in zg.array_keys()}
+    incoming_names = set(aligned.variables.keys())
+    shared = sorted(existing_names & incoming_names)
+    for name in shared:
+        e_dims, e_lengths = _zarr_array_dims_and_lengths(name, zgroup=zg)
+        i_dims = tuple(aligned[name].dims)
+        if e_dims == i_dims:
+            continue
+        if set(i_dims).issubset(set(e_dims)):
+            missing_dims = [d for d in e_dims if d not in i_dims]
+            expand_kwargs = {}
+            for d in missing_dims:
+                if d in aligned.sizes:
+                    expand_kwargs[d] = int(aligned.sizes[d])
+                elif d in e_lengths:
+                    expand_kwargs[d] = int(e_lengths[d])
+                else:
+                    msg = (
+                        f"Cannot infer size for missing dimension {d!r} when aligning {name!r} "
+                        f"to on-disk dims {e_dims}."
+                    )
+                    raise RuntimeError(msg)
+            expanded = aligned[name].expand_dims(expand_kwargs)
+            if name in aligned.coords:
+                aligned = aligned.assign_coords({name: expanded})
+            else:
+                aligned = aligned.assign(**{name: expanded})
+            aligned[name] = aligned[name].transpose(*e_dims)
+    return aligned
+
+
 def _write_or_append_zarr(
     xds_t: xr.Dataset,
     out_zarr: Path,
@@ -1202,9 +1346,12 @@ def _write_or_append_zarr(
         with dimensions including ``time`` due to historical concat/write behavior.
         Incremental append must preserve variable dimension names exactly.
         """
-        aligned = incoming
-        existing_schema = xr.open_zarr(str(existing_path), consolidated=False)
         try:
+            existing_schema = xr.open_zarr(str(existing_path), consolidated=False)
+        except Exception as exc:
+            return _align_incoming_with_zarr_schema(incoming, existing_path)
+        try:
+            aligned = incoming
             existing_var_names = set(existing_schema.variables.keys())
             incoming_var_names = set(aligned.variables.keys())
             shared = sorted(existing_var_names & incoming_var_names)
@@ -1236,6 +1383,19 @@ def _write_or_append_zarr(
         to_append = to_append.sortby("frequency")
     if "time" in to_append.coords:
         to_append = to_append.sortby("time")
+    if "wcs_header_str" in to_append.data_vars:
+        # Keep metadata variable chunking compatible with existing Zarr chunk shape.
+        # The target store typically has frequency as a single chunk (e.g. 15), and
+        # split chunks like (14, 1) can overlap that target chunk during append.
+        chunk_args: Dict[str, int] = {}
+        if "time" in to_append["wcs_header_str"].dims:
+            chunk_args["time"] = 1
+        if "frequency" in to_append["wcs_header_str"].dims:
+            chunk_args["frequency"] = -1
+        if chunk_args:
+            to_append = to_append.assign(
+                wcs_header_str=to_append["wcs_header_str"].chunk(chunk_args)
+            )
 
     # True incremental append: write only new time samples.
     to_append.to_zarr(str(out_zarr), mode="a", append_dim="time")
@@ -1336,6 +1496,7 @@ def convert_fits_dir_to_zarr(
     first_write = not (out_zarr.exists() and not rebuild)
 
     all_time_keys = sorted(by_time.keys())
+    expected_frequencies_hz = _expected_frequencies_from_groups(by_time)
     pending_time_keys = all_time_keys
     if resume and out_zarr.exists() and not rebuild:
         existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
@@ -1364,6 +1525,7 @@ def convert_fits_dir_to_zarr(
             fix_headers_on_demand=fix_headers_on_demand,
             lm_reference_ds=lm_ref_ds,
         )
+        xds_t = _reindex_time_step_to_expected_frequencies(xds_t, expected_frequencies_hz)
         logger.info(f"  combined dims: {dict(xds_t.sizes)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
