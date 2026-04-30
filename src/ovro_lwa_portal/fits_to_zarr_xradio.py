@@ -1195,7 +1195,43 @@ def _write_or_append_zarr(
         )
         return
 
+    def _align_with_existing_schema(incoming: xr.Dataset, existing_path: Path) -> xr.Dataset:
+        """Broadcast append variables to match existing Zarr variable dimensions.
+
+        Some existing stores contain metadata variables (e.g., velocity, wcs_header_str)
+        with dimensions including ``time`` due to historical concat/write behavior.
+        Incremental append must preserve variable dimension names exactly.
+        """
+        aligned = incoming
+        existing_schema = xr.open_zarr(str(existing_path), consolidated=False)
+        try:
+            existing_var_names = set(existing_schema.variables.keys())
+            incoming_var_names = set(aligned.variables.keys())
+            shared = sorted(existing_var_names & incoming_var_names)
+            for name in shared:
+                e_dims = tuple(existing_schema[name].dims)
+                i_dims = tuple(aligned[name].dims)
+                if e_dims == i_dims:
+                    continue
+                # If existing dims are a superset of incoming dims, broadcast missing dims.
+                if set(i_dims).issubset(set(e_dims)):
+                    missing_dims = [d for d in e_dims if d not in i_dims]
+                    expand_kwargs = {
+                        d: int(aligned.sizes[d]) if d in aligned.sizes else int(existing_schema.sizes[d])
+                        for d in missing_dims
+                    }
+                    expanded = aligned[name].expand_dims(expand_kwargs)
+                    if name in aligned.coords:
+                        aligned = aligned.assign_coords({name: expanded})
+                    else:
+                        aligned = aligned.assign(**{name: expanded})
+                    aligned[name] = aligned[name].transpose(*e_dims)
+            return aligned
+        finally:
+            existing_schema.close()
+
     to_append = _rechunk_lm_for_zarr(xds_t, chunk_lm)
+    to_append = _align_with_existing_schema(to_append, out_zarr)
     if "frequency" in to_append.coords:
         to_append = to_append.sortby("frequency")
     if "time" in to_append.coords:
