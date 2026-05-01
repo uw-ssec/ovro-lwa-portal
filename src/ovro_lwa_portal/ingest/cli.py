@@ -26,7 +26,11 @@ from rich.progress import (
 )
 from rich.prompt import Prompt
 
-from ovro_lwa_portal.fits_to_zarr_xradio import fix_fits_headers
+from ovro_lwa_portal.fits_to_zarr_xradio import (
+    fix_fits_headers,
+    repair_zarr_store,
+    validate_zarr_store,
+)
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
 
 __all__ = ["main", "app"]
@@ -451,6 +455,84 @@ def fix_headers(
             if log_level == LogLevel.DEBUG:
                 console.print_exception()
             raise typer.Exit(code=1) from e
+
+
+@app.command()
+def validate(
+    zarr_path: Path = typer.Argument(
+        ...,
+        help="Path to an existing Zarr store to validate",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+) -> None:
+    """Validate time-axis consistency of an existing Zarr store."""
+    try:
+        report = validate_zarr_store(zarr_path)
+    except Exception as e:
+        console.print(f"[bold red]✗[/bold red] Validation failed: {e}", style="red")
+        raise typer.Exit(code=1) from e
+
+    console.print("\n[bold cyan]OVRO-LWA Zarr Validation[/bold cyan]")
+    console.print(f"  Store: {report['store']}")
+    buckets = report["time_length_buckets"]
+    for tlen, names in buckets.items():
+        console.print(f"  time={tlen}: {len(names)} array(s)")
+    if report["consistent"]:
+        console.print("\n[bold green]✓[/bold green] Store is time-axis consistent")
+        return
+
+    console.print(f"\n[bold red]✗[/bold red] {report['message']}", style="red")
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def repair(
+    zarr_path: Path = typer.Argument(
+        ...,
+        help="Path to an existing Zarr store to repair",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    fits_dir: Optional[Path] = typer.Option(
+        None,
+        "--fits-dir",
+        help="Optional FITS directory for rewriting wcs_header_str rows from source headers",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    backup_suffix: str = typer.Option(
+        ".backup-before-repair",
+        "--backup-suffix",
+        help="Suffix to use when creating a backup copy before repair",
+    ),
+) -> None:
+    """Repair interrupted-append time-axis inconsistencies in a Zarr store."""
+    console.print("\n[bold cyan]OVRO-LWA Zarr Repair[/bold cyan]")
+    console.print(f"  Store:         {zarr_path}")
+    console.print(f"  Backup suffix: {backup_suffix}")
+    if fits_dir:
+        console.print(f"  FITS dir:      {fits_dir}")
+
+    try:
+        result = repair_zarr_store(zarr_path, fits_dir=fits_dir, backup_suffix=backup_suffix)
+    except Exception as e:
+        console.print(f"\n[bold red]✗[/bold red] Repair failed: {e}", style="red")
+        raise typer.Exit(code=1) from e
+
+    console.print("\n[bold green]✓[/bold green] Repair completed")
+    console.print(f"  Backup:            {result['backup']}")
+    console.print(f"  Repaired time len: {result['repaired_len']}")
+    console.print(f"  Truncated arrays:  {len(result['truncated_arrays'])}")
+    console.print(f"  Rewritten WCS rows:{result['rewritten_wcs_rows']}")
+    if not result["post"]["consistent"]:
+        console.print("\n[bold red]✗[/bold red] Store remains inconsistent after repair", style="red")
+        raise typer.Exit(code=1)
 
 
 @app.command()

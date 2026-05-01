@@ -58,6 +58,7 @@ from __future__ import annotations
 import os
 import logging
 import re
+import shutil
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -72,7 +73,12 @@ from astropy.wcs import WCS
 from numpy.typing import NDArray
 from xradio.image import read_image, write_image
 
-__all__ = ["convert_fits_dir_to_zarr", "fix_fits_headers"]
+__all__ = [
+    "convert_fits_dir_to_zarr",
+    "fix_fits_headers",
+    "validate_zarr_store",
+    "repair_zarr_store",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +280,215 @@ def _existing_time_keys_from_zarr(out_zarr: Path) -> set[str]:
         return keys
     finally:
         xds.close()
+
+
+def _txn_dir_for_store(out_zarr: Path) -> Path:
+    """Return sidecar transaction directory for one output Zarr store."""
+    return out_zarr.parent / f".{out_zarr.name}.append_txn"
+
+
+def _committed_time_keys_from_txn(out_zarr: Path) -> set[str]:
+    """Read committed time keys from sidecar transaction markers."""
+    txn_dir = _txn_dir_for_store(out_zarr)
+    if not txn_dir.exists():
+        return set()
+    committed: set[str] = set()
+    for marker in txn_dir.glob("*.committed"):
+        committed.add(marker.stem)
+    return committed
+
+
+def _mark_time_in_progress(out_zarr: Path, time_key: str) -> None:
+    """Create an in-progress transaction marker for one time key."""
+    txn_dir = _txn_dir_for_store(out_zarr)
+    txn_dir.mkdir(parents=True, exist_ok=True)
+    (txn_dir / f"{time_key}.inprogress").write_text("in_progress\n", encoding="utf-8")
+
+
+def _mark_time_committed(out_zarr: Path, time_key: str) -> None:
+    """Mark a time key as committed and clear its in-progress marker."""
+    txn_dir = _txn_dir_for_store(out_zarr)
+    txn_dir.mkdir(parents=True, exist_ok=True)
+    in_progress = txn_dir / f"{time_key}.inprogress"
+    committed = txn_dir / f"{time_key}.committed"
+    if in_progress.exists():
+        in_progress.unlink()
+    committed.write_text("committed\n", encoding="utf-8")
+
+
+def _validate_time_axis_consistency_zarr(out_zarr: Path) -> None:
+    """Ensure all Zarr arrays with a ``time`` dimension share one length."""
+    try:
+        zg = zarr.open_group(str(out_zarr), mode="r")
+    except Exception:
+        # Path exists but is not yet a readable Zarr group (e.g., test scaffold dir).
+        return
+    buckets: Dict[int, List[str]] = {}
+    for name in zg.array_keys():
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        time_len = int(arr.shape[time_axis])
+        buckets.setdefault(time_len, []).append(name)
+
+    if len(buckets) <= 1:
+        return
+
+    details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
+    msg = (
+        f"Existing Zarr store {out_zarr} has inconsistent time-axis lengths across arrays ({details}). "
+        "This usually indicates an interrupted append. Repair the store or rebuild before resuming."
+    )
+    raise RuntimeError(msg)
+
+
+def _time_axis_length_buckets(out_zarr: Path) -> Dict[int, List[str]]:
+    """Return mapping of time-axis length -> array names."""
+    zg = zarr.open_group(str(out_zarr), mode="r")
+    buckets: Dict[int, List[str]] = {}
+    for name in sorted(zg.array_keys()):
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        time_len = int(arr.shape[time_axis])
+        buckets.setdefault(time_len, []).append(name)
+    return buckets
+
+
+def validate_zarr_store(out_zarr: str | Path) -> Dict[str, object]:
+    """Validate time-axis consistency for a Zarr store.
+
+    Returns a report dictionary with per-length buckets and consistency flag.
+    """
+    out_zarr = Path(out_zarr)
+    if not out_zarr.exists():
+        msg = f"Zarr store does not exist: {out_zarr}"
+        raise FileNotFoundError(msg)
+
+    buckets = _time_axis_length_buckets(out_zarr)
+    consistent = len(buckets) <= 1
+    report: Dict[str, object] = {
+        "store": str(out_zarr),
+        "consistent": consistent,
+        "time_length_buckets": {k: sorted(v) for k, v in sorted(buckets.items())},
+    }
+    if not consistent:
+        details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
+        report["message"] = (
+            f"Inconsistent time-axis lengths across arrays ({details}). "
+            "This usually indicates an interrupted append."
+        )
+    return report
+
+
+def repair_zarr_store(
+    out_zarr: str | Path,
+    *,
+    fits_dir: str | Path | None = None,
+    backup_suffix: str = ".backup-before-repair",
+) -> Dict[str, object]:
+    """Repair inconsistent time-axis lengths and optionally refresh WCS headers.
+
+    The store is backed up before modification.
+    """
+    out_zarr = Path(out_zarr)
+    if not out_zarr.exists():
+        msg = f"Zarr store does not exist: {out_zarr}"
+        raise FileNotFoundError(msg)
+
+    backup_path = out_zarr.with_name(out_zarr.name + backup_suffix)
+    if backup_path.exists():
+        msg = f"Backup path already exists: {backup_path}"
+        raise FileExistsError(msg)
+
+    pre = validate_zarr_store(out_zarr)
+    buckets = pre["time_length_buckets"]
+    if not buckets:
+        msg = f"No arrays with a time axis found in {out_zarr}"
+        raise RuntimeError(msg)
+    repaired_len = min(int(k) for k in buckets.keys())
+
+    shutil.copytree(out_zarr, backup_path)
+    zg = zarr.open_group(str(out_zarr), mode="a")
+
+    truncated: List[str] = []
+    for name in sorted(zg.array_keys()):
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        if int(arr.shape[time_axis]) <= repaired_len:
+            continue
+
+        slicer = [slice(None)] * arr.ndim
+        slicer[time_axis] = slice(0, repaired_len)
+        data = arr[tuple(slicer)]
+        attrs = dict(arr.attrs)
+        chunks = arr.chunks
+        dtype = arr.dtype
+        del zg[name]
+        new_arr = zg.create_dataset(
+            name,
+            data=data.astype(dtype, copy=False),
+            chunks=chunks if len(chunks) == data.ndim else True,
+            overwrite=True,
+        )
+        new_arr.attrs.update(attrs)
+        truncated.append(name)
+
+    rewritten_wcs_rows = 0
+    if fits_dir is not None and "wcs_header_str" in zg and "time" in zg:
+        fits_dir = Path(fits_dir)
+        if fits_dir.exists():
+            by_time = _discover_groups(fits_dir)
+            z_time = np.atleast_1d(zg["time"][:])
+            z_time_keys = [_normalize_time_key(v) for v in z_time[:repaired_len]]
+            wcs_arr = zg["wcs_header_str"]
+            n_freq = int(wcs_arr.shape[1]) if wcs_arr.ndim >= 2 else 0
+            for ti, tkey in enumerate(z_time_keys):
+                if tkey is None:
+                    continue
+                files = by_time.get(tkey, [])
+                if not files:
+                    continue
+                files = sorted(files, key=_frequency_sort_tuple)
+                row = wcs_arr[ti, :].copy()
+                for fi, fp in enumerate(files[:n_freq]):
+                    try:
+                        with fits.open(str(fp), memmap=True) as hdul:
+                            hdr = hdul[0].header
+                        s = WCS(hdr).celestial.to_header().tostring(sep="\n")
+                        row[fi] = np.bytes_(s.encode("utf-8"))
+                    except Exception:
+                        continue
+                wcs_arr[ti, :] = row
+                rewritten_wcs_rows += 1
+
+    zarr.consolidate_metadata(str(out_zarr))
+    post = validate_zarr_store(out_zarr)
+    return {
+        "store": str(out_zarr),
+        "backup": str(backup_path),
+        "repaired_len": repaired_len,
+        "truncated_arrays": truncated,
+        "rewritten_wcs_rows": rewritten_wcs_rows,
+        "pre": pre,
+        "post": post,
+    }
 
 
 def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
@@ -1337,6 +1552,7 @@ def _write_or_append_zarr(
             out_format="zarr",
             overwrite=True,
         )
+        zarr.consolidate_metadata(str(out_zarr))
         return
 
     def _align_with_existing_schema(incoming: xr.Dataset, existing_path: Path) -> xr.Dataset:
@@ -1399,6 +1615,7 @@ def _write_or_append_zarr(
 
     # True incremental append: write only new time samples.
     to_append.to_zarr(str(out_zarr), mode="a", append_dim="time")
+    zarr.consolidate_metadata(str(out_zarr))
 
 
 
@@ -1499,7 +1716,16 @@ def convert_fits_dir_to_zarr(
     expected_frequencies_hz = _expected_frequencies_from_groups(by_time)
     pending_time_keys = all_time_keys
     if resume and out_zarr.exists() and not rebuild:
-        existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
+        committed_time_keys = _committed_time_keys_from_txn(out_zarr)
+        if committed_time_keys:
+            existing_time_keys = committed_time_keys
+            logger.info(
+                "Resume mode: using %d committed time marker(s) from %s",
+                len(existing_time_keys),
+                _txn_dir_for_store(out_zarr),
+            )
+        else:
+            existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
         pending_time_keys = [k for k in all_time_keys if k not in existing_time_keys]
         skipped = len(all_time_keys) - len(pending_time_keys)
         logger.info(
@@ -1534,8 +1760,20 @@ def convert_fits_dir_to_zarr(
         logger.info("  l/m grid matches global reference")
 
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
-        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
-        first_write = False
+        if out_zarr.exists() and not first_write:
+            _validate_time_axis_consistency_zarr(out_zarr)
+        _mark_time_in_progress(out_zarr, tkey)
+        try:
+            _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
+            _mark_time_committed(out_zarr, tkey)
+            first_write = False
+        except KeyboardInterrupt:
+            if out_zarr.exists():
+                try:
+                    zarr.consolidate_metadata(str(out_zarr))
+                except Exception:
+                    pass
+            raise
         if cleanup_fixed_fits and fix_headers_on_demand and created_fixed_paths:
             removed = 0
             for fixed_path in created_fixed_paths:
