@@ -61,6 +61,12 @@ class ConversionConfig:
     fix_headers_on_demand : bool, optional
         If True, fix headers during conversion if they don't exist. If False, assume
         headers are already fixed. Defaults to True.
+    resume : bool, optional
+        If True, skip discovered FITS time steps that already exist in the output
+        Zarr time coordinate. Defaults to False.
+    cleanup_fixed_fits : bool, optional
+        If True, delete temporary ``*_fixed.fits`` files created during on-demand
+        conversion after each time-step is written. Defaults to False.
     verbose : bool, optional
         Enable verbose logging. Defaults to False.
     """
@@ -74,6 +80,8 @@ class ConversionConfig:
         chunk_lm: int = 1024,
         rebuild: bool = False,
         fix_headers_on_demand: bool = True,
+        resume: bool = False,
+        cleanup_fixed_fits: bool = False,
         duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         verbose: bool = False,
     ) -> None:
@@ -84,6 +92,8 @@ class ConversionConfig:
         self.chunk_lm = chunk_lm
         self.rebuild = rebuild
         self.fix_headers_on_demand = fix_headers_on_demand
+        self.resume = resume
+        self.cleanup_fixed_fits = cleanup_fixed_fits
         self.duplicate_resolver = duplicate_resolver
         self.verbose = verbose
 
@@ -225,7 +235,9 @@ class FITSToZarrConverter:
                     fixed_dir=self.config.fixed_dir,
                     chunk_lm=self.config.chunk_lm,
                     rebuild=self.config.rebuild,
+                    resume=self.config.resume,
                     fix_headers_on_demand=self.config.fix_headers_on_demand,
+                    cleanup_fixed_fits=self.config.cleanup_fixed_fits,
                     progress_callback=self.progress_callback,
                     duplicate_resolver=self.config.duplicate_resolver,
                 )

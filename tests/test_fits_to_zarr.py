@@ -590,6 +590,37 @@ def test_rechunk_lm_for_zarr_strips_coord_encoding_conflicts(tmp_path):
     out.to_zarr(tmp_path / "coord.zarr", mode="w", consolidated=False)
 
 
+def test_rechunk_lm_for_zarr_fixes_nonuniform_coord_time_chunks(tmp_path):
+    """Coords with time chunks like (2,1,1) should be rechunked to Zarr-safe layout."""
+    import dask.array as da
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nt, ny, nx = 4, 32, 32
+    sky = da.random.random((nt, ny, nx), chunks=(1, 16, 16))
+    # Deliberately non-uniform time chunks to match runtime failure.
+    ra_np = np.random.default_rng(2).random((nt, ny, nx))
+    dec_np = np.random.default_rng(3).random((nt, ny, nx))
+    ra = da.from_array(ra_np, chunks=((2, 1, 1), (16, 16), (16, 16)))
+    dec = da.from_array(dec_np, chunks=((2, 1, 1), (16, 16), (16, 16)))
+
+    ds = xr.Dataset(
+        {"SKY": (("time", "m", "l"), sky)},
+        coords={
+            "time": np.arange(nt),
+            "l": np.linspace(-1, 1, nx),
+            "m": np.linspace(-1, 1, ny),
+            "right_ascension": (("time", "m", "l"), ra),
+            "declination": (("time", "m", "l"), dec),
+        },
+    )
+    out = mod._rechunk_lm_for_zarr(ds, chunk_lm=8)
+    assert hasattr(out["right_ascension"].data, "chunks")
+    assert out["right_ascension"].data.chunks[0] == (4,)
+    out.to_zarr(tmp_path / "coord_nonuniform_time.zarr", mode="w", consolidated=False)
+
+
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
     mod = _import_module()
@@ -646,3 +677,192 @@ def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
     assert hdr["CDELT4"] == pytest.approx(1.0)
     assert out_data is not None
     assert out_data.shape == (1, 1, 4, 4)
+
+
+def test_normalize_time_key_from_datetime64():
+    """Datetime64 values should normalize to discovery-style time keys."""
+    mod = _import_module()
+    value = mod.np.datetime64("2024-12-18T06:33:36.987654321")
+
+    out = mod._normalize_time_key(value)
+
+    assert out == "20241218_063336"
+
+
+def test_normalize_time_key_from_mjd_float():
+    """Numeric MJD time coordinates should normalize to discovery-style keys."""
+    mod = _import_module()
+    # 2024-12-20T03:00:00 UTC in MJD.
+    out = mod._normalize_time_key(60664.125)
+
+    assert out == "20241220_030000"
+
+
+def test_existing_time_keys_from_zarr(tmp_path: Path):
+    """Existing Zarr time coordinates should map to a set of normalized keys."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_zarr = tmp_path / "existing.zarr"
+    ds = xr.Dataset(
+        {"SKY": (("time", "m", "l"), np.zeros((2, 2, 2), dtype=np.float32))},
+        coords={
+            "time": np.array(["2024-12-18T06:33:36", "2024-12-18T06:33:37"], dtype="datetime64[ns]"),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+        },
+    )
+    ds.to_zarr(out_zarr, mode="w", consolidated=False)
+
+    keys = mod._existing_time_keys_from_zarr(out_zarr)
+
+    assert keys == {"20241218_063336", "20241218_063337"}
+
+
+def test_existing_time_keys_from_zarr_missing_time_raises(tmp_path: Path):
+    """Resume helper should fail clearly when existing Zarr has no time coordinate."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_zarr = tmp_path / "no_time.zarr"
+    ds = xr.Dataset(
+        {"SKY": (("m", "l"), np.zeros((2, 2), dtype=np.float32))},
+        coords={"m": np.array([0.0, 1.0]), "l": np.array([0.0, 1.0])},
+    )
+    ds.to_zarr(out_zarr, mode="w", consolidated=False)
+
+    with pytest.raises(RuntimeError, match="has no 'time' coordinate"):
+        mod._existing_time_keys_from_zarr(out_zarr)
+
+
+def test_reindex_time_step_to_expected_frequencies_fills_missing_with_nan():
+    """Per-time datasets should be expanded to the expected subband axis."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    xds_t = xr.Dataset(
+        {
+            "SKY": (
+                ("time", "frequency", "m", "l"),
+                np.arange(8, dtype=np.float32).reshape(1, 2, 2, 2),
+            )
+        },
+        coords={
+            "time": np.array(["2024-12-18T06:33:36"], dtype="datetime64[s]"),
+            "frequency": np.array([41_000_000.0, 55_000_000.0]),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+        },
+    )
+
+    out = mod._reindex_time_step_to_expected_frequencies(
+        xds_t,
+        [41_000_000.0, 48_000_000.0, 55_000_000.0],
+    )
+
+    assert out.sizes["frequency"] == 3
+    assert np.allclose(out["frequency"].values, [41_000_000.0, 48_000_000.0, 55_000_000.0])
+    # Added frequency plane is all NaN in data variables.
+    assert np.isnan(out["SKY"].isel(frequency=1).values).all()
+
+
+def test_convert_resume_skips_already_ingested_times(monkeypatch, tmp_path: Path):
+    """Resume mode should only process discovered timesteps missing from output Zarr."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_zarr = out_dir / "ovro_lwa_full_lm_only.zarr"
+    out_zarr.mkdir()
+
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    f1.touch()
+    f2.touch()
+
+    by_time = {"20241218_063336": [f1], "20241218_063337": [f2]}
+    monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
+    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+
+    ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
+    monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
+
+    xds_t = xr.Dataset(
+        {"SKY": (("time", "m", "l"), np.zeros((1, 2, 2), dtype=np.float32))},
+        coords={
+            "time": np.array(["2024-12-18T06:33:37"], dtype="datetime64[s]"),
+            "m": np.array([0.0, 1.0]),
+            "l": np.array([0.0, 1.0]),
+            "frequency": np.array([4.1e7]),
+        },
+    )
+    monkeypatch.setattr(mod, "_combine_time_step", lambda *_args, **_kwargs: (xds_t, [4.1e7], []))
+
+    write_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_write_or_append_zarr",
+        lambda _xds, _out, *, first_write, chunk_lm: write_calls.append(first_write),
+    )
+
+    result = mod.convert_fits_dir_to_zarr(
+        input_dir=tmp_path,
+        out_dir=out_dir,
+        resume=True,
+        rebuild=False,
+    )
+
+    assert result == out_zarr
+    assert len(write_calls) == 1
+    assert write_calls == [False]
+
+
+def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Path):
+    """Resume mode should exit without combine/write when all times already exist."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_zarr = out_dir / "ovro_lwa_full_lm_only.zarr"
+    out_zarr.mkdir()
+
+    f1 = tmp_path / "a.fits"
+    f1.touch()
+
+    by_time = {"20241218_063336": [f1]}
+    monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
+    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+
+    ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
+    monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
+
+    combine_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_combine_time_step",
+        lambda *_args, **_kwargs: combine_calls.append(True),  # pragma: no cover
+    )
+    write_calls: list[bool] = []
+    monkeypatch.setattr(
+        mod,
+        "_write_or_append_zarr",
+        lambda *_args, **_kwargs: write_calls.append(True),  # pragma: no cover
+    )
+
+    result = mod.convert_fits_dir_to_zarr(
+        input_dir=tmp_path,
+        out_dir=out_dir,
+        resume=True,
+        rebuild=False,
+    )
+
+    assert result == out_zarr
+    assert combine_calls == []
+    assert write_calls == []
