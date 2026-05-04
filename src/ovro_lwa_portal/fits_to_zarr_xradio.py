@@ -1386,6 +1386,59 @@ def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
     return xds
 
 
+def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
+
+    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
+    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
+    along one dimension). ``xarray``'s Zarr writer requires all non-final
+    chunks to share the same size along each dimension; otherwise it raises
+    (``wcs_header_str`` is a known case).
+
+    Parameters
+    ----------
+    xds
+        Dataset possibly containing small dask-backed aux variables.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with offending variables rechunks to one chunk per dimension.
+    """
+    out = xds
+    for name in list(out.data_vars):
+        v = out[name]
+        da_ = v.data
+        if not hasattr(da_, "chunks") or not da_.chunks:
+            continue
+        bad = False
+        for dim_chunks in da_.chunks:
+            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
+                bad = True
+                break
+        if bad:
+            chunk_arg = {d: -1 for d in v.dims}
+            out = out.assign(**{name: v.chunk(chunk_arg)})
+    return out
+
+
+def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
+    """Clear encodings on coordinates and data variables before Zarr write.
+
+    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
+    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
+    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
+    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
+    encodings matches the pattern already used for data variables after
+    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
+    """
+    for name in xds.coords:
+        xds[name].encoding = {}
+    for name in xds.data_vars:
+        xds[name].encoding = {}
+    return xds
+
+
 def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
     """Rechunk ``l`` and ``m`` so Dask-backed arrays use uniform spatial chunk sizes.
 
