@@ -270,6 +270,42 @@ class RadportAccessor:
         self._lst_cache[single_key] = np.atleast_1d(np.asarray(lst_deg, dtype=np.float64))
         return float(np.asarray(lst_deg, dtype=np.float64).ravel()[0])
 
+    def _ensure_lst_deg_vector_cached(self, observatory: Any) -> None:
+        """Compute and cache mean LST (deg) for every ``time`` coordinate at once.
+
+        :meth:`_lst_deg_for_time_index` reads this via the ``(all_mjd, lon)``
+        cache key. Calling this before a per-time :meth:`coords_to_pixel` loop
+        replaces one Astropy sidereal-time evaluation per index with a single
+        vectorized call over all MJDs.
+        """
+        from astropy.coordinates import EarthLocation
+        from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
+
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        all_mjd = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
+        all_mjd = np.atleast_1d(all_mjd)
+        lon_deg = float(observatory.lon.deg)
+        full_key = (all_mjd.tobytes(), lon_deg)
+        if full_key in self._lst_cache:
+            return
+
+        orig = iers_conf.auto_download
+        try:
+            iers_conf.auto_download = False
+            t = Time(all_mjd, format="mjd", scale="utc")
+            lst_vec = t.sidereal_time("mean", longitude=observatory.lon).deg
+            lst_arr = np.atleast_1d(np.asarray(lst_vec, dtype=np.float64)).ravel()
+        finally:
+            iers_conf.auto_download = orig
+        self._lst_cache[full_key] = lst_arr
+
     def _compute_pixel_track(
         self,
         ra: float,
@@ -285,7 +321,9 @@ class RadportAccessor:
         For each dataset time index, calls :meth:`coords_to_pixel` so pixel
         selection matches all other extraction APIs (stored RA/Dec grids when
         present, otherwise the analytical SIN + LST path inside
-        :meth:`_compute_pixel_at_time`).
+        :meth:`_compute_pixel_at_time`). Before the loop, LST for all times is
+        computed once (see :meth:`_ensure_lst_deg_vector_cached`) so the
+        analytical branch does not repeat Astropy work per index.
 
         Parameters
         ----------
@@ -325,6 +363,8 @@ class RadportAccessor:
         l_indices = np.empty(n_times, dtype=int)
         m_indices = np.empty(n_times, dtype=int)
         visible = np.zeros(n_times, dtype=bool)
+
+        self._ensure_lst_deg_vector_cached(observatory)
 
         for ti in range(n_times):
             try:
