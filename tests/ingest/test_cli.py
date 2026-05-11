@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import click
 import numpy as np
 import pytest
 import zarr
@@ -37,10 +38,11 @@ class TestCLI:
     def test_convert_help(self) -> None:
         """Test convert command help."""
         result = runner.invoke(app, ["convert", "--help"])
+        plain_output = click.unstyle(result.stdout)
         assert result.exit_code == 0
-        assert "Convert OVRO-LWA FITS files to a single Zarr store" in result.stdout
-        assert "largest grid" in result.stdout
-        assert "--resume" in result.stdout
+        assert "Convert OVRO-LWA FITS files to a single Zarr store" in plain_output
+        assert "largest grid" in plain_output
+        assert "--resume" in plain_output
 
     def test_validate_help(self) -> None:
         """Test validate command help."""
