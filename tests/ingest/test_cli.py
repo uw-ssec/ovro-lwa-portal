@@ -36,7 +36,7 @@ class TestCLI:
 
     def test_convert_help(self) -> None:
         """Test convert command help."""
-        result = runner.invoke(app, ["convert", "--help"])
+        result = runner.invoke(app, ["convert", "--help"], env={"NO_COLOR": "1"})
         assert result.exit_code == 0
         assert "Convert OVRO-LWA FITS files to a single Zarr store" in result.stdout
         assert "largest grid" in result.stdout
