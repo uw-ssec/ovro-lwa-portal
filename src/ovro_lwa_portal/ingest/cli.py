@@ -27,6 +27,7 @@ from rich.progress import (
 from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
+    _DISCOVERY_FREQ_BIN_HZ,
     fix_fits_headers,
     repair_zarr_store,
     validate_zarr_store,
@@ -160,6 +161,15 @@ def convert(
             "after each time-step is written (reduces peak disk usage)"
         ),
     ),
+    discovery_freq_bin_hz: float = typer.Option(
+        _DISCOVERY_FREQ_BIN_HZ,
+        "--discovery-freq-bin-hz",
+        help=(
+            "Treat header frequencies within this bin width (Hz) as one subband when "
+            "grouping FITS (default: library default, 23 kHz)"
+        ),
+        min=1e-6,
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -212,6 +222,7 @@ def convert(
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
         cleanup_fixed_fits=cleanup_fixed_fits,
         duplicate_resolver=None,
+        discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
     )
 

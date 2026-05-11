@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
+from ovro_lwa_portal.fits_to_zarr_xradio import _DISCOVERY_FREQ_BIN_HZ
 from ovro_lwa_portal.ingest.core import ConversionConfig, FileLock
 
 
@@ -26,6 +27,7 @@ class TestConversionConfig:
         assert config.chunk_lm == 1024
         assert config.rebuild is False
         assert config.verbose is False
+        assert config.discovery_freq_bin_hz == _DISCOVERY_FREQ_BIN_HZ
 
     def test_custom_initialization(self, tmp_path: Path) -> None:
         """Test custom configuration initialization."""
@@ -92,6 +94,21 @@ class TestConversionConfig:
         )
 
         with pytest.raises(ValueError, match="chunk_lm must be non-negative"):
+            config.validate()
+
+    def test_validate_nonpositive_discovery_freq_bin(self, tmp_path: Path) -> None:
+        """discovery_freq_bin_hz must be positive."""
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        output_dir = tmp_path / "output"
+
+        config = ConversionConfig(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            discovery_freq_bin_hz=0.0,
+        )
+
+        with pytest.raises(ValueError, match="discovery_freq_bin_hz must be positive"):
             config.validate()
 
     def test_validate_success(self, tmp_path: Path) -> None:

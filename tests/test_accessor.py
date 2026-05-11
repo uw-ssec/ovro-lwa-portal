@@ -1590,6 +1590,40 @@ class TestRadportCoordsToPixel:
         with pytest.raises(ValueError, match="not both"):
             ds.radport.coords_to_pixel(180.0, 45.0, time_idx=0, time_mjd=60000.0)
 
+    def test_coords_to_pixel_radec_respects_freq_idx(self) -> None:
+        """Channelized RA/Dec coords: lookup slices frequency before (l, m) search."""
+        nl, nm, nf = 9, 9, 2
+        l = np.linspace(-0.15, 0.15, nl)
+        m = np.linspace(-0.15, 0.15, nm)
+        ra = np.full((nf, nm, nl), 100.0)
+        dec = np.full((nf, nm, nl), 20.0)
+        ra[0, 3, 7] = 55.0
+        dec[0, 3, 7] = 22.0
+        ra[1, 5, 2] = 55.0
+        dec[1, 5, 2] = 22.0
+
+        ds = xr.Dataset(
+            data_vars={
+                "SKY": (
+                    ["time", "frequency", "polarization", "l", "m"],
+                    np.zeros((1, nf, 1, nl, nm)),
+                ),
+            },
+            coords={
+                "time": [60000.0],
+                "frequency": np.array([46e6, 54e6], dtype=float),
+                "polarization": [0],
+                "l": l,
+                "m": m,
+                "right_ascension": (["frequency", "m", "l"], ra),
+                "declination": (["frequency", "m", "l"], dec),
+            },
+        )
+        lb0, mb0 = ds.radport.coords_to_pixel(55.0, 22.0, time_idx=0, freq_idx=0)
+        lb1, mb1 = ds.radport.coords_to_pixel(55.0, 22.0, time_idx=0, freq_idx=1)
+        assert (lb0, mb0) == (7, 3)
+        assert (lb1, mb1) == (2, 5)
+
 
 class TestRadportPlotWcs:
     """Tests for plot_wcs() method."""

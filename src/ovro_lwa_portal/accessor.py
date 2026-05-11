@@ -253,11 +253,12 @@ class RadportAccessor:
         full_key = (all_mjd.tobytes(), lon_deg)
 
         if full_key in self._lst_cache:
-            return float(self._lst_cache[full_key][time_idx])
+            lst_arr = np.asarray(self._lst_cache[full_key], dtype=np.float64).ravel()
+            return float(lst_arr[time_idx])
 
         single_key = (np.float64(mjd).tobytes(), lon_deg)
         if single_key in self._lst_cache:
-            return float(self._lst_cache[single_key])
+            return float(np.asarray(self._lst_cache[single_key], dtype=np.float64).ravel()[0])
 
         orig = iers_conf.auto_download
         try:
@@ -266,8 +267,8 @@ class RadportAccessor:
             lst_deg = float(t.sidereal_time("mean", longitude=observatory.lon).deg)
         finally:
             iers_conf.auto_download = orig
-        self._lst_cache[single_key] = np.array(lst_deg)
-        return lst_deg
+        self._lst_cache[single_key] = np.atleast_1d(np.asarray(lst_deg, dtype=np.float64))
+        return float(np.asarray(lst_deg, dtype=np.float64).ravel()[0])
 
     def _compute_pixel_track(
         self,
@@ -425,13 +426,21 @@ class RadportAccessor:
         dec: float,
         time_idx: int,
         observatory: Any = None,
+        *,
+        freq_idx: int = 0,
+        pol: int = 0,
     ) -> tuple[int, int]:
         """Compute the pixel index for (RA, Dec) at a single time step.
 
-        This is a lightweight alternative to `_compute_pixel_track` for
-        single-frame methods (spectrum, cutout, spectral_index, etc.)
-        that only need one time step.  It computes the LST for just the
-        requested timestamp rather than the full time axis.
+        When the dataset provides ``right_ascension`` and ``declination``
+        coordinates that include a ``time`` dimension (or the cube has only one
+        time step), this method finds the nearest sky pixel by minimizing
+        angular distance on the stored RA/Dec grids. If those coordinates also
+        carry ``frequency`` and/or ``polarization`` dimensions, the slice at
+        ``freq_idx`` / ``pol`` is taken first so the minimization is only over
+        ``(l, m)``. Otherwise it falls back to the closed-form SIN projection
+        using mean sidereal time at the dataset timestamp (same model as
+        :meth:`_compute_pixel_track`).
 
         Parameters
         ----------
@@ -440,7 +449,14 @@ class RadportAccessor:
         time_idx : int
             Index into the dataset's time dimension.
         observatory : astropy.coordinates.EarthLocation, optional
-            Observatory location. Defaults to OVRO-LWA.
+            Observatory location. Used for the horizon check and for the
+            analytical fallback. Defaults to OVRO-LWA.
+        freq_idx : int, default 0
+            Frequency index for slicing per-channel ``right_ascension`` /
+            ``declination`` grids when present. Ignored for the analytical path.
+        pol : int, default 0
+            Polarization index for the same slicing when those coords carry a
+            ``polarization`` dimension.
 
         Returns
         -------
@@ -464,7 +480,7 @@ class RadportAccessor:
 
         lst_deg = self._lst_deg_for_time_index(time_idx, observatory=observatory)
 
-        # SIN projection for the single time step
+        # SIN projection for horizon / analytical fallback
         ha_rad = np.deg2rad(lst_deg - ra)
         dec_rad = np.deg2rad(dec)
         lat_rad = np.deg2rad(observatory.lat.deg)
@@ -474,7 +490,6 @@ class RadportAccessor:
             lat_rad
         ) * np.cos(ha_rad)
 
-        # Visibility check
         sin_alt = np.sin(dec_rad) * np.sin(lat_rad) + np.cos(
             dec_rad
         ) * np.cos(lat_rad) * np.cos(ha_rad)
@@ -484,14 +499,95 @@ class RadportAccessor:
                 f"at time index {time_idx}."
             )
 
-        # Nearest-neighbor pixel lookup
+        obj = self._obj
+        ra_c = obj.coords.get("right_ascension")
+        dec_c = obj.coords.get("declination")
+        n_times = int(obj.sizes.get("time", 1))
+        use_radec_grid = (
+            ra_c is not None
+            and dec_c is not None
+            and {"l", "m"} <= set(ra_c.dims)
+            and {"l", "m"} <= set(dec_c.dims)
+            and (
+                ("time" in ra_c.dims and "time" in obj.coords)
+                or (n_times <= 1 and "time" not in ra_c.dims)
+            )
+        )
+        if (
+            use_radec_grid
+            and "time" in obj.coords
+            and ra_c is not None
+            and "time" not in ra_c.dims
+            and n_times > 1
+        ):
+            use_radec_grid = False
+
+        if use_radec_grid:
+            ra_coord = obj.coords["right_ascension"]
+            dec_coord = obj.coords["declination"]
+            if "time" in ra_coord.dims:
+                ra_sel = ra_coord.isel(time=time_idx)
+            else:
+                ra_sel = ra_coord
+            if "time" in dec_coord.dims:
+                dec_sel = dec_coord.isel(time=time_idx)
+            else:
+                dec_sel = dec_coord
+
+            for dim_name, idx_raw in (
+                ("frequency", freq_idx),
+                ("polarization", pol),
+            ):
+                if dim_name in ra_sel.dims:
+                    n_d = int(ra_sel.sizes[dim_name])
+                    ii = int(np.clip(int(idx_raw), 0, n_d - 1))
+                    ra_sel = ra_sel.isel({dim_name: ii})
+                if dim_name in dec_sel.dims:
+                    n_d = int(dec_sel.sizes[dim_name])
+                    ii = int(np.clip(int(idx_raw), 0, n_d - 1))
+                    dec_sel = dec_sel.isel({dim_name: ii})
+
+            ra_da = ra_sel.data
+            dec_da = dec_sel.data
+            if hasattr(ra_da, "compute"):
+                ra_arr = np.asarray(ra_da.compute(), dtype=np.float64)
+            else:
+                ra_arr = np.asarray(ra_da, dtype=np.float64)
+            if hasattr(dec_da, "compute"):
+                dec_arr = np.asarray(dec_da.compute(), dtype=np.float64)
+            else:
+                dec_arr = np.asarray(dec_da, dtype=np.float64)
+            if ra_arr.shape != dec_arr.shape:
+                dec_arr = np.broadcast_to(dec_arr, ra_arr.shape)
+
+            dra = (ra_arr - float(ra) + 180.0) % 360.0 - 180.0
+            ddec = dec_arr - float(dec)
+            cos_dec = np.cos(np.deg2rad(dec_arr))
+            dist2 = dra * dra * cos_dec * cos_dec + ddec * ddec
+            dist2 = np.where(np.isfinite(ra_arr) & np.isfinite(dec_arr), dist2, np.inf)
+
+            flat = int(np.argmin(dist2))
+            idx_mv = np.unravel_index(flat, dist2.shape)
+            dim_map = {d: int(idx_mv[i]) for i, d in enumerate(ra_sel.dims)}
+            l_idx = dim_map["l"]
+            m_idx = dim_map["m"]
+
+            l_coords = self._obj.coords["l"].values
+            m_coords = self._obj.coords["m"].values
+            if not (0 <= l_idx < len(l_coords) and 0 <= m_idx < len(m_coords)):
+                raise ValueError(
+                    f"Source (RA={ra}, Dec={dec}) has no valid sky pixel at "
+                    f"time index {time_idx}."
+                )
+            return l_idx, m_idx
+
+        # Analytical (l, m) + nearest index on l/m axes
         l_coords = self._obj.coords["l"].values
         m_coords = self._obj.coords["m"].values
 
         l_idx = int(np.argmin(np.abs(l_coords - l_val)))
         m_idx = int(np.argmin(np.abs(m_coords - m_val)))
 
-        # Bounds check
         if not (l_coords.min() <= l_val <= l_coords.max()):
             raise ValueError(
                 f"Source (RA={ra}, Dec={dec}) maps to l={l_val:.4f} which "
@@ -956,7 +1052,11 @@ class RadportAccessor:
             # Convert RA/Dec to pixel at the resolved time step so the
             # cutout is centred on the correct frame.
             pix_l, pix_m = self.coords_to_pixel(
-                ra_center, dec_center, time_idx=time_idx
+                ra_center,
+                dec_center,
+                time_idx=time_idx,
+                freq_idx=freq_idx,
+                pol=pol,
             )
             l_center = float(self._obj.coords["l"].values[pix_l])
             m_center = float(self._obj.coords["m"].values[pix_m])
@@ -2525,7 +2625,9 @@ class RadportAccessor:
         if ra is not None or dec is not None:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=ti)
+            l_idx, m_idx = self.coords_to_pixel(
+                ra, dec, time_idx=ti, freq_idx=0, pol=pol
+            )
         elif l is not None or m is not None:
             if l is None or m is None:
                 raise ValueError("Both l and m must be provided together.")
@@ -3296,13 +3398,18 @@ class RadportAccessor:
         time_idx: int | None = None,
         time_mjd: float | None = None,
         observatory: Any = None,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        pol: int = 0,
     ) -> tuple[int, int]:
         """Convert celestial coordinates (RA, Dec) to pixel indices.
 
         A fixed (RA, Dec) maps to different pixel positions at different
-        times due to Earth rotation. This method always uses the time-aware
-        SIN + mean sidereal time model and therefore requires specifying the
-        epoch via ``time_idx`` or ``time_mjd``.
+        times due to Earth rotation. The epoch must be given via ``time_idx``
+        or ``time_mjd``. When the dataset stores per-pixel ``right_ascension``
+        and ``declination`` coordinates, this method minimizes angular distance
+        on that grid (after optional ``frequency`` / ``polarization`` slicing);
+        otherwise it uses the time-aware SIN + mean sidereal time model.
 
         Parameters
         ----------
@@ -3318,6 +3425,16 @@ class RadportAccessor:
             exclusive with ``time_idx``.
         observatory : astropy.coordinates.EarthLocation, optional
             Observatory location. Defaults to OVRO-LWA.
+        freq_idx : int, optional
+            Frequency index for slicing channelized RA/Dec coordinate arrays
+            when present. Defaults to 0 if neither ``freq_idx`` nor ``freq_mhz``
+            is given. Ignored when ``freq_mhz`` is set.
+        freq_mhz : float, optional
+            Select ``freq_idx`` via :meth:`nearest_freq_idx`. Overrides
+            ``freq_idx`` when provided.
+        pol : int, default 0
+            Polarization index for slicing RA/Dec coords that include a
+            ``polarization`` dimension.
 
         Returns
         -------
@@ -3346,7 +3463,15 @@ class RadportAccessor:
             )
 
         ti = self.nearest_time_idx(time_mjd) if time_mjd is not None else int(time_idx)
-        return self._compute_pixel_at_time(ra, dec, ti, observatory=observatory)
+        if freq_mhz is not None:
+            fi = self.nearest_freq_idx(freq_mhz)
+        elif freq_idx is not None:
+            fi = int(freq_idx)
+        else:
+            fi = 0
+        return self._compute_pixel_at_time(
+            ra, dec, ti, observatory=observatory, freq_idx=fi, pol=int(pol)
+        )
 
     def plot_wcs(
         self,
@@ -4760,19 +4885,7 @@ class RadportAccessor:
                 f"Available variables: {list(self._obj.data_vars)}."
             )
 
-        # Resolve coordinates
-        if ra is not None or dec is not None:
-            if ra is None or dec is None:
-                raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=time_idx)
-        elif l is not None or m is not None:
-            if l is None or m is None:
-                raise ValueError("Both l and m must be provided together.")
-            l_idx, m_idx = self.nearest_lm_idx(l, m)
-        else:
-            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
-
-        # Resolve frequency indices
+        # Resolve frequency indices (also selects RA/Dec grid channel when used)
         if freq1_mhz is not None:
             fi1 = self.nearest_freq_idx(freq1_mhz)
         elif freq1_idx is not None:
@@ -4786,6 +4899,20 @@ class RadportAccessor:
             fi2 = freq2_idx
         else:
             fi2 = len(self._obj.coords["frequency"]) - 1
+
+        # Resolve coordinates
+        if ra is not None or dec is not None:
+            if ra is None or dec is None:
+                raise ValueError("Both ra and dec must be provided together.")
+            l_idx, m_idx = self.coords_to_pixel(
+                ra, dec, time_idx=time_idx, freq_idx=fi1, pol=pol
+            )
+        elif l is not None or m is not None:
+            if l is None or m is None:
+                raise ValueError("Both l and m must be provided together.")
+            l_idx, m_idx = self.nearest_lm_idx(l, m)
+        else:
+            raise ValueError("Must provide either (ra, dec) or (l, m) coordinates.")
 
         # Get flux values at both frequencies
         s1 = float(
@@ -5004,11 +5131,20 @@ class RadportAccessor:
                 f"Available variables: {list(self._obj.data_vars)}."
             )
 
+        # Reference channel for RA/Dec coordinate grids that vary with frequency.
+        fi_for_coord = 0
+        if freq_indices is not None and len(freq_indices) > 0:
+            fi_for_coord = int(min(freq_indices))
+        elif freq_min_mhz is not None:
+            fi_for_coord = self.nearest_freq_idx(freq_min_mhz)
+
         # Resolve coordinates
         if ra is not None or dec is not None:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            l_idx, m_idx = self.coords_to_pixel(ra, dec, time_idx=time_idx)
+            l_idx, m_idx = self.coords_to_pixel(
+                ra, dec, time_idx=time_idx, freq_idx=fi_for_coord, pol=pol
+            )
         elif l is not None or m is not None:
             if l is None or m is None:
                 raise ValueError("Both l and m must be provided together.")

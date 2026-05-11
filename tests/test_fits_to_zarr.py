@@ -379,7 +379,7 @@ def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> N
 
 
 def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
-    """Same time + same 10 kHz bin: keep the first file and warn; do not stack duplicates."""
+    """Same time + same discovery frequency bin: keep the first file and warn; do not stack duplicates."""
     mod = _import_module()
     hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
     f1 = tmp_path / "first_name.fits"
@@ -392,7 +392,7 @@ def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
 
 
 def test_discover_groups_header_frequency_jitter_single_plane(tmp_path: Path):
-    """RESTFREQ differing by <<10 kHz should map to one binned subband (one FITS kept)."""
+    """RESTFREQ differing by <<23 kHz should map to one binned subband (one FITS kept)."""
     mod = _import_module()
     t = "2024-05-24T05:00:09.0"
     f1 = tmp_path / "a.fits"
@@ -407,6 +407,28 @@ def test_discover_groups_header_frequency_jitter_single_plane(tmp_path: Path):
     ).writeto(f2)
     groups = mod._discover_groups(tmp_path)
     assert groups["20240524_050009"] == [f1]
+
+
+def test_discover_groups_freq_bin_hz_controls_merge_window(tmp_path: Path):
+    """Narrow bin (10 kHz) splits ~15 kHz RESTFREQ offset; 23 kHz bin merges as one subband."""
+    mod = _import_module()
+    t = "2024-05-24T05:00:09.0"
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7}),
+    ).writeto(f1)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7 + 15_000.0}),
+    ).writeto(f2)
+
+    merged = mod._discover_groups(tmp_path, freq_bin_hz=23_000.0)
+    assert merged["20240524_050009"] == [f1]
+
+    split = mod._discover_groups(tmp_path, freq_bin_hz=10_000.0)
+    assert len(split["20240524_050009"]) == 2
 
 
 def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
@@ -845,3 +867,147 @@ def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Pat
     assert result == out_zarr
     assert combine_calls == []
     assert write_calls == []
+
+
+def test_fix_headers_sets_crval_to_fk5_zenith_from_filename_image_stamp(tmp_path: Path):
+    """_fix_headers sets CRVAL1/2 from FK5 zenith at ``-image-YYYYMMDD_HHMMSS`` in the basename."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241218_030201-test.fits"
+    out_path = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241218_030201-test_fixed.fits"
+
+    data = np.zeros((8, 8), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 2,
+            "NAXIS1": 8,
+            "NAXIS2": 8,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CRVAL1": 0.0,
+            "CRVAL2": 0.0,
+            "CRPIX1": 4.5,
+            "CRPIX2": 4.5,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+            "DATE-OBS": "2024-12-18T03:00:01.4",
+            "TIMESYS": "UTC",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+
+    # 20241218_030201 → 2024-12-18 03:02:01 UTC (not DATE-OBS).
+    assert hdr["CRVAL1"] == pytest.approx(14.0996845, rel=0, abs=1e-4)
+    assert hdr["CRVAL2"] == pytest.approx(37.0948037, rel=0, abs=1e-4)
+    assert hdr["RADESYS"] == "FK5"
+
+
+def test_fix_headers_leaves_crval_without_image_timestamp_in_name(tmp_path: Path):
+    """If the basename has no ``-image-YYYYMMDD_HHMMSS``, CRVAL1/2 are not overwritten."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "no_stamp.fits"
+    out_path = tmp_path / "no_stamp_fixed.fits"
+
+    data = np.zeros((8, 8), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 2,
+            "NAXIS1": 8,
+            "NAXIS2": 8,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CRVAL1": 1.25,
+            "CRVAL2": 2.5,
+            "CRPIX1": 4.5,
+            "CRPIX2": 4.5,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+
+    assert hdr["CRVAL1"] == pytest.approx(1.25)
+    assert hdr["CRVAL2"] == pytest.approx(2.5)
+
+
+def test_harmonize_celestial_coords_collapses_frequency_dim():
+    """After combine, RA/Dec should be (m, l) only when slices share one WCS."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nm, nl, nf = 5, 6, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra = np.stack([ra0, ra0], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    hdr = "NAXIS = 2\nCRVAL1 = 105"
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (("frequency", "m", "l"), ra),
+            "declination": (("frequency", "m", "l"), dec),
+        },
+    )
+    ds["right_ascension"].attrs["fits_wcs_header"] = hdr
+    ds["declination"].attrs["fits_wcs_header"] = hdr
+
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
+    assert "frequency" not in out.right_ascension.dims
+    assert out.right_ascension.shape == (nm, nl)
+    np.testing.assert_allclose(out.right_ascension.values, ra0)
+    assert out["SKY"].attrs.get("fits_wcs_header") == hdr
+
+
+def test_harmonize_celestial_coords_warns_on_large_wcs_drift(caplog):
+    """Large per-channel RA/Dec drift vs reference should emit one warning."""
+    import logging
+
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nm, nl, nf = 5, 6, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra1 = ra0 + 2.0
+    ra = np.stack([ra0, ra1], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (("frequency", "m", "l"), ra),
+            "declination": (("frequency", "m", "l"), dec),
+        },
+    )
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds, warn_max_sep_arcsec=60.0)
+    assert "Celestial coordinate grids differ" in caplog.text
+    assert "frequency" not in out.right_ascension.dims

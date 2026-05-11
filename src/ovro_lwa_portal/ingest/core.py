@@ -12,7 +12,10 @@ from typing import Any, Callable, Protocol
 
 import portalocker
 
-from ovro_lwa_portal.fits_to_zarr_xradio import convert_fits_dir_to_zarr
+from ovro_lwa_portal.fits_to_zarr_xradio import (
+    _DISCOVERY_FREQ_BIN_HZ,
+    convert_fits_dir_to_zarr,
+)
 
 __all__ = ["FITSToZarrConverter", "ConversionConfig", "ProgressCallback"]
 
@@ -67,6 +70,9 @@ class ConversionConfig:
     cleanup_fixed_fits : bool, optional
         If True, delete temporary ``*_fixed.fits`` files created during on-demand
         conversion after each time-step is written. Defaults to False.
+    discovery_freq_bin_hz : float, optional
+        Bin width in Hz when grouping FITS by header frequency during discovery.
+        Defaults to the library default (23~kHz).
     verbose : bool, optional
         Enable verbose logging. Defaults to False.
     """
@@ -83,6 +89,7 @@ class ConversionConfig:
         resume: bool = False,
         cleanup_fixed_fits: bool = False,
         duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
+        discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
         verbose: bool = False,
     ) -> None:
         self.input_dir = input_dir
@@ -95,6 +102,7 @@ class ConversionConfig:
         self.resume = resume
         self.cleanup_fixed_fits = cleanup_fixed_fits
         self.duplicate_resolver = duplicate_resolver
+        self.discovery_freq_bin_hz = discovery_freq_bin_hz
         self.verbose = verbose
 
     @property
@@ -122,6 +130,10 @@ class ConversionConfig:
 
         if self.chunk_lm < 0:
             msg = f"chunk_lm must be non-negative, got {self.chunk_lm}"
+            raise ValueError(msg)
+
+        if self.discovery_freq_bin_hz <= 0.0:
+            msg = f"discovery_freq_bin_hz must be positive, got {self.discovery_freq_bin_hz}"
             raise ValueError(msg)
 
 
@@ -240,6 +252,7 @@ class FITSToZarrConverter:
                     cleanup_fixed_fits=self.config.cleanup_fixed_fits,
                     progress_callback=self.progress_callback,
                     duplicate_resolver=self.config.duplicate_resolver,
+                    discovery_freq_bin_hz=self.config.discovery_freq_bin_hz,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")
