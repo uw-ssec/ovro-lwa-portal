@@ -156,6 +156,10 @@ def _time_key_from_name(p: Path) -> Optional[str]:
     return f"{m_img.group(1)}_{m_img.group(2)}"
 
 
+# OVRO-LWA ``...-image-YYYYMMDD_HHMMSS...`` segment (UTC wall-clock for the map).
+_IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
+
+
 def _mhz_from_name(p: Path) -> int:
     """Extract the subband MHz from a filename; return a large sentinel if absent.
 
@@ -1339,7 +1343,7 @@ def _discover_groups(
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
     are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
 
-    Files are associated with a **coarse** frequency key (10~kHz bins) so small
+    Files are associated with a **coarse** frequency key (default 23~kHz bins) so small
     header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
     in the Zarr for the same physical subband. For multiple paths in the same
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
