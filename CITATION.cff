@@ -5,7 +5,9 @@ type: software
 authors:
   - given-names: Cordero
     family-names: Core
-    affiliation: "University of Washington, Scientific Software Engineering Center"
+    email: cdcore09@gmail.com
+    orcid: "https://orcid.org/0000-0002-3531-3221"
+    affiliation: UW Scientific Software Engineering Center
   - given-names: Don
     family-names: Setiawan
     affiliation: "University of Washington, Scientific Software Engineering Center"
