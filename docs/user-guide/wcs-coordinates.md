@@ -27,23 +27,29 @@ installed.
 
 ## Pixel-to-Sky Conversion
 
-Convert pixel indices along the `l` and `m` dimensions to celestial coordinates:
+Convert pixel indices along the `l` and `m` dimensions to celestial coordinates at
+a specific observation time. Pass **exactly one** of `time_idx` (index into the
+dataset `time` coordinate) or `time_mjd` (MJD; nearest time is used):
 
 ```python
-ra, dec = ds.radport.pixel_to_coords(l_idx=100, m_idx=100)
+ra, dec = ds.radport.pixel_to_coords(l_idx=100, m_idx=100, time_idx=0)
+# or: ra, dec = ds.radport.pixel_to_coords(100, 100, time_mjd=60000.0)
 print(f"RA: {ra:.4f} deg, Dec: {dec:.4f} deg")
 ```
 
 - RA is returned in the range [0, 360) degrees
 - Dec is returned in degrees
-- Raises `ValueError` if indices are out of bounds
+- Requires a `time` dimension on the dataset
+- Raises `ValueError` if indices are out of bounds, if both or neither of
+  `time_idx` and `time_mjd` are given, or if the direction is below the horizon
+  at that time
 
 ## Sky-to-Pixel Conversion
 
 Convert RA/Dec coordinates to pixel indices:
 
 ```python
-l_idx, m_idx = ds.radport.coords_to_pixel(ra=180.0, dec=45.0)
+l_idx, m_idx = ds.radport.coords_to_pixel(ra=180.0, dec=45.0, time_idx=0)
 print(f"Pixel: l={l_idx}, m={m_idx}")
 ```
 
@@ -103,7 +109,7 @@ the sky) and uses robust percentile-based scaling by default.
 
 ```python
 # Find the Crab Nebula (RA=83.633, Dec=22.014)
-l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014)
+l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014, time_idx=0)
 
 # Get the l, m coordinate values at those indices
 l_val = float(ds.coords["l"].values[l_idx])
@@ -118,7 +124,7 @@ fig = ds.radport.plot_light_curve(lc)
 
 ```python
 # Convert RA/Dec to pixel coordinates
-l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014)
+l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014, time_idx=0)
 l_val = float(ds.coords["l"].values[l_idx])
 m_val = float(ds.coords["m"].values[m_idx])
 
@@ -138,8 +144,10 @@ ax = fig.axes[0]
 
 # Overlay detected sources
 peaks = ds.radport.find_peaks(time_idx=0, freq_idx=0, threshold=5.0)
-for l_idx, m_idx in peaks:
-    ra, dec = ds.radport.pixel_to_coords(int(l_idx), int(m_idx))
+for peak in peaks:
+    ra, dec = ds.radport.pixel_to_coords(
+        int(peak["l_idx"]), int(peak["m_idx"]), time_idx=0
+    )
     ax.plot(ra, dec, "r+", markersize=10, transform=ax.get_transform("fk5"))
 
 plt.show()

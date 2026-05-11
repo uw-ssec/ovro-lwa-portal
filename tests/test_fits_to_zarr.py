@@ -18,69 +18,14 @@ def _import_module():
     return fits_to_zarr_xradio
 
 
-def test_parse_filename_pattern():
-    """Test parsing metadata from FITS filenames using PAT regex."""
-    # Import the pattern directly to avoid loading xradio dependencies
-    import sys
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "fits_to_zarr_xradio",
-        Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    )
-    if spec is None or spec.loader is None:
-        pytest.skip("Cannot load fits_to_zarr_xradio module")
-
-    # Read the pattern from the file directly
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-
-    # Extract the PAT regex pattern
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None, "PAT pattern not found in module"
-
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
-    match = PAT.match(filename)
-
-    assert match is not None
-    assert match.group("date") == "20240524"
-    assert match.group("hms") == "050009"
-    assert match.group("sb") == "41"
-
-
-def test_parse_filename_pattern_with_fixed():
-    """Test parsing metadata from fixed FITS filenames."""
-    # Extract pattern from module
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "20240524_050009_41MHz_averaged_20000_iterations-I-image_fixed.fits"
-    match = PAT.match(filename)
-
-    assert match is not None
-    assert match.group("date") == "20240524"
-    assert match.group("hms") == "050009"
-    assert match.group("sb") == "41"
-
-
-def test_parse_filename_pattern_invalid():
-    """Test parsing metadata from invalid filenames."""
-    # Extract pattern from module
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "invalid.fits"
-    match = PAT.match(filename)
-
-    assert match is None
+def test_time_does_not_fall_back_to_filename(tmp_path: Path):
+    """Time grouping should require DATE-OBS (no filename-based time fallback)."""
+    mod = _import_module()
+    fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
+    time_key, _, notes = mod._extract_group_metadata(fpath)
+    assert time_key is None
+    assert "time-from-filename" not in notes
 
 
 def test_mhz_from_name():
@@ -137,7 +82,6 @@ def test_module_can_be_imported():
     """Test that the fits_to_zarr_xradio module can be imported."""
     fits_to_zarr_xradio = _import_module()
     assert hasattr(fits_to_zarr_xradio, "convert_fits_dir_to_zarr")
-    assert hasattr(fits_to_zarr_xradio, "PAT")
     assert hasattr(fits_to_zarr_xradio, "MHZ_RE")
 
 
@@ -382,17 +326,16 @@ def test_extract_group_metadata_from_header(tmp_path: Path):
     assert notes == []
 
 
-def test_extract_group_metadata_fallback_to_filename(tmp_path: Path):
-    """Filename fallback should be used when headers are missing metadata."""
+def test_extract_group_metadata_requires_date_obs(tmp_path: Path):
+    """Grouping requires DATE-OBS; time does not fall back to filenames."""
     mod = _import_module()
     fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
 
     time_key, frequency_hz, notes = mod._extract_group_metadata(fpath)
 
-    assert time_key == "20240524_050009"
+    assert time_key is None
     assert frequency_hz == pytest.approx(4.1e7)
-    assert "time-from-filename" in notes
     assert "frequency-from-filename" in notes
 
 
@@ -661,7 +604,7 @@ def test_rechunk_lm_for_zarr_fixes_nonuniform_coord_time_chunks(tmp_path):
 
 
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
-    """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
+    """Files missing DATE-OBS should be skipped (no filename time fallback)."""
     mod = _import_module()
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
         tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
@@ -671,10 +614,7 @@ def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     )
 
     groups = mod._discover_groups(tmp_path)
-
-    assert "20240524_050009" in groups
-    freqs = [mod._extract_group_metadata(p)[1] for p in groups["20240524_050009"]]
-    assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]
+    assert groups == {}
 
 
 def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):

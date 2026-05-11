@@ -1420,77 +1420,138 @@ class TestRadportPixelToCoords:
     """Tests for pixel_to_coords() method."""
 
     def test_pixel_to_coords_returns_tuple(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset,
     ) -> None:
         """pixel_to_coords() returns tuple of (ra, dec)."""
-        result = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 25)
+        result = valid_ovro_dataset_with_tracking_wcs.radport.pixel_to_coords(
+            30, 30, time_idx=0
+        )
         assert isinstance(result, tuple)
         assert len(result) == 2
 
     def test_pixel_to_coords_center_pixel(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset,
     ) -> None:
-        """pixel_to_coords() returns expected coords for center pixel."""
-        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 25)
-        # WCS is centered at RA=180, Dec=45 with CRPIX at (25, 25)
-        # Allow 2 degree tolerance due to SIN projection effects
-        assert abs(ra - 180.0) < 2.0
-        assert abs(dec - 45.0) < 2.0
+        """Reference pixel round-trips with coords_to_pixel at the same time index."""
+        ds = valid_ovro_dataset_with_tracking_wcs
+        li, mi = 25, 25
+        for ti in (0, 1):
+            ra, dec = ds.radport.pixel_to_coords(li, mi, time_idx=ti)
+            lb, mb = ds.radport.coords_to_pixel(ra, dec, time_idx=ti)
+            assert abs(lb - li) <= 1
+            assert abs(mb - mi) <= 1
 
     def test_pixel_to_coords_ra_range(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset,
     ) -> None:
         """pixel_to_coords() returns RA in [0, 360) range."""
-        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(0, 0)
+        ra, dec = valid_ovro_dataset_with_tracking_wcs.radport.pixel_to_coords(
+            30, 30, time_idx=0
+        )
         assert 0 <= ra < 360
+
+    def test_pixel_to_coords_requires_exactly_one_time_selector(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """pixel_to_coords requires exactly one of time_idx or time_mjd."""
+        ds = valid_ovro_dataset_with_wcs
+        with pytest.raises(ValueError, match="exactly one of time_idx or time_mjd"):
+            ds.radport.pixel_to_coords(5, 5)
+        with pytest.raises(ValueError, match="not both"):
+            ds.radport.pixel_to_coords(5, 5, time_idx=0, time_mjd=60000.0)
 
     def test_pixel_to_coords_out_of_bounds_l_raises(
         self, valid_ovro_dataset_with_wcs: xr.Dataset
     ) -> None:
         """pixel_to_coords() raises for l_idx out of bounds."""
         with pytest.raises(ValueError, match="l_idx=100 out of bounds"):
-            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(100, 25)
+            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(100, 25, time_idx=0)
 
     def test_pixel_to_coords_out_of_bounds_m_raises(
         self, valid_ovro_dataset_with_wcs: xr.Dataset
     ) -> None:
         """pixel_to_coords() raises for m_idx out of bounds."""
         with pytest.raises(ValueError, match="m_idx=100 out of bounds"):
-            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 100)
+            valid_ovro_dataset_with_wcs.radport.pixel_to_coords(25, 100, time_idx=0)
 
     def test_pixel_to_coords_no_wcs_raises(
         self, valid_ovro_dataset: xr.Dataset
     ) -> None:
         """pixel_to_coords() raises when no WCS is available."""
         with pytest.raises(ValueError, match="No WCS header found"):
-            valid_ovro_dataset.radport.pixel_to_coords(25, 25)
+            valid_ovro_dataset.radport.pixel_to_coords(25, 25, time_idx=0)
+
+    def test_pixel_to_coords_time_roundtrip_matches_coords_to_pixel(
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset,
+    ) -> None:
+        """time-aware pixel_to_coords inverts coords_to_pixel at the same time index."""
+        ds = valid_ovro_dataset_with_tracking_wcs
+        # Tracking fixture: phase center tracks zenith so (l,m) pixels stay
+        # above the horizon across time steps.
+        for ti in (0, 5, 9):
+            li, mi = 33, 22
+            ra_t, dec_t = ds.radport.pixel_to_coords(li, mi, time_idx=ti)
+            lb, mb = ds.radport.coords_to_pixel(ra_t, dec_t, time_idx=ti)
+            assert abs(lb - li) <= 1
+            assert abs(mb - mi) <= 1
+
+    def test_pixel_to_coords_time_mjd_same_as_time_idx(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """time_mjd selects the same epoch as nearest_time_idx for pixel_to_coords."""
+        ds = valid_ovro_dataset_with_wcs
+        mjd = float(ds.coords["time"].values[1])
+        ra_a, dec_a = ds.radport.pixel_to_coords(25, 25, time_idx=1)
+        ra_b, dec_b = ds.radport.pixel_to_coords(25, 25, time_mjd=mjd)
+        assert abs(ra_a - ra_b) < 1e-9
+        assert abs(dec_a - dec_b) < 1e-9
+
+    def test_pixel_to_coords_same_pixel_diff_time_different_sky(
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
+    ) -> None:
+        """A fixed (l,m) pixel points at different RA/Dec as time advances."""
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
+
+        ds = valid_ovro_dataset_with_tracking_wcs
+        ra0, dec0 = ds.radport.pixel_to_coords(30, 30, time_idx=0)
+        ra9, dec9 = ds.radport.pixel_to_coords(30, 30, time_idx=9)
+        sep = SkyCoord(ra0 * u.deg, dec0 * u.deg).separation(
+            SkyCoord(ra9 * u.deg, dec9 * u.deg)
+        )
+        assert sep.deg > 0.05
 
 
 class TestRadportCoordsToPixel:
     """Tests for coords_to_pixel() method."""
 
     def test_coords_to_pixel_returns_tuple(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
     ) -> None:
         """coords_to_pixel() returns tuple of (l_idx, m_idx)."""
-        result = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
+        ds = valid_ovro_dataset_with_tracking_wcs
+        ra, dec = ds.radport.pixel_to_coords(25, 25, time_idx=0)
+        result = ds.radport.coords_to_pixel(ra, dec, time_idx=0)
         assert isinstance(result, tuple)
         assert len(result) == 2
 
     def test_coords_to_pixel_returns_integers(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
     ) -> None:
         """coords_to_pixel() returns integer indices."""
-        l_idx, m_idx = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
+        ds = valid_ovro_dataset_with_tracking_wcs
+        ra, dec = ds.radport.pixel_to_coords(25, 25, time_idx=0)
+        l_idx, m_idx = ds.radport.coords_to_pixel(ra, dec, time_idx=0)
         assert isinstance(l_idx, int)
         assert isinstance(m_idx, int)
 
     def test_coords_to_pixel_center_coords(
-        self, valid_ovro_dataset_with_wcs: xr.Dataset
+        self, valid_ovro_dataset_with_tracking_wcs: xr.Dataset
     ) -> None:
         """coords_to_pixel() returns center pixel for center coords."""
-        l_idx, m_idx = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(180.0, 45.0)
-        # Should be near the reference pixel (25, 25)
+        ds = valid_ovro_dataset_with_tracking_wcs
+        ra, dec = ds.radport.pixel_to_coords(25, 25, time_idx=0)
+        l_idx, m_idx = ds.radport.coords_to_pixel(ra, dec, time_idx=0)
         assert abs(l_idx - 25) <= 1
         assert abs(m_idx - 25) <= 1
 
@@ -1500,8 +1561,13 @@ class TestRadportCoordsToPixel:
         """pixel_to_coords and coords_to_pixel are approximate inverses."""
         # Start with pixel
         l_orig, m_orig = 30, 30
-        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(l_orig, m_orig)
-        l_back, m_back = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(ra, dec)
+        ti = 0
+        ra, dec = valid_ovro_dataset_with_wcs.radport.pixel_to_coords(
+            l_orig, m_orig, time_idx=ti
+        )
+        l_back, m_back = valid_ovro_dataset_with_wcs.radport.coords_to_pixel(
+            ra, dec, time_idx=ti
+        )
         # Should round-trip approximately
         assert abs(l_back - l_orig) <= 1
         assert abs(m_back - m_orig) <= 1
@@ -1509,9 +1575,20 @@ class TestRadportCoordsToPixel:
     def test_coords_to_pixel_no_wcs_raises(
         self, valid_ovro_dataset: xr.Dataset
     ) -> None:
-        """coords_to_pixel() raises when no WCS is available."""
-        with pytest.raises(ValueError, match="No WCS header found"):
-            valid_ovro_dataset.radport.coords_to_pixel(180.0, 45.0)
+        """coords_to_pixel() does not require WCS metadata."""
+        l_idx, m_idx = valid_ovro_dataset.radport.coords_to_pixel(0.0, 90.0, time_idx=0)
+        assert isinstance(l_idx, int)
+        assert isinstance(m_idx, int)
+
+    def test_coords_to_pixel_requires_exactly_one_time_selector(
+        self, valid_ovro_dataset_with_wcs: xr.Dataset
+    ) -> None:
+        """coords_to_pixel requires exactly one of time_idx or time_mjd."""
+        ds = valid_ovro_dataset_with_wcs
+        with pytest.raises(ValueError, match="exactly one of time_idx or time_mjd"):
+            ds.radport.coords_to_pixel(180.0, 45.0)
+        with pytest.raises(ValueError, match="not both"):
+            ds.radport.coords_to_pixel(180.0, 45.0, time_idx=0, time_mjd=60000.0)
 
 
 class TestRadportPlotWcs:
@@ -1993,12 +2070,14 @@ class TestRadportFindPeaks:
     def test_find_peaks_radec_roundtrip(
         self, valid_ovro_dataset_with_wcs: xr.Dataset
     ) -> None:
-        """find_peaks RA/Dec roundtrips: coords_to_pixel(ra, dec) → same pixel."""
+        """find_peaks RA/Dec roundtrips: coords_to_pixel at frame time → same pixel."""
         ds = valid_ovro_dataset_with_wcs
         peaks = ds.radport.find_peaks(threshold_sigma=0.1)
         if len(peaks) > 0:
             peak = peaks[0]
-            l_rt, m_rt = ds.radport.coords_to_pixel(peak["ra"], peak["dec"])
+            l_rt, m_rt = ds.radport.coords_to_pixel(
+                peak["ra"], peak["dec"], time_idx=0
+            )
             assert abs(l_rt - peak["l_idx"]) <= 1
             assert abs(m_rt - peak["m_idx"]) <= 1
 

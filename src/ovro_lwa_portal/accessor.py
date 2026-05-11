@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from scipy import interpolate
+from scipy.optimize import least_squares
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -228,6 +229,46 @@ class RadportAccessor:
         m_idx = int(np.argmin(np.abs(m_values - m)))
         return l_idx, m_idx
 
+    def _lst_deg_for_time_index(self, time_idx: int, observatory: Any = None) -> float:
+        """Mean sidereal longitude in degrees at one dataset ``time`` index.
+
+        Uses the same caching and IERS policy as :meth:`_compute_pixel_at_time`.
+        """
+        from astropy.coordinates import EarthLocation
+        from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
+
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        mjd = float(self._obj.coords["time"].values[time_idx])
+        lon_deg = float(observatory.lon.deg)
+
+        all_mjd = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
+        all_mjd = np.atleast_1d(all_mjd)
+        full_key = (all_mjd.tobytes(), lon_deg)
+
+        if full_key in self._lst_cache:
+            return float(self._lst_cache[full_key][time_idx])
+
+        single_key = (np.float64(mjd).tobytes(), lon_deg)
+        if single_key in self._lst_cache:
+            return float(self._lst_cache[single_key])
+
+        orig = iers_conf.auto_download
+        try:
+            iers_conf.auto_download = False
+            t = Time(mjd, format="mjd", scale="utc")
+            lst_deg = float(t.sidereal_time("mean", longitude=observatory.lon).deg)
+        finally:
+            iers_conf.auto_download = orig
+        self._lst_cache[single_key] = np.array(lst_deg)
+        return lst_deg
+
     def _compute_pixel_track(
         self,
         ra: float,
@@ -413,8 +454,6 @@ class RadportAccessor:
             at the requested time step.
         """
         from astropy.coordinates import EarthLocation
-        from astropy.time import Time
-        from astropy.utils.iers import conf as iers_conf
 
         if observatory is None:
             from astropy import units as u
@@ -423,33 +462,7 @@ class RadportAccessor:
                 lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
             )
 
-        mjd = float(self._obj.coords["time"].values[time_idx])
-        lon_deg = float(observatory.lon.deg)
-
-        # Check the full-array LST cache first — if a prior
-        # _compute_pixel_track call already computed all LSTs, reuse it.
-        all_mjd = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
-        all_mjd = np.atleast_1d(all_mjd)
-        full_key = (all_mjd.tobytes(), lon_deg)
-
-        if full_key in self._lst_cache:
-            lst_deg = float(self._lst_cache[full_key][time_idx])
-        else:
-            # Compute LST for just this single timestamp.
-            single_key = (np.float64(mjd).tobytes(), lon_deg)
-            if single_key in self._lst_cache:
-                lst_deg = float(self._lst_cache[single_key])
-            else:
-                orig = iers_conf.auto_download
-                try:
-                    iers_conf.auto_download = False
-                    t = Time(mjd, format="mjd", scale="utc")
-                    lst_deg = float(
-                        t.sidereal_time("mean", longitude=observatory.lon).deg
-                    )
-                finally:
-                    iers_conf.auto_download = orig
-                self._lst_cache[single_key] = np.array(lst_deg)
+        lst_deg = self._lst_deg_for_time_index(time_idx, observatory=observatory)
 
         # SIN projection for the single time step
         ha_rad = np.deg2rad(lst_deg - ra)
@@ -3116,8 +3129,21 @@ class RadportAccessor:
         self,
         l_idx: int,
         m_idx: int,
+        *,
+        time_idx: int | None = None,
+        time_mjd: float | None = None,
+        observatory: Any = None,
     ) -> tuple[float, float]:
         """Convert pixel indices to celestial coordinates (RA, Dec).
+
+        Returns the FK5/J2000 position whose direction cosines ``(l, m)`` at
+        that pixel match the same mean sidereal time and SIN geometry as
+        :meth:`coords_to_pixel` — i.e. the sky coordinate of that pixel at the
+        chosen dataset time as the field rotates. A ``fits_wcs_header`` is only
+        used as a numerical seed for the inverse solve, not as the returned
+        static WCS solution.
+
+        You must pass **exactly one** of ``time_idx`` or ``time_mjd``.
 
         Parameters
         ----------
@@ -3125,25 +3151,33 @@ class RadportAccessor:
             Index along the l dimension.
         m_idx : int
             Index along the m dimension.
+        time_idx : int, optional
+            Index into the dataset ``time`` coordinate. Mutually exclusive with
+            ``time_mjd``.
+        time_mjd : float, optional
+            MJD timestamp; the nearest ``time`` index is used. Mutually
+            exclusive with ``time_idx``.
+        observatory : astropy.coordinates.EarthLocation, optional
+            Observatory location for sidereal time. Defaults to OVRO-LWA.
 
         Returns
         -------
         tuple of float
-            (ra, dec) in degrees. RA is in range [0, 360).
+            ``(ra, dec)`` in degrees. RA is in ``[0, 360)``.
 
         Raises
         ------
         ValueError
-            If WCS is not available or indices are out of bounds.
+            If neither or both of ``time_idx`` and ``time_mjd`` are given, the
+            dataset has no ``time`` coordinate, WCS metadata is unavailable,
+            indices are out of bounds, the inverse SIN fit fails to converge, or
+            the direction is below the horizon at the requested time.
 
         Example
         -------
-        >>> ra, dec = ds.radport.pixel_to_coords(100, 100)
-        >>> print(f"RA={ra:.2f}°, Dec={dec:.2f}°")
+        >>> ra, dec = ds.radport.pixel_to_coords(100, 100, time_idx=0)
+        >>> ra, dec = ds.radport.pixel_to_coords(100, 100, time_mjd=60000.0)
         """
-        wcs = self._get_wcs()
-
-        # Validate indices
         n_l = self._obj.sizes["l"]
         n_m = self._obj.sizes["m"]
         if not (0 <= l_idx < n_l):
@@ -3151,12 +3185,108 @@ class RadportAccessor:
         if not (0 <= m_idx < n_m):
             raise ValueError(f"m_idx={m_idx} out of bounds [0, {n_m})")
 
-        # WCS pixel_to_world expects (x, y) which is (l, m) in our convention
-        coord = wcs.pixel_to_world(l_idx, m_idx)
-        ra = float(coord.ra.wrap_at("360d").deg)
-        dec = float(coord.dec.deg)
+        if time_idx is not None and time_mjd is not None:
+            raise ValueError("Provide exactly one of time_idx or time_mjd, not both.")
+        if time_idx is None and time_mjd is None:
+            raise ValueError(
+                "pixel_to_coords requires exactly one of time_idx or time_mjd."
+            )
 
-        return ra, dec
+        if "time" not in self._obj.coords:
+            raise ValueError(
+                "pixel_to_coords requires a dataset ``time`` coordinate "
+                "(pass time_idx or time_mjd)."
+            )
+
+        wcs = self._get_wcs()
+
+        from astropy.coordinates import EarthLocation
+
+        if time_mjd is not None:
+            ti = self.nearest_time_idx(time_mjd)
+        else:
+            ti = int(time_idx)
+
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        l_val = float(self._obj.coords["l"].values[l_idx])
+        m_val = float(self._obj.coords["m"].values[m_idx])
+        lst_deg = self._lst_deg_for_time_index(ti, observatory=observatory)
+        lat_deg = float(observatory.lat.deg)
+        lat_rad = np.deg2rad(lat_deg)
+
+        coord = wcs.pixel_to_world(l_idx, m_idx)
+        ra0 = float(coord.ra.wrap_at("360d").deg)
+        dec0 = float(coord.dec.deg)
+        if not (np.isfinite(ra0) and np.isfinite(dec0)):
+            ra0 = float(wcs.wcs.crval[0])
+            dec0 = float(wcs.wcs.crval[1])
+
+        def sin_altitude(ra_deg: float, dec_deg: float) -> float:
+            dec_rad = np.deg2rad(dec_deg)
+            ha_rad = np.deg2rad(lst_deg - ra_deg)
+            return float(
+                np.sin(dec_rad) * np.sin(lat_rad)
+                + np.cos(dec_rad) * np.cos(lat_rad) * np.cos(ha_rad)
+            )
+
+        def residual(vec: np.ndarray) -> np.ndarray:
+            ra_deg, dec_deg = float(vec[0]), float(vec[1])
+            ha_rad = np.deg2rad(lst_deg - ra_deg)
+            dec_rad = np.deg2rad(dec_deg)
+            lf = -np.cos(dec_rad) * np.sin(ha_rad)
+            mf = (
+                np.sin(dec_rad) * np.cos(lat_rad)
+                - np.cos(dec_rad) * np.sin(lat_rad) * np.cos(ha_rad)
+            )
+            sa = sin_altitude(ra_deg, dec_deg)
+            horizon_penalty = 0.0 if sa > 0.01 else 5.0 * (0.01 - sa)
+            return np.array(
+                [lf - l_val, mf - m_val, horizon_penalty],
+                dtype=float,
+            )
+
+        # Unwrap RA near the WCS seed and search locally so the optimiser does
+        # not lock onto a below-horizon branch of the inverse.
+        ra_unwrap = float(ra0)
+        if ra_unwrap > 180.0:
+            ra_unwrap -= 360.0
+        lo_ra, hi_ra = ra_unwrap - 120.0, ra_unwrap + 120.0
+        lo_dec, hi_dec = max(-90.0, dec0 - 75.0), min(90.0, dec0 + 75.0)
+
+        res = least_squares(
+            residual,
+            x0=np.array([ra_unwrap, dec0], dtype=float),
+            bounds=([lo_ra, lo_dec], [hi_ra, hi_dec]),
+            method="trf",
+            ftol=1e-12,
+            xtol=1e-10,
+            max_nfev=300,
+        )
+        lm_res = float(np.linalg.norm(res.fun[:2]))
+        if not res.success or lm_res > 1e-5:
+            raise ValueError(
+                f"Could not invert (l, m)=({l_val:.6g}, {m_val:.6g}) to RA/Dec at "
+                f"time_idx={ti} (lm residual norm {lm_res:.3g}; message: {res.message})."
+            )
+
+        ra_wrapped = float(res.x[0]) % 360.0
+        if ra_wrapped < 0:
+            ra_wrapped += 360.0
+        dec_sol = float(res.x[1])
+
+        if sin_altitude(ra_wrapped, dec_sol) <= 0:
+            raise ValueError(
+                f"Sky at pixel (l_idx={l_idx}, m_idx={m_idx}) is below the horizon "
+                f"at time index {ti}."
+            )
+
+        return ra_wrapped, dec_sol
 
     def coords_to_pixel(
         self,
@@ -3170,10 +3300,9 @@ class RadportAccessor:
         """Convert celestial coordinates (RA, Dec) to pixel indices.
 
         A fixed (RA, Dec) maps to different pixel positions at different
-        times due to Earth rotation. When ``time_idx`` or ``time_mjd`` is
-        provided, the conversion uses the SIN projection at that specific
-        time step. Without a time argument, the static WCS header is used
-        (valid only for the reference time of the dataset).
+        times due to Earth rotation. This method always uses the time-aware
+        SIN + mean sidereal time model and therefore requires specifying the
+        epoch via ``time_idx`` or ``time_mjd``.
 
         Parameters
         ----------
@@ -3182,9 +3311,11 @@ class RadportAccessor:
         dec : float
             Declination in degrees (FK5/J2000).
         time_idx : int, optional
-            Time index for time-aware conversion.
+            Index into the dataset ``time`` coordinate. Mutually exclusive with
+            ``time_mjd``.
         time_mjd : float, optional
-            MJD value for time-aware conversion (overrides ``time_idx``).
+            MJD timestamp; the nearest ``time`` index is used. Mutually
+            exclusive with ``time_idx``.
         observatory : astropy.coordinates.EarthLocation, optional
             Observatory location. Defaults to OVRO-LWA.
 
@@ -3196,70 +3327,26 @@ class RadportAccessor:
         Raises
         ------
         ValueError
-            If WCS is not available (static mode), coordinates are outside
-            the image, or the source is below the horizon at the given time.
+            If neither or both of ``time_idx`` and ``time_mjd`` are given, the
+            dataset has no ``time`` coordinate, coordinates are outside the
+            image, or the source is below the horizon at the given time.
 
         Example
         -------
-        >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0)
         >>> l_idx, m_idx = ds.radport.coords_to_pixel(180.0, 45.0, time_idx=10)
         """
-        # Time-aware path: compute LST for just the single requested
-        # timestamp rather than the full time axis (~10x faster).
-        if time_idx is not None or time_mjd is not None:
-            if time_mjd is not None:
-                time_idx = self.nearest_time_idx(time_mjd)
-
-            return self._compute_pixel_at_time(
-                ra, dec, time_idx, observatory=observatory
-            )
-
-        # Static WCS path (original behavior)
-        try:
-            from astropy.coordinates import SkyCoord
-            from astropy import units as u
-        except ImportError as e:
-            raise ImportError(
-                "astropy is required for coordinate transformations."
-            ) from e
-
-        wcs = self._get_wcs()
-
-        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="fk5")
-        x, y = wcs.world_to_pixel(coord)
-
-        # WCS returns NaN for coordinates outside the projection domain
-        # (e.g., sources below the horizon or outside the SIN projection)
-        if np.isnan(x) or np.isnan(y):
-            # Compute angular distance from phase center to give context
-            crval1 = wcs.wcs.crval[0]
-            crval2 = wcs.wcs.crval[1]
-            phase_center = SkyCoord(ra=crval1 * u.deg, dec=crval2 * u.deg, frame="fk5")
-            sep = coord.separation(phase_center).deg
+        if time_idx is not None and time_mjd is not None:
+            raise ValueError("Provide exactly one of time_idx or time_mjd, not both.")
+        if time_idx is None and time_mjd is None:
+            raise ValueError("coords_to_pixel requires exactly one of time_idx or time_mjd.")
+        if "time" not in self._obj.coords:
             raise ValueError(
-                f"Source (RA={ra}°, Dec={dec}°) is outside the visible sky "
-                f"for this dataset's SIN projection. The source is {sep:.1f}° "
-                f"from the phase center (RA={crval1:.1f}°, Dec={crval2:.1f}°). "
-                f"The SIN projection covers a hemisphere centered on the phase "
-                f"center — sources beyond ~90° cannot be mapped to pixels."
+                "coords_to_pixel requires a dataset ``time`` coordinate "
+                "(pass time_idx or time_mjd)."
             )
 
-        l_idx = int(round(float(x)))
-        m_idx = int(round(float(y)))
-
-        # Validate result is within bounds
-        n_l = self._obj.sizes["l"]
-        n_m = self._obj.sizes["m"]
-        if not (0 <= l_idx < n_l) or not (0 <= m_idx < n_m):
-            raise ValueError(
-                f"Coordinates (RA={ra}°, Dec={dec}°) map to pixel "
-                f"({l_idx}, {m_idx}) which is outside the image bounds "
-                f"[0, {n_l}) x [0, {n_m}). The source may be in the "
-                f"visible sky but outside the field of view captured "
-                f"by this dataset."
-            )
-
-        return l_idx, m_idx
+        ti = self.nearest_time_idx(time_mjd) if time_mjd is not None else int(time_idx)
+        return self._compute_pixel_at_time(ra, dec, ti, observatory=observatory)
 
     def plot_wcs(
         self,
@@ -4373,7 +4460,9 @@ class RadportAccessor:
             peak["dec"] = None
             if self.has_wcs:
                 try:
-                    ra_val, dec_val = self.pixel_to_coords(int(l_idx), int(m_idx))
+                    ra_val, dec_val = self.pixel_to_coords(
+                        int(l_idx), int(m_idx), time_idx=time_idx
+                    )
                     # WCS returns NaN for pixels outside the SIN
                     # projection domain (near l²+m²≈1).  Keep None.
                     if np.isfinite(ra_val) and np.isfinite(dec_val):

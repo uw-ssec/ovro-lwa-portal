@@ -115,10 +115,6 @@ def _sky_coord_cache_set(
         _SKY_COORD_CACHE.popitem(last=False)
 
 
-# Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
-PAT = re.compile(
-    r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
-)
 MHZ_RE = re.compile(r"_(\d+)MHz_")
 _IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 
@@ -154,12 +150,10 @@ def _mhz_from_name(p: Path) -> int:
 def _time_key_from_header(header: fits.Header) -> Optional[str]:
     """Extract observation time from FITS headers as ``YYYYMMDD_HHMMSS``.
 
-    Header precedence:
-      1) ``DATE-OBS`` (optionally with ``TIME-OBS`` if date-only)
-      2) ``MJD-OBS``
-      3) ``MJD``
+    This project requires ``DATE-OBS`` to be present and parseable.
+    ``TIME-OBS`` is used only when ``DATE-OBS`` is date-only (no ``T``).
 
-    Returns ``None`` when no usable timestamp is found.
+    Returns ``None`` when no usable ``DATE-OBS`` timestamp is found.
     """
     date_obs = header.get("DATE-OBS")
     if date_obs:
@@ -174,14 +168,6 @@ def _time_key_from_header(header: fits.Header) -> Optional[str]:
             return t.to_datetime().strftime("%Y%m%d_%H%M%S")
         except Exception:
             logger.debug(f"Could not parse DATE-OBS/TIME-OBS timestamp: {dt_value}")
-
-    for mjd_key in ("MJD-OBS", "MJD"):
-        if mjd_key in header:
-            try:
-                t = Time(float(header[mjd_key]), format="mjd", scale="utc")
-                return t.to_datetime().strftime("%Y%m%d_%H%M%S")
-            except Exception:
-                logger.debug(f"Could not parse {mjd_key} timestamp: {header.get(mjd_key)}")
 
     return None
 
@@ -531,6 +517,9 @@ def _extract_group_metadata(
     When *time_key_source* is ``"filename"``, a parseable basename (legacy averaged pattern
     or ``-image-YYYYMMDD_HHMMSS``) wins over header times so multi-band pipeline products
     group together when ``DATE-OBS`` differs across symlink targets.
+
+    ``frequency_hz`` is read from headers when possible with a filename fallback for
+    frequency only.
     """
     time_key: Optional[str] = None
     frequency_hz: Optional[float] = None
