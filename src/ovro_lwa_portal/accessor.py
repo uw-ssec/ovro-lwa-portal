@@ -275,11 +275,17 @@ class RadportAccessor:
         ra: float,
         dec: float,
         observatory: Any = None,
+        *,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        pol: int = 0,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute per-time-step pixel indices for a fixed (RA, Dec).
 
-        Uses the closed-form SIN projection equations and LST derived from
-        MJD timestamps to track a celestial source across time steps.
+        For each dataset time index, calls :meth:`coords_to_pixel` so pixel
+        selection matches all other extraction APIs (stored RA/Dec grids when
+        present, otherwise the analytical SIN + LST path inside
+        :meth:`_compute_pixel_at_time`).
 
         Parameters
         ----------
@@ -288,121 +294,57 @@ class RadportAccessor:
         dec : float
             Declination in degrees (FK5/J2000).
         observatory : astropy.coordinates.EarthLocation, optional
-            Observatory location. Defaults to OVRO-LWA.
+            Passed to :meth:`coords_to_pixel`. Defaults to OVRO-LWA.
+        freq_idx : int, optional
+            Frequency index for channelized ``right_ascension`` / ``declination``
+            coordinates. Defaults to channel 0 when neither this nor ``freq_mhz``
+            is set (see :meth:`coords_to_pixel`).
+        freq_mhz : float, optional
+            Select frequency by MHz for the same purpose; overrides ``freq_idx``
+            when provided.
+        pol : int, default 0
+            Polarization index for slicing sky coordinates when present.
 
         Returns
         -------
         l_indices : np.ndarray of int, shape (n_times,)
-            Pixel l-index at each time step. -1 where source is below horizon.
+            Pixel l-index at each time step.
         m_indices : np.ndarray of int, shape (n_times,)
-            Pixel m-index at each time step. -1 where source is below horizon.
+            Pixel m-index at each time step.
         visible : np.ndarray of bool, shape (n_times,)
-            True where source is above the horizon.
+            True where :meth:`coords_to_pixel` succeeded at that time (source
+            above horizon and in-bounds). Otherwise indices are set to
+            ``n_l`` / ``n_m`` out-of-range sentinels.
         """
-        from astropy.coordinates import EarthLocation
-        from astropy.time import Time
-        from astropy.utils.iers import conf as iers_conf
-
-        # OVRO-LWA location (default)
-        if observatory is None:
-            from astropy import units as u
-
-            observatory = EarthLocation(
-                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
-            )
-
-        # Get MJD timestamps from dataset, ensuring float64 dtype
-        mjd_array = np.asarray(self._obj.coords["time"].values, dtype=np.float64)
-        # Handle scalar (single time step) by ensuring 1-d
-        mjd_array = np.atleast_1d(mjd_array)
-
-        # Vectorized LST computation — cached per (times, longitude) pair.
-        # The LST only depends on the MJD timestamps and the observatory
-        # longitude, so reuse across calls with different (RA, Dec).
-        # Use bundled IERS-B data to avoid network downloads.
-        # Mean sidereal time has ~1 arcsec error — negligible at
-        # OVRO-LWA's ~6-arcmin beam resolution.
-        lon_deg = float(observatory.lon.deg)
-        cache_key = (mjd_array.tobytes(), lon_deg)
-
-        if cache_key in self._lst_cache:
-            lst_deg = self._lst_cache[cache_key]
-        else:
-            orig_auto_download = iers_conf.auto_download
-            try:
-                iers_conf.auto_download = False
-                t = Time(mjd_array, format="mjd", scale="utc")
-                lst_deg = t.sidereal_time("mean", longitude=observatory.lon).deg
-            finally:
-                iers_conf.auto_download = orig_auto_download
-            self._lst_cache[cache_key] = lst_deg
-
-        # Closed-form SIN projection (vectorized)
-        ha_rad = np.deg2rad(lst_deg - ra)
-        dec_rad = np.deg2rad(dec)
-        lat_rad = np.deg2rad(observatory.lat.deg)
-
-        l_vals = -np.cos(dec_rad) * np.sin(ha_rad)
-        m_vals = np.sin(dec_rad) * np.cos(lat_rad) - np.cos(dec_rad) * np.sin(
-            lat_rad
-        ) * np.cos(ha_rad)
-
-        # Check visibility: source above horizon when sin(altitude) > 0
-        # sin(alt) = sin(dec)*sin(lat) + cos(dec)*cos(lat)*cos(ha)
-        sin_alt = np.sin(dec_rad) * np.sin(lat_rad) + np.cos(
-            dec_rad
-        ) * np.cos(lat_rad) * np.cos(ha_rad)
-        visible = sin_alt > 0
-
-        # Get coordinate arrays for pixel lookup
         l_coords = self._obj.coords["l"].values
         m_coords = self._obj.coords["m"].values
+        n_l = len(l_coords)
+        n_m = len(m_coords)
+        n_times = int(self._obj.sizes["time"])
 
-        # Vectorized nearest-neighbor pixel lookup using searchsorted.
-        # argsort provides the mapping from sorted→original positions so
-        # the returned indices are valid for isel() against the dataset.
-        l_order = np.argsort(l_coords)
-        m_order = np.argsort(m_coords)
-        l_sorted = l_coords[l_order]
-        m_sorted = m_coords[m_order]
+        l_indices = np.empty(n_times, dtype=int)
+        m_indices = np.empty(n_times, dtype=int)
+        visible = np.zeros(n_times, dtype=bool)
 
-        l_insert = np.searchsorted(l_sorted, l_vals)
-        m_insert = np.searchsorted(m_sorted, m_vals)
+        for ti in range(n_times):
+            try:
+                li, mi = self.coords_to_pixel(
+                    ra,
+                    dec,
+                    time_idx=ti,
+                    observatory=observatory,
+                    freq_idx=freq_idx,
+                    freq_mhz=freq_mhz,
+                    pol=pol,
+                )
+                l_indices[ti] = li
+                m_indices[ti] = mi
+                visible[ti] = True
+            except ValueError:
+                l_indices[ti] = n_l
+                m_indices[ti] = n_m
+                visible[ti] = False
 
-        # Clamp to valid range
-        l_insert = np.clip(l_insert, 0, len(l_sorted) - 1)
-        m_insert = np.clip(m_insert, 0, len(m_sorted) - 1)
-
-        # Choose nearest neighbor (searchsorted gives insertion point,
-        # check if previous index is closer)
-        l_prev = np.clip(l_insert - 1, 0, len(l_sorted) - 1)
-        l_sorted_idx = np.where(
-            np.abs(l_sorted[l_insert] - l_vals) <= np.abs(l_sorted[l_prev] - l_vals),
-            l_insert,
-            l_prev,
-        )
-
-        m_prev = np.clip(m_insert - 1, 0, len(m_sorted) - 1)
-        m_sorted_idx = np.where(
-            np.abs(m_sorted[m_insert] - m_vals) <= np.abs(m_sorted[m_prev] - m_vals),
-            m_insert,
-            m_prev,
-        )
-
-        # Map sorted indices back to original coordinate order
-        l_indices = l_order[l_sorted_idx]
-        m_indices = m_order[m_sorted_idx]
-
-        # Check pixel bounds (source may be visible but outside image FOV)
-        in_bounds = (
-            (l_vals >= l_sorted[0])
-            & (l_vals <= l_sorted[-1])
-            & (m_vals >= m_sorted[0])
-            & (m_vals <= m_sorted[-1])
-        )
-        visible = visible & in_bounds
-
-        # Warn if source is never visible during the observation
         if not np.any(visible):
             warnings.warn(
                 f"Source (RA={ra}°, Dec={dec}°) is never above the horizon "
@@ -410,15 +352,7 @@ class RadportAccessor:
                 stacklevel=3,
             )
 
-        # Mark below-horizon / out-of-bounds time steps with out-of-range
-        # sentinel (n_l, not -1, to avoid silent last-element extraction
-        # if a caller forgets to check the visible mask).
-        n_l = len(l_coords)
-        n_m = len(m_coords)
-        l_indices[~visible] = n_l
-        m_indices[~visible] = n_m
-
-        return l_indices.astype(int), m_indices.astype(int), visible
+        return l_indices, m_indices, visible
 
     def _compute_pixel_at_time(
         self,
@@ -439,8 +373,8 @@ class RadportAccessor:
         carry ``frequency`` and/or ``polarization`` dimensions, the slice at
         ``freq_idx`` / ``pol`` is taken first so the minimization is only over
         ``(l, m)``. Otherwise it falls back to the closed-form SIN projection
-        using mean sidereal time at the dataset timestamp (same model as
-        :meth:`_compute_pixel_track`).
+        using mean sidereal time at the dataset timestamp (the analytical branch
+        used when :meth:`coords_to_pixel` does not use stored RA/Dec grids).
 
         Parameters
         ----------
@@ -609,6 +543,9 @@ class RadportAccessor:
         l: float | None = None,
         m: float | None = None,
         observatory: Any = None,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
+        pol: int = 0,
     ) -> (
         tuple[int, int]
         | tuple[np.ndarray, np.ndarray, np.ndarray]
@@ -616,7 +553,7 @@ class RadportAccessor:
         """Validate coordinate input and return pixel indices.
 
         Dispatches to either the fixed-pixel path (l/m) or the per-time
-        tracking path (ra/dec).
+        tracking path (ra/dec) built from repeated :meth:`coords_to_pixel` calls.
 
         Parameters
         ----------
@@ -630,6 +567,13 @@ class RadportAccessor:
             Direction cosine m coordinate.
         observatory : astropy.coordinates.EarthLocation, optional
             Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
+        freq_idx : int, optional
+            Passed to :meth:`_compute_pixel_track` for RA/Dec (channelized sky
+            coordinates). Default is channel 0 when unset.
+        freq_mhz : float, optional
+            Select that channel by MHz; overrides ``freq_idx`` when provided.
+        pol : int, default 0
+            Polarization index for RA/Dec coordinate slicing when present.
 
         Returns
         -------
@@ -655,7 +599,14 @@ class RadportAccessor:
         if has_radec:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
-            return self._compute_pixel_track(ra, dec, observatory=observatory)
+            return self._compute_pixel_track(
+                ra,
+                dec,
+                observatory=observatory,
+                freq_idx=freq_idx,
+                freq_mhz=freq_mhz,
+                pol=pol,
+            )
 
         # l/m path
         if l is None or m is None:
@@ -1340,6 +1291,8 @@ class RadportAccessor:
         m: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
         observatory: Any = None,
     ) -> xr.DataArray:
         """Extract a dynamic spectrum (time vs frequency) for a single pixel.
@@ -1365,6 +1318,13 @@ class RadportAccessor:
             Data variable to extract.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Frequency index for RA/Dec → pixel mapping when sky coordinates
+            vary with frequency (passed to :meth:`coords_to_pixel`). Defaults to
+            channel 0 when neither ``freq_idx`` nor ``freq_mhz`` is set. Ignored
+            for the ``l``/``m`` path.
+        freq_mhz : float, optional
+            Select frequency by MHz for the same purpose; overrides ``freq_idx``.
         observatory : astropy.coordinates.EarthLocation, optional
             Observatory location for RA/Dec tracking. Defaults to OVRO-LWA.
 
@@ -1391,7 +1351,14 @@ class RadportAccessor:
             )
 
         result = self._resolve_coordinates(
-            ra=ra, dec=dec, l=l, m=m, observatory=observatory
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            observatory=observatory,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
+            pol=pol,
         )
 
         if isinstance(result, tuple) and len(result) == 2:
@@ -1416,8 +1383,7 @@ class RadportAccessor:
             return da
 
         # Per-time tracking path (ra/dec)
-        # Do NOT sortby("time") here — _compute_pixel_track returns
-        # positional indices matching the original dataset time order.
+        # Do NOT sortby("time") here — per-time indices match the dataset order.
         # Sorting data_var would misalign positional indices with data.
         l_indices, m_indices, visible = result
         data_var = self._obj[var].isel(polarization=pol)
@@ -1487,6 +1453,8 @@ class RadportAccessor:
         m: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
         cmap: str = "inferno",
         vmin: float | None = None,
         vmax: float | None = None,
@@ -1515,6 +1483,10 @@ class RadportAccessor:
             Data variable to plot.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Passed to :meth:`dynamic_spectrum` for RA/Dec pixel selection.
+        freq_mhz : float, optional
+            Passed to :meth:`dynamic_spectrum`; overrides ``freq_idx``.
         cmap : str, default 'inferno'
             Matplotlib colormap.
         vmin, vmax : float, optional
@@ -1542,7 +1514,15 @@ class RadportAccessor:
         """
         # Get dynamic spectrum
         dynspec = self.dynamic_spectrum(
-            ra=ra, dec=dec, l=l, m=m, var=var, pol=pol, observatory=observatory
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            var=var,
+            pol=pol,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
+            observatory=observatory,
         )
 
         # Create figure
@@ -2390,7 +2370,13 @@ class RadportAccessor:
             fi = 0
 
         result = self._resolve_coordinates(
-            ra=ra, dec=dec, l=l, m=m, observatory=observatory
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            observatory=observatory,
+            freq_idx=fi,
+            pol=pol,
         )
 
         freq_hz = float(self._obj.coords["frequency"].values[fi])
@@ -2574,6 +2560,8 @@ class RadportAccessor:
         time_mjd: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
     ) -> xr.DataArray:
         """Extract a frequency spectrum at a specific spatial location and time.
 
@@ -2598,6 +2586,11 @@ class RadportAccessor:
             Data variable to extract.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Frequency index for RA/Dec → pixel mapping (see :meth:`coords_to_pixel`).
+            Defaults to channel 0 when neither this nor ``freq_mhz`` is set.
+        freq_mhz : float, optional
+            Select that channel by MHz; overrides ``freq_idx``.
 
         Returns
         -------
@@ -2626,7 +2619,7 @@ class RadportAccessor:
             if ra is None or dec is None:
                 raise ValueError("Both ra and dec must be provided together.")
             l_idx, m_idx = self.coords_to_pixel(
-                ra, dec, time_idx=ti, freq_idx=0, pol=pol
+                ra, dec, time_idx=ti, freq_idx=freq_idx, freq_mhz=freq_mhz, pol=pol
             )
         elif l is not None or m is not None:
             if l is None or m is None:
@@ -2670,6 +2663,8 @@ class RadportAccessor:
         time_mjd: float | None = None,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
         figsize: tuple[float, float] = (10, 4),
         marker: str = "o",
         linestyle: str = "-",
@@ -2696,6 +2691,10 @@ class RadportAccessor:
             Data variable to plot.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Passed to :meth:`spectrum` for RA/Dec pixel selection.
+        freq_mhz : float, optional
+            Passed to :meth:`spectrum`; overrides ``freq_idx``.
         figsize : tuple, default (10, 4)
             Figure size in inches.
         marker : str, default 'o'
@@ -2717,8 +2716,16 @@ class RadportAccessor:
         >>> fig = ds.radport.plot_spectrum(ra=180.0, dec=45.0, time_idx=0)
         """
         spec = self.spectrum(
-            ra=ra, dec=dec, l=l, m=m,
-            time_idx=time_idx, time_mjd=time_mjd, var=var, pol=pol,
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            time_idx=time_idx,
+            time_mjd=time_mjd,
+            var=var,
+            pol=pol,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
         )
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -5440,6 +5447,8 @@ class RadportAccessor:
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
         method: Literal["shift", "interpolate"] = "shift",
         fill_value: float = np.nan,
         trim: bool = False,
@@ -5467,6 +5476,10 @@ class RadportAccessor:
             Data variable to extract.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Passed to :meth:`dynamic_spectrum` for RA/Dec pixel selection.
+        freq_mhz : float, optional
+            Passed to :meth:`dynamic_spectrum`; overrides ``freq_idx``.
         method : {'shift', 'interpolate'}, default 'shift'
             Dedispersion method:
             - 'shift': Fast integer-sample shifting (approximate).
@@ -5543,7 +5556,15 @@ class RadportAccessor:
 
         # Get the uncorrected dynamic spectrum
         dynspec = self.dynamic_spectrum(
-            ra=ra, dec=dec, l=l, m=m, var=var, pol=pol, observatory=observatory
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            var=var,
+            pol=pol,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
+            observatory=observatory,
         )
 
         # If DM is zero, return the original spectrum
@@ -5675,6 +5696,8 @@ class RadportAccessor:
         dm: float,
         var: Literal["SKY", "BEAM"] = "SKY",
         pol: int = 0,
+        freq_idx: int | None = None,
+        freq_mhz: float | None = None,
         method: Literal["shift", "interpolate"] = "shift",
         trim: bool = False,
         cmap: str = "inferno",
@@ -5704,6 +5727,10 @@ class RadportAccessor:
             Data variable to plot.
         pol : int, default 0
             Polarization index.
+        freq_idx : int, optional
+            Passed to :meth:`dynamic_spectrum_dedispersed` for RA/Dec pixel selection.
+        freq_mhz : float, optional
+            Passed to :meth:`dynamic_spectrum_dedispersed`; overrides ``freq_idx``.
         method : {'shift', 'interpolate'}, default 'shift'
             Dedispersion method ('shift' for fast, 'interpolate' for precise).
         trim : bool, default False
@@ -5736,8 +5763,18 @@ class RadportAccessor:
         """
         # Get dedispersed dynamic spectrum
         dynspec = self.dynamic_spectrum_dedispersed(
-            ra=ra, dec=dec, l=l, m=m, dm=dm, var=var, pol=pol,
-            method=method, trim=trim, observatory=observatory,
+            ra=ra,
+            dec=dec,
+            l=l,
+            m=m,
+            dm=dm,
+            var=var,
+            pol=pol,
+            freq_idx=freq_idx,
+            freq_mhz=freq_mhz,
+            method=method,
+            trim=trim,
+            observatory=observatory,
         )
 
         # Create figure
