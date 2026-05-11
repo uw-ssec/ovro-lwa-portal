@@ -141,10 +141,6 @@ def _sky_coord_cache_set(
 _SKY_COORD_CACHE: Dict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]] = {}
 
 
-# Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
-PAT = re.compile(
-    r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
-)
 MHZ_RE = re.compile(r"_(\d+)MHz_")
 _IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 

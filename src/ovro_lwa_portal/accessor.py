@@ -244,8 +244,6 @@ class RadportAccessor:
         Uses the same caching and IERS policy as :meth:`_compute_pixel_at_time`.
         """
         from astropy.coordinates import EarthLocation
-        from astropy.time import Time
-        from astropy.utils.iers import conf as iers_conf
 
         if observatory is None:
             from astropy import units as u
