@@ -1,6 +1,6 @@
 # OVRO-LWA Portal
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20128330.svg)](https://doi.org/10.5281/zenodo.20128330)
 [![PyPI](https://img.shields.io/pypi/v/ovro-lwa-portal)](https://pypi.org/project/ovro-lwa-portal/)
 
 A Python library for radio astronomy data processing and visualization for the
