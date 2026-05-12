@@ -3561,6 +3561,10 @@ class RadportAccessor:
         else:
             ti = int(time_idx)
 
+        n_time = self._obj.sizes["time"]
+        if not (0 <= ti < n_time):
+            raise ValueError(f"time index {ti} out of bounds [0, {n_time})")
+
         if observatory is None:
             from astropy import units as u
 
