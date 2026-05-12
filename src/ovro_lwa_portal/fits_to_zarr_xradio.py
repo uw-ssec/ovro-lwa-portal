@@ -1574,6 +1574,34 @@ def _load_global_lm_reference_dataset(
     return xds
 
 
+def _lm_index_coords_match(
+    ref: xr.Dataset,
+    xds: xr.Dataset,
+    *,
+    rtol: float = 1e-5,
+    atol: float = 1e-8,
+) -> bool:
+    """Return True if ``xds`` uses the same ``l`` / ``m`` index coordinates as ``ref``.
+
+    Same-length ``l``/``m`` from different subbands can still differ numerically (e.g.
+    different on-sky pixelization at 4096²). Skipping regrid in that case leaves
+    :func:`xr.combine_by_coords` to align slices with an outer join on ``l``/``m``,
+    inflating spatial dims (e.g. ``3 × 4096``) and breaking the global LM contract.
+    """
+    if {"l", "m"} > set(ref.coords) or {"l", "m"} > set(xds.coords):
+        return False
+    if _lm_shape(xds) != _lm_shape(ref):
+        return False
+    ref_l = np.asarray(ref["l"].values, dtype=np.float64)
+    ref_m = np.asarray(ref["m"].values, dtype=np.float64)
+    x_l = np.asarray(xds["l"].values, dtype=np.float64)
+    x_m = np.asarray(xds["m"].values, dtype=np.float64)
+    return bool(
+        np.allclose(ref_l, x_l, rtol=rtol, atol=atol)
+        and np.allclose(ref_m, x_m, rtol=rtol, atol=atol)
+    )
+
+
 def _regrid_to_reference_lm(
     xds: xr.Dataset,
     ref: xr.Dataset,
@@ -1584,7 +1612,8 @@ def _regrid_to_reference_lm(
 
     Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
     WCS header metadata are taken from ``ref`` so the result is consistent with the
-    reference pixel grid. No-op when ``xds`` already matches ``ref`` LM shape.
+    reference pixel grid. No-op only when ``xds`` matches ``ref`` LM shape **and**
+    the ``l`` / ``m`` coordinate vectors match within tolerance.
 
     Parameters
     ----------
@@ -1605,7 +1634,7 @@ def _regrid_to_reference_lm(
     RuntimeError
         If interpolation fails (e.g. incompatible coordinates).
     """
-    if _lm_shape(xds) == _lm_shape(ref):
+    if _lm_shape(xds) == _lm_shape(ref) and _lm_index_coords_match(ref, xds):
         return xds
 
     if "l" not in xds.coords or "m" not in xds.coords:

@@ -183,6 +183,46 @@ def test_regrid_to_reference_lm_mixed_shapes():
     assert bytes(out["wcs_header_str"].values.item()) == hdr_ref.encode("utf-8")
 
 
+def test_regrid_to_reference_lm_same_shape_different_index_coords():
+    """4096²-shaped slices with different ``l``/``m`` vectors must still align to ``ref``.
+
+    Otherwise :func:`xarray.combine_by_coords` outer-joins ``l``/``m`` and spatial
+    dimensions blow up (e.g. ``3 × 4096`` for three subbands).
+    """
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    n = 8
+    l_ref = np.linspace(-1.0, 1.0, n)
+    m_ref = np.linspace(-1.0, 1.0, n)
+    sky = np.arange(n * n, dtype=np.float64).reshape(n, n)
+    hdr = "SIMPLE  =                   T\nNAXIS   =                    2"
+
+    def mk_ds(l_arr: np.ndarray, m_arr: np.ndarray) -> xr.Dataset:
+        return xr.Dataset(
+            {"SKY": (("m", "l"), sky.copy())},
+            coords={
+                "l": ("l", l_arr),
+                "m": ("m", m_arr),
+                "right_ascension": (("m", "l"), np.full((n, n), 180.0)),
+                "declination": (("m", "l"), np.full((n, n), 45.0)),
+            },
+            attrs={"fits_wcs_header": hdr},
+        ).assign(wcs_header_str=((), np.bytes_(hdr.encode("utf-8"))))
+
+    xds_ref = mk_ds(l_ref, m_ref)
+    l_other = np.linspace(-0.5, 0.5, n)
+    xds_other = mk_ds(l_other, m_ref.copy())
+
+    out = mod._regrid_to_reference_lm(xds_other, xds_ref)
+
+    assert out.sizes["l"] == n
+    assert out.sizes["m"] == n
+    np.testing.assert_allclose(out["l"].values, l_ref)
+    np.testing.assert_allclose(out["m"].values, m_ref)
+
+
 def test_regrid_to_reference_lm_requires_l_m_coords():
     """Regridding must fail clearly when ``l``/``m`` coordinates are absent."""
     import numpy as np
