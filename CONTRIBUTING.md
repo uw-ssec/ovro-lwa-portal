@@ -224,6 +224,23 @@ When working with the `image-plane-correction` package:
 - Currently using the `nikita/dev` branch
 - Report issues to the upstream repository when appropriate
 
+The Pixi feature `[tool.pixi.feature.dewarp]` points at a **local path**
+(`../image-plane-correction`). That path is not required for CI or for the
+default Pixi environment: keep the optional `dewarp` environment **out of**
+committed `pyproject.toml` unless you have that sibling checkout.
+
+To install dewarp tooling locally:
+
+1. Clone `image-plane-correction` next to this repo so `../image-plane-correction` exists.
+2. Add this line under `[tool.pixi.environments]` in `pyproject.toml` (do not commit if your
+   lockfile would pull private paths):
+
+   ```toml
+   dewarp = { features = ["dewarp"], solve-group = "dewarp" }
+   ```
+
+3. Run `pixi lock`, then `pixi install --environment dewarp`.
+
 ### BDSF Integration
 
 For macOS ARM64 users:
