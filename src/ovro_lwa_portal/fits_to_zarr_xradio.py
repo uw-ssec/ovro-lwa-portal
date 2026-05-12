@@ -1207,6 +1207,8 @@ def _sky_sep_max_vs_ref_arcsec(
     max_points
         Maximum number of (m, l) pixels sampled per comparison (subsampled if larger).
     """
+    if ra.ndim != 3 or dec.ndim != 3:
+        raise ValueError("ra/dec must be 3D arrays shaped (n_freq, n_m, n_l)")
     nf, nm, nl = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
     if nf <= 1:
         return 0.0
@@ -1261,8 +1263,24 @@ def _harmonize_celestial_coords_independent_of_frequency(
 
     ra_ord = ra_c.transpose("frequency", "m", "l")
     dec_ord = dec_c.transpose("frequency", "m", "l")
-    ra_np = np.asarray(ra_ord.data, dtype=np.float64)
-    dec_np = np.asarray(dec_ord.data, dtype=np.float64)
+    if hasattr(ra_ord.data, "compute") or hasattr(dec_ord.data, "compute"):
+        # Sample before materialization so dask-backed coords do not compute full
+        # (frequency, m, l) cubes just for drift estimation.
+        max_points = 65536
+        stacked_dims = ("m", "l")
+        total = int(ra_ord.sizes["m"]) * int(ra_ord.sizes["l"])
+        rng = np.random.default_rng(0)
+        if total > max_points:
+            flat_idx = rng.choice(total, size=max_points, replace=False)
+        else:
+            flat_idx = np.arange(total, dtype=np.intp)
+        ra_sample = ra_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        dec_sample = dec_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        ra_np = np.asarray(ra_sample.data, dtype=np.float64)[:, np.newaxis, :]
+        dec_np = np.asarray(dec_sample.data, dtype=np.float64)[:, np.newaxis, :]
+    else:
+        ra_np = np.asarray(ra_ord.data, dtype=np.float64)
+        dec_np = np.asarray(dec_ord.data, dtype=np.float64)
 
     max_sep = _sky_sep_max_vs_ref_arcsec(ra_np, dec_np, ref_idx=ri)
     if max_sep > warn_max_sep_arcsec:

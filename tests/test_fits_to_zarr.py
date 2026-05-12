@@ -1011,3 +1011,47 @@ def test_harmonize_celestial_coords_warns_on_large_wcs_drift(caplog):
     out = mod._harmonize_celestial_coords_independent_of_frequency(ds, warn_max_sep_arcsec=60.0)
     assert "Celestial coordinate grids differ" in caplog.text
     assert "frequency" not in out.right_ascension.dims
+
+
+def test_harmonize_celestial_coords_samples_dask_backed_coords(monkeypatch):
+    """Dask-backed celestial coords should be sampled before drift computation."""
+    import numpy as np
+    import xarray as xr
+
+    da = pytest.importorskip("dask.array")
+    mod = _import_module()
+    nm, nl, nf = 300, 300, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra = np.stack([ra0, ra0 + 0.01], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (
+                ("frequency", "m", "l"),
+                da.from_array(ra, chunks=(1, 75, 75)),
+            ),
+            "declination": (
+                ("frequency", "m", "l"),
+                da.from_array(dec, chunks=(1, 75, 75)),
+            ),
+        },
+    )
+
+    captured = {}
+    original = mod._sky_sep_max_vs_ref_arcsec
+
+    def _capture(ra_arr, dec_arr, *, ref_idx, max_points=65536):
+        captured["shape"] = tuple(ra_arr.shape)
+        return original(ra_arr, dec_arr, ref_idx=ref_idx, max_points=max_points)
+
+    monkeypatch.setattr(mod, "_sky_sep_max_vs_ref_arcsec", _capture)
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
+    assert captured["shape"] == (nf, 1, 65536)
+    assert "frequency" not in out.right_ascension.dims
