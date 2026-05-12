@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -15,6 +17,8 @@ from tests.conftest import skip_github_ci_without_image_plane_correction
 
 from ovro_lwa_portal.ingest.dewarp_convert import (
     collect_cascade_fits,
+    dewarp_and_convert_append_each_time,
+    remove_staged_files_for_time_key,
     run_cascade_per_time_group,
 )
 
@@ -314,6 +318,92 @@ def test_run_cascade_groups_by_basename_image_time_not_header(tmp_path: Path) ->
         "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_a.fits",
         "73MHz-I-Deep-Taper-Robust-0-image-20241221_102109_b.fits",
     }
+
+
+def test_remove_staged_files_for_time_key(tmp_path: Path) -> None:
+    staging = tmp_path / "st"
+    staging.mkdir()
+    (staging / "20240101_000000__a.fits").touch()
+    (staging / "20240101_000000__b.fits").touch()
+    (staging / "20240102_000000__c.fits").touch()
+    n = remove_staged_files_for_time_key(staging, "20240101_000000")
+    assert n == 2
+    assert sorted(p.name for p in staging.glob("*.fits")) == ["20240102_000000__c.fits"]
+
+
+def test_dewarp_and_convert_append_each_time_calls_zarr_per_step(tmp_path: Path, monkeypatch):
+    """Incremental mode runs FITS→Zarr once per observation time after staging that step."""
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    cascade = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+    fixed = tmp_path / "fixed"
+    for d in (raw, out, cascade, staging, fixed):
+        d.mkdir()
+
+    def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
+        return {
+            "20240601_120000": [raw / "a.fits"],
+            "20240602_120000": [raw / "b.fits"],
+        }
+
+    monkeypatch.setattr(dewarp_convert_mod, "_discover_groups", fake_discover)
+    mref = MagicMock()
+    mref.copy = MagicMock(return_value=mref)
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_load_global_lm_reference_dataset",
+        lambda *a, **k: mref,
+    )
+
+    cascade_calls: list[str] = []
+
+    def fake_run_cascade(
+        tkey: str,
+        files: Sequence[Path],
+        _cascade_parent: Path,
+        staging_dir: Path,
+        *,
+        cascade_fn: Any,
+        **_kw: Any,
+    ) -> int:
+        cascade_calls.append(tkey)
+        assert len(files) == 1
+        (staging_dir / f"{tkey}__out.fits").touch()
+        return 1
+
+    monkeypatch.setattr(dewarp_convert_mod, "run_cascade_for_time_key", fake_run_cascade)
+
+    with patch("ovro_lwa_portal.ingest.core.FITSToZarrConverter") as conv_cls:
+        inst = MagicMock()
+        conv_cls.return_value = inst
+        n_staged, keys = dewarp_and_convert_append_each_time(
+            raw,
+            out,
+            cascade,
+            staging,
+            fixed,
+            zarr_name="z.zarr",
+            chunk_lm=64,
+            rebuild=True,
+            fix_headers_on_demand=False,
+            cleanup_fixed_fits=False,
+            cleanup_dewarp_staging=False,
+            discovery_freq_bin_hz=23e3,
+            duplicate_resolver=None,
+            cascade_fn=lambda **kw: None,
+        )
+
+    assert keys == ["20240601_120000", "20240602_120000"]
+    assert n_staged == 2
+    assert cascade_calls == keys
+    assert inst.convert.call_count == 2
+    cfg0 = conv_cls.call_args_list[0][0][0]
+    cfg1 = conv_cls.call_args_list[1][0][0]
+    assert cfg0.time_keys_only == ("20240601_120000",)
+    assert cfg1.time_keys_only == ("20240602_120000",)
+    assert cfg0.rebuild is True
+    assert cfg1.rebuild is False
 
 
 def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None:

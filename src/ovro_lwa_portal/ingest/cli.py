@@ -33,7 +33,10 @@ from ovro_lwa_portal.fits_to_zarr_xradio import (
     validate_zarr_store,
 )
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
-from ovro_lwa_portal.ingest.dewarp_convert import run_cascade_per_time_group
+from ovro_lwa_portal.ingest.dewarp_convert import (
+    dewarp_and_convert_append_each_time,
+    run_cascade_per_time_group,
+)
 
 __all__ = ["main", "app"]
 
@@ -400,6 +403,22 @@ def dewarp_convert(
             "after each time-step is written (reduces peak disk usage)"
         ),
     ),
+    append_after_each_time: bool = typer.Option(
+        False,
+        "--append-after-each-time",
+        help=(
+            "Dewarp each observation time, append that time slice to Zarr, then continue "
+            "(reduces peak dewarp staging size; combine with --cleanup-dewarp-staging)"
+        ),
+    ),
+    cleanup_dewarp_staging: bool = typer.Option(
+        False,
+        "--cleanup-dewarp-staging",
+        help=(
+            "With --append-after-each-time: remove staged dewarped FITS and per-time "
+            "cascade output directories after each successful Zarr append"
+        ),
+    ),
     discovery_freq_bin_hz: float = typer.Option(
         _DISCOVERY_FREQ_BIN_HZ,
         "--discovery-freq-bin-hz",
@@ -484,13 +503,19 @@ def dewarp_convert(
     ``image_plane_correction.flow.flow_cascade73MHz`` with a per-time ``outroot``
     under ``--cascade-parent``.
     Resulting ``*.fits`` are staged into ``--staging-dir``, then the usual
-    ``ovro-ingest convert`` pipeline runs on that staging directory.
+    ``ovro-ingest convert`` pipeline runs on that staging directory (unless
+    ``--append-after-each-time`` is set; then Zarr is updated after each time group).
 
     Requires the ``image_plane_correction`` package (submodule ``flow``).
 
     \b
     Example:
         ovro-ingest dewarp-convert /data/raw_fits /data/output --rebuild
+
+    \b
+    Incremental Zarr (lower peak staging disk):
+        ovro-ingest dewarp-convert /data/raw /data/out --append-after-each-time \\
+            --cleanup-dewarp-staging --cleanup-fixed-fits
     """
     _configure_logging(log_level)
     verbose = log_level == LogLevel.DEBUG
@@ -507,22 +532,53 @@ def dewarp_convert(
     console.print(f"  Zarr store name:     {zarr_name}")
     if target_size is not None:
         console.print(f"  Target size (px):  {target_size}")
+    if append_after_each_time:
+        console.print("  Append after each time: YES")
+        console.print(f"  Cleanup dewarp staging: {'YES' if cleanup_dewarp_staging else 'NO'}")
     console.print(f"  Log level:           {log_level.value.upper()}\n")
 
+    fixed_resolved = fixed_dir or (output_dir / "fixed_fits")
+
     try:
-        n_staged, time_keys = run_cascade_per_time_group(
-            input_dir,
-            cascade_root,
-            staging,
-            discovery_freq_bin_hz=discovery_freq_bin_hz,
-            duplicate_resolver=None,
-            cleaned=cleaned,
-            qa=qa,
-            use_best_pb_model=use_best_pb_model,
-            bright_source_flux_qa=bright_source_flux_qa,
-            write=write,
-            target_size=target_size,
-        )
+        if append_after_each_time:
+            n_staged, time_keys = dewarp_and_convert_append_each_time(
+                input_dir,
+                output_dir,
+                cascade_root,
+                staging,
+                fixed_resolved,
+                zarr_name=zarr_name,
+                chunk_lm=chunk_lm,
+                rebuild=rebuild,
+                fix_headers_on_demand=not skip_header_fixing,
+                cleanup_fixed_fits=cleanup_fixed_fits,
+                cleanup_dewarp_staging=cleanup_dewarp_staging,
+                discovery_freq_bin_hz=discovery_freq_bin_hz,
+                duplicate_resolver=None,
+                cleaned=cleaned,
+                qa=qa,
+                use_best_pb_model=use_best_pb_model,
+                bright_source_flux_qa=bright_source_flux_qa,
+                write=write,
+                target_size=target_size,
+                cascade_fn=None,
+                verbose=verbose,
+                progress_callback=None,
+            )
+        else:
+            n_staged, time_keys = run_cascade_per_time_group(
+                input_dir,
+                cascade_root,
+                staging,
+                discovery_freq_bin_hz=discovery_freq_bin_hz,
+                duplicate_resolver=None,
+                cleaned=cleaned,
+                qa=qa,
+                use_best_pb_model=use_best_pb_model,
+                bright_source_flux_qa=bright_source_flux_qa,
+                write=write,
+                target_size=target_size,
+            )
     except ImportError as e:
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
         raise typer.Exit(code=1) from e
@@ -530,10 +586,20 @@ def dewarp_convert(
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
         raise typer.Exit(code=1) from e
     except RuntimeError as e:
-        console.print(f"\n[bold red]✗[/bold red] Dewarp failed: {e}", style="red")
+        console.print(f"\n[bold red]✗[/bold red] Dewarp or Zarr step failed: {e}", style="red")
         if verbose:
             console.print_exception()
         raise typer.Exit(code=1) from e
+
+    if append_after_each_time:
+        console.print(
+            f"\n[bold green]✓[/bold green] Dewarped and appended Zarr for {len(time_keys)} "
+            f"time step(s); staged up to {n_staged} FITS per batch.\n"
+        )
+        console.print(
+            f"[bold green]✓[/bold green] Zarr store: {output_dir / zarr_name}\n"
+        )
+        return
 
     console.print(
         f"[bold green]✓[/bold green] Staged {n_staged} FITS file(s) "

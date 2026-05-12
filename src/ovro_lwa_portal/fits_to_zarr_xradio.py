@@ -67,7 +67,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
 import numpy as np
 import xarray as xr
@@ -1998,6 +1998,8 @@ def convert_fits_dir_to_zarr(
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
     discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
+    time_keys_only: Optional[Sequence[str]] = None,
+    lm_reference_ds: Optional[xr.Dataset] = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -2035,6 +2037,14 @@ def convert_fits_dir_to_zarr(
     discovery_freq_bin_hz
         Bin width in Hz for treating header frequencies as the same subband during
         discovery (default 23~kHz). Must be positive.
+    time_keys_only
+        If set, only time keys in this collection are converted (after discovery).
+        Used for incremental pipelines (e.g. dewarp one time step, then append Zarr).
+    lm_reference_ds
+        If provided, skip the global LM reference scan and use this dataset instead.
+        Must match the grid chosen for the full run (typically built once from the
+        same input layout before dewarping). Callers should pass a deep-copied dataset
+        if the same object might be mutated elsewhere.
 
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(m, l)`` celestial
@@ -2076,6 +2086,16 @@ def convert_fits_dir_to_zarr(
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
     )
+    if time_keys_only is not None:
+        allowed = {str(k) for k in time_keys_only}
+        by_time = {k: v for k, v in by_time.items() if k in allowed}
+        missing = allowed - set(by_time.keys())
+        if missing:
+            logger.warning(
+                "time_keys_only contained keys with no FITS in %s: %s",
+                input_dir,
+                ", ".join(sorted(missing)),
+            )
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
@@ -2085,12 +2105,15 @@ def convert_fits_dir_to_zarr(
     if not by_time:
         raise FileNotFoundError(f"No matching FITS found in {input_dir}")
 
-    lm_ref_ds = _load_global_lm_reference_dataset(
-        by_time,
-        fixed_dir,
-        chunk_lm=chunk_lm,
-        fix_headers_on_demand=fix_headers_on_demand,
-    )
+    if lm_reference_ds is not None:
+        lm_ref_ds = lm_reference_ds
+    else:
+        lm_ref_ds = _load_global_lm_reference_dataset(
+            by_time,
+            fixed_dir,
+            chunk_lm=chunk_lm,
+            fix_headers_on_demand=fix_headers_on_demand,
+        )
     lm_reference = (lm_ref_ds["l"].values.copy(), lm_ref_ds["m"].values.copy())
 
     # Decide whether we write a fresh store or append to an existing one

@@ -93,6 +93,7 @@ class TestCLI:
         assert "image_plane_correction" in result.stdout
         assert "--cascade-parent" in result.stdout
         assert "--target-size" in result.stdout
+        assert "--append-after-each-time" in result.stdout
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""
