@@ -306,6 +306,130 @@ class RadportAccessor:
             iers_conf.auto_download = orig
         self._lst_cache[full_key] = lst_arr
 
+    def _pixel_track_can_batch_time_radec_grids(self) -> bool:
+        """True when per-time RA/Dec grids can be argmin'd in one array pass."""
+        obj = self._obj
+        ra_c = obj.coords.get("right_ascension")
+        dec_c = obj.coords.get("declination")
+        n_times = int(obj.sizes.get("time", 1))
+        if ra_c is None or dec_c is None:
+            return False
+        if "time" not in obj.coords or n_times < 1:
+            return False
+        if not ({"l", "m"} <= set(ra_c.dims) and {"l", "m"} <= set(dec_c.dims)):
+            return False
+        if "time" not in ra_c.dims or "time" not in dec_c.dims:
+            return False
+        return True
+
+    def _compute_pixel_track_batched_radec_grid(
+        self,
+        ra: float,
+        dec: float,
+        observatory: Any,
+        *,
+        fi: int,
+        pol: int,
+        l_coords: np.ndarray,
+        m_coords: np.ndarray,
+        n_l: int,
+        n_m: int,
+        n_times: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Batched (time, m, l) nearest-pixel search; ``None`` to fall back to per-time loop."""
+        from astropy.coordinates import EarthLocation
+
+        if observatory is None:
+            from astropy import units as u
+
+            observatory = EarthLocation(
+                lat=37.2339 * u.deg, lon=-118.2817 * u.deg, height=1222 * u.m
+            )
+
+        obj = self._obj
+        all_mjd = np.asarray(obj.coords["time"].values, dtype=np.float64)
+        all_mjd = np.atleast_1d(all_mjd)
+        lon_deg = float(observatory.lon.deg)
+        full_key = (all_mjd.tobytes(), lon_deg)
+        lst_cached = self._lst_cache.get(full_key)
+        if lst_cached is None:
+            return None
+        lst_arr = np.asarray(lst_cached, dtype=np.float64).ravel()
+        if lst_arr.shape[0] != n_times:
+            return None
+
+        # Horizon (identical to _compute_pixel_at_time, vectorized).
+        ha_rad = np.deg2rad(lst_arr - ra)
+        dec_rad = np.deg2rad(dec)
+        lat_rad = np.deg2rad(observatory.lat.deg)
+        sin_alt = np.sin(dec_rad) * np.sin(lat_rad) + np.cos(dec_rad) * np.cos(
+            lat_rad
+        ) * np.cos(ha_rad)
+        horiz_ok = sin_alt > 0
+
+        ra_coord = obj.coords["right_ascension"]
+        dec_coord = obj.coords["declination"]
+        ra_b = ra_coord
+        dec_b = dec_coord
+        for dim_name, idx_raw in (
+            ("frequency", fi),
+            ("polarization", pol),
+        ):
+            if dim_name in ra_b.dims:
+                n_d = int(ra_b.sizes[dim_name])
+                ii = int(np.clip(int(idx_raw), 0, n_d - 1))
+                ra_b = ra_b.isel({dim_name: ii})
+            if dim_name in dec_b.dims:
+                n_d = int(dec_b.sizes[dim_name])
+                ii = int(np.clip(int(idx_raw), 0, n_d - 1))
+                dec_b = dec_b.isel({dim_name: ii})
+
+        if "time" not in ra_b.dims or "time" not in dec_b.dims:
+            return None
+        try:
+            ra_bt = ra_b.transpose("time", "m", "l")
+            dec_bt = dec_b.transpose("time", "m", "l")
+        except (KeyError, ValueError):
+            return None
+
+        ra_da = ra_bt.data
+        dec_da = dec_bt.data
+        if hasattr(ra_da, "compute"):
+            ra_all = np.asarray(ra_da.compute(), dtype=np.float64)
+        else:
+            ra_all = np.asarray(ra_da, dtype=np.float64)
+        if hasattr(dec_da, "compute"):
+            dec_all = np.asarray(dec_da.compute(), dtype=np.float64)
+        else:
+            dec_all = np.asarray(dec_da, dtype=np.float64)
+        if ra_all.shape != dec_all.shape:
+            dec_all = np.broadcast_to(dec_all, ra_all.shape)
+        if ra_all.shape[0] != n_times:
+            return None
+
+        dra = (ra_all - float(ra) + 180.0) % 360.0 - 180.0
+        ddec = dec_all - float(dec)
+        cos_dec = np.cos(np.deg2rad(dec_all))
+        dist2 = dra * dra * cos_dec * cos_dec + ddec * ddec
+        dist2 = np.where(np.isfinite(ra_all) & np.isfinite(dec_all), dist2, np.inf)
+        dist2[~horiz_ok, :, :] = np.inf
+
+        nm, nl = int(ra_all.shape[1]), int(ra_all.shape[2])
+        flat = np.argmin(dist2.reshape(n_times, nm * nl), axis=1)
+        mi = (flat // nl).astype(np.intp)
+        li = (flat % nl).astype(np.intp)
+
+        row_min = dist2.reshape(n_times, nm * nl)[np.arange(n_times), flat]
+        in_bounds = (li >= 0) & (li < n_l) & (mi >= 0) & (mi < n_m)
+        visible = horiz_ok & np.isfinite(row_min) & in_bounds
+
+        l_indices = np.full(n_times, n_l, dtype=int)
+        m_indices = np.full(n_times, n_m, dtype=int)
+        l_indices[visible] = li[visible]
+        m_indices[visible] = mi[visible]
+
+        return l_indices, m_indices, visible
+
     def _compute_pixel_track(
         self,
         ra: float,
@@ -318,12 +442,14 @@ class RadportAccessor:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Compute per-time-step pixel indices for a fixed (RA, Dec).
 
-        For each dataset time index, calls :meth:`coords_to_pixel` so pixel
-        selection matches all other extraction APIs (stored RA/Dec grids when
-        present, otherwise the analytical SIN + LST path inside
-        :meth:`_compute_pixel_at_time`). Before the loop, LST for all times is
-        computed once (see :meth:`_ensure_lst_deg_vector_cached`) so the
-        analytical branch does not repeat Astropy work per index.
+        For each dataset time index, uses :meth:`coords_to_pixel` (via
+        :meth:`_compute_pixel_at_time`) so pixel selection matches all other
+        extraction APIs, except when per-time ``right_ascension`` /
+        ``declination`` grids allow a single batched ``(time, m, l)`` argmin
+        (same horizon and distance rules as :meth:`_compute_pixel_at_time`).
+        Before the loop, LST for all times is computed once (see
+        :meth:`_ensure_lst_deg_vector_cached`) so the analytical branch does not
+        repeat Astropy work per index.
 
         Parameters
         ----------
@@ -365,6 +491,36 @@ class RadportAccessor:
         visible = np.zeros(n_times, dtype=bool)
 
         self._ensure_lst_deg_vector_cached(observatory)
+
+        if freq_mhz is not None:
+            fi = int(self.nearest_freq_idx(freq_mhz))
+        elif freq_idx is not None:
+            fi = int(freq_idx)
+        else:
+            fi = 0
+
+        if self._pixel_track_can_batch_time_radec_grids():
+            batched = self._compute_pixel_track_batched_radec_grid(
+                ra,
+                dec,
+                observatory,
+                fi=fi,
+                pol=pol,
+                l_coords=l_coords,
+                m_coords=m_coords,
+                n_l=n_l,
+                n_m=n_m,
+                n_times=n_times,
+            )
+            if batched is not None:
+                l_indices, m_indices, visible = batched
+                if not np.any(visible):
+                    warnings.warn(
+                        f"Source (RA={ra}°, Dec={dec}°) is never above the horizon "
+                        f"during this observation. All output values will be NaN.",
+                        stacklevel=3,
+                    )
+                return l_indices, m_indices, visible
 
         for ti in range(n_times):
             try:

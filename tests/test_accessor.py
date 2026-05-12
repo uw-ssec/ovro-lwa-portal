@@ -2891,6 +2891,79 @@ class TestComputePixelTrack:
         l_idx2, m_idx2, visible2 = ds.radport._compute_pixel_track(ra=0.1, dec=37.0)
         assert l_idx2.shape == (ds.sizes["time"],)
 
+    def test_batched_radec_grid_matches_per_time_pixel_at_time(self) -> None:
+        """Batched (time, m, l) track matches looping :meth:`_compute_pixel_at_time`."""
+        from astropy.time import Time
+        from astropy import units as u
+
+        nt, nf, npol, nl, nm = 5, 2, 2, 12, 10
+        times = [60000.0 + 0.01 * i for i in range(nt)]
+        # Phase center near zenith at mid-observation so the test source stays up.
+        t_mid = Time(times[nt // 2], format="mjd", scale="utc")
+        lst0 = float(
+            t_mid.sidereal_time("mean", longitude=-118.2817 * u.deg).deg
+        )
+        dec0 = 37.2339
+        l_coord = np.linspace(-0.6, 0.6, nl)
+        m_coord = np.linspace(-0.5, 0.5, nm)
+        # Coords are ordered (..., m, l); build base arrays with shape (nm, nl).
+        mt, lt = np.meshgrid(np.arange(nm), np.arange(nl), indexing="ij")
+        # Drift in RA with time; smooth variation over the grid
+        ra_grid = (
+            lst0
+            + 0.08 * lt
+            + 0.12 * mt
+            + np.arange(nt, dtype=np.float64)[:, np.newaxis, np.newaxis] * 0.15
+        )
+        dec_grid = (
+            dec0
+            + 0.05 * lt
+            - 0.04 * mt
+            + np.arange(nt, dtype=np.float64)[:, np.newaxis, np.newaxis] * 0.02
+        )
+        ds = xr.Dataset(
+            data_vars={
+                "SKY": (
+                    ["time", "frequency", "polarization", "l", "m"],
+                    np.random.default_rng(0).random((nt, nf, npol, nl, nm)),
+                ),
+            },
+            coords={
+                "time": times,
+                "frequency": [46e6, 54e6],
+                "polarization": [0, 1],
+                "l": l_coord,
+                "m": m_coord,
+                "right_ascension": (["time", "m", "l"], ra_grid),
+                "declination": (["time", "m", "l"], dec_grid),
+            },
+        )
+        ra_t, dec_t = lst0 + 0.35, dec0 + 0.12
+        fi, pol = 0, 0
+        n_l, n_m = nl, nm
+        ref_l = np.empty(nt, dtype=int)
+        ref_m = np.empty(nt, dtype=int)
+        ref_v = np.zeros(nt, dtype=bool)
+        for ti in range(nt):
+            try:
+                li, mi = ds.radport._compute_pixel_at_time(
+                    ra_t, dec_t, ti, freq_idx=fi, pol=pol
+                )
+                ref_l[ti] = li
+                ref_m[ti] = mi
+                ref_v[ti] = True
+            except ValueError:
+                ref_l[ti] = n_l
+                ref_m[ti] = n_m
+                ref_v[ti] = False
+
+        l_b, m_b, v_b = ds.radport._compute_pixel_track(
+            ra_t, dec_t, freq_idx=fi, pol=pol
+        )
+        np.testing.assert_array_equal(l_b, ref_l)
+        np.testing.assert_array_equal(m_b, ref_m)
+        np.testing.assert_array_equal(v_b, ref_v)
+
 
 class TestResolveCoordinates:
     """Tests for _resolve_coordinates() input validation and dispatch."""
