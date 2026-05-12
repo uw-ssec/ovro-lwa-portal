@@ -49,6 +49,11 @@ ci = [
 prefect = [
     "prefect>=3.0.0",
 ]
+# Dewarp / cascade staging (`image_plane_correction.flow`); OVRO-LWA upstream, not on PyPI.
+# Rev tracks branch `nikita/dev` (see CONTRIBUTING.md); bump when that branch advances.
+dewarp = [
+    "image-plane-correction @ git+https://github.com/ovro-lwa/image-plane-correction.git@ff886d84083cd2d4d183c98d96136cefb58ace4a",
+]
 remote = [
     "requests>=2.31.0",
     "s3fs>=2024.6.0",
@@ -86,6 +91,9 @@ Issues = "https://github.com/uw-ssec/ovro-lwa-portal/issues"
 
 [tool.hatch.version]
 source = "vcs"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/ovro_lwa_portal/version.py"
