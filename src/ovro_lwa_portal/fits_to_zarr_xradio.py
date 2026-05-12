@@ -99,6 +99,8 @@ _DISCOVERY_FREQ_BIN_HZ: float = 23_000.0
 # more than this on-sky separation (sampled on the LM grid). Used after ``combine`` so
 # per-channel WCS drift across a wideband time step is visible before collapsing coords.
 _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC: float = 60.0
+_CELESTIAL_DRIFT_SAMPLE_MAX_POINTS: int = 65536
+_CELESTIAL_DRIFT_SAMPLE_SEED: int = 0
 
 # Default OVRO-LWA / OVRO geodetic site when FITS lacks ``OBSGEO-*`` (matches
 # ``EarthLocation.of_site("ovro")`` in Astropy data; avoids network at import).
@@ -1194,7 +1196,7 @@ def _sky_sep_max_vs_ref_arcsec(
     dec: NDArray[np.floating],
     *,
     ref_idx: int,
-    max_points: int = 65536,
+    max_points: int = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
 ) -> float:
     """Worst-case on-sky separation (arcsec) of any non-ref channel from ``ref_idx``.
 
@@ -1214,7 +1216,7 @@ def _sky_sep_max_vs_ref_arcsec(
         return 0.0
     ri = int(np.clip(ref_idx, 0, nf - 1))
     total = nm * nl
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
     if total > max_points:
         flat_idx = rng.choice(total, size=max_points, replace=False)
     else:
@@ -1266,10 +1268,10 @@ def _harmonize_celestial_coords_independent_of_frequency(
     if hasattr(ra_ord.data, "compute") or hasattr(dec_ord.data, "compute"):
         # Sample before materialization so dask-backed coords do not compute full
         # (frequency, m, l) cubes just for drift estimation.
-        max_points = 65536
+        max_points = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS
         stacked_dims = ("m", "l")
         total = int(ra_ord.sizes["m"]) * int(ra_ord.sizes["l"])
-        rng = np.random.default_rng(0)
+        rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
         if total > max_points:
             flat_idx = rng.choice(total, size=max_points, replace=False)
         else:

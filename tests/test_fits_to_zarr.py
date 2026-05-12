@@ -1053,5 +1053,5 @@ def test_harmonize_celestial_coords_samples_dask_backed_coords(monkeypatch):
 
     monkeypatch.setattr(mod, "_sky_sep_max_vs_ref_arcsec", _capture)
     out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
-    assert captured["shape"] == (nf, 1, 65536)
+    assert captured["shape"] == (nf, 1, mod._CELESTIAL_DRIFT_SAMPLE_MAX_POINTS)
     assert "frequency" not in out.right_ascension.dims
