@@ -750,7 +750,8 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
     """Write a *_fixed.fits with BSCALE/BZERO applied and minimal WCS/spectral keys.
 
     Adds/ensures:
-      RESTFREQ/RESTFRQ, SPECSYS=LSRK, TIMESYS=UTC, RADESYS=FK5, LATPOLE=90,
+      RESTFREQ/RESTFRQ when axis 3 is spectral (not after a synthetic Stokes axis),
+      SPECSYS=LSRK, TIMESYS=UTC, RADESYS=FK5, LATPOLE=90,
       identity PC matrix for LM, nominal beam (BMAJ/BMIN=6 arcmin), BUNIT=Jy/beam.
       For celestial ``RA``/``DEC`` axes, ``CRVAL1``/``CRVAL2`` are set to the FK5
       zenith at the UTC instant parsed from ``-image-YYYYMMDD_HHMMSS`` in the input
@@ -777,23 +778,49 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
                 if k in hdr:
                     del hdr[k]
 
-        # xradio expects a STOKES axis in image metadata. Some OVRO-LWA FITS files
-        # are 3D cubes with only (RA, DEC, FREQ). Promote these to a 4D cube by
-        # adding a singleton STOKES axis so FITS parsing is accepted.
+        # xradio expects a STOKES axis in image metadata (see ``_get_pol_values`` in
+        # ``xradio.image._util._fits.xds_from_fits``). OVRO-LWA FITS files may be
+        # 2D (RA, DEC) only or 3D (RA, DEC, FREQ) without STOKES; promote so FITS parsing
+        # succeeds. Pure 2D images become a 4D (RA, DEC, FREQ, STOKES) singleton cube so
+        # xradio also builds ``helpers['frequency']`` (required for velocity coords).
         ctype_values = [
             str(hdr.get(f"CTYPE{i}", "")).strip().upper()
             for i in range(1, int(hdr.get("NAXIS", 0)) + 1)
         ]
         has_stokes = any("STOKES" in c for c in ctype_values)
-        if data is not None and int(hdr.get("NAXIS", 0)) == 3 and not has_stokes:
-            data = np.expand_dims(data, axis=0)
-            hdr["NAXIS"] = 4
-            hdr["CTYPE4"] = "STOKES"
-            hdr["CRVAL4"] = 1.0
-            hdr["CRPIX4"] = 1.0
-            hdr["CDELT4"] = 1.0
-            if "CUNIT4" not in hdr:
-                hdr["CUNIT4"] = ""
+        naxis = int(hdr.get("NAXIS", 0))
+        if data is not None and not has_stokes:
+            if naxis == 3:
+                data = np.expand_dims(data, axis=0)
+                hdr["NAXIS"] = 4
+                hdr["CTYPE4"] = "STOKES"
+                hdr["CRVAL4"] = 1.0
+                hdr["CRPIX4"] = 1.0
+                hdr["CDELT4"] = 1.0
+                if "CUNIT4" not in hdr:
+                    hdr["CUNIT4"] = ""
+            elif naxis == 2:
+                # Pure (RA, DEC) planes: xradio requires both FREQ (so ``helpers['frequency']``
+                # exists) and STOKES. Promote to a 4D (RA, DEC, FREQ, STOKES) singleton cube
+                # matching astropy's axis order NAXIS1=NAXIS2=spatial, NAXIS3=NAXIS4=1.
+                spec_hz = float(hdr.get("RESTFREQ", 6e7))
+                if spec_hz <= 0:
+                    spec_hz = 6e7
+                data = np.expand_dims(np.expand_dims(data, axis=0), axis=0)
+                hdr["NAXIS"] = 4
+                hdr["NAXIS3"] = 1
+                hdr["CTYPE3"] = "FREQ"
+                hdr["CRVAL3"] = spec_hz
+                hdr["CRPIX3"] = 1.0
+                hdr["CDELT3"] = 1.0
+                hdr["CUNIT3"] = "Hz"
+                hdr["NAXIS4"] = 1
+                hdr["CTYPE4"] = "STOKES"
+                hdr["CRVAL4"] = 1.0
+                hdr["CRPIX4"] = 1.0
+                hdr["CDELT4"] = 1.0
+                if "CUNIT4" not in hdr:
+                    hdr["CUNIT4"] = ""
 
         phdu = fits.PrimaryHDU(data=data, header=hdr)
         H = phdu.header
@@ -806,10 +833,13 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
                 path_in.name,
             )
 
-        # Spectral / frame basics
-        if "CRVAL3" in H:  # fall back to CRVAL3 if set
+        # Spectral / frame basics (do not treat Stokes CRVAL4 as a rest frequency)
+        ct3 = str(H.get("CTYPE3", "")).strip().upper()
+        if "CRVAL3" in H and (
+            ("FREQ" in ct3) or ct3.startswith("VOPT") or ct3.startswith("VRAD")
+        ):
             H["RESTFREQ"] = H["CRVAL3"]
-        H["RESTFRQ"] = (H.get("RESTFREQ", 1.0), "Rest frequency in Hz")
+        H["RESTFRQ"] = (float(H.get("RESTFREQ", 1.0)), "Rest frequency in Hz")
         H["SPECSYS"] = "LSRK"
         H["TIMESYS"] = "UTC"
         H["RADESYS"] = "FK5"
