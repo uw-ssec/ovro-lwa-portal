@@ -92,6 +92,14 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def _is_xradio_stokes_missing_valueerror(exc: BaseException) -> bool:
+    """True when xradio failed building coords because ``CTYPE`` has no ``STOKES``."""
+    if not isinstance(exc, ValueError):
+        return False
+    msg = str(exc).lower()
+    return "stokes" in msg and "not in" in msg and "list" in msg
+
+
 def _read_fits_via_xradio(
     path: str | Path,
     *,
@@ -111,12 +119,46 @@ def _read_fits_via_xradio(
     -----
     Uses the private ``_fits_image_to_xds`` from xradio; it may move between
     xradio releases—keep the dependency pin exercised in CI.
+
+    xradio's FITS reader assumes a literal ``STOKES`` axis in ``CTYPE`` when it
+    builds polarization coordinates. Legitimate 3D RA/DEC/FREQ cubes therefore
+    raise ``ValueError: 'STOKES' is not in list``. On that specific failure we
+    materialize a temporary copy with :func:`_fix_headers` and read again so raw
+    paths and stale ``*_fixed.fits`` still work without a separate fix step.
     """
     from xradio.image._util._fits.xds_from_fits import _fits_image_to_xds
 
     c: Dict = {} if chunks is None else chunks
-    p = os.path.expanduser(str(path))
-    return _fits_image_to_xds(p, c, verbose, do_sky_coords, compute_mask)
+    p = Path(os.path.expanduser(str(path)))
+    try:
+        return _fits_image_to_xds(str(p), c, verbose, do_sky_coords, compute_mask)
+    except ValueError as exc:
+        if not _is_xradio_stokes_missing_valueerror(exc):
+            raise
+        logger.info(
+            "Re-reading FITS via temporary header fix copy: %s (%s)",
+            p.name,
+            exc,
+        )
+        tmp_dir: Optional[str] = None
+        try:
+            if p.parent.is_dir() and os.access(p.parent, os.W_OK):
+                tmp_dir = str(p.parent)
+        except OSError:
+            tmp_dir = None
+        fd, tmp_name = tempfile.mkstemp(
+            suffix=".fits", prefix="ovro_xradio_stokes_", dir=tmp_dir
+        )
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        try:
+            _fix_headers(p, tmp_path)
+            return _fits_image_to_xds(str(tmp_path), c, verbose, do_sky_coords, compute_mask)
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove temporary FITS %s", tmp_path)
 
 
 # Grouping key for "same subband" when discovering FITS. Raw ``int(round(hz))`` can differ
