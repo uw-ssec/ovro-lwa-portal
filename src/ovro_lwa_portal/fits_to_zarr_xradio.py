@@ -133,6 +133,10 @@ def _sky_coord_cache_set(
         _SKY_COORD_CACHE.popitem(last=False)
 
 
+# Match: 20240524_050019_41MHz_averaged_...-I-image(.fits|_fixed.fits)
+PAT = re.compile(
+    r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
+)
 MHZ_RE = re.compile(r"_(\d+)MHz_")
 _IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 
@@ -146,10 +150,6 @@ def _time_key_from_name(p: Path) -> Optional[str]:
     if not m_img:
         return None
     return f"{m_img.group(1)}_{m_img.group(2)}"
-
-
-# OVRO-LWA ``...-image-YYYYMMDD_HHMMSS...`` segment (UTC wall-clock for the map).
-_IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -566,11 +566,6 @@ def _extract_group_metadata(
     else:
         if header is not None:
             time_key = _time_key_from_header(header)
-        if time_key is None:
-            tk_name = _time_key_from_name(fp)
-            if tk_name is not None:
-                time_key = tk_name
-                notes.append("time-from-filename")
 
     if frequency_hz is None:
         mhz = _mhz_from_name(fp)
@@ -1312,10 +1307,12 @@ def _discover_groups(
     freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
     time_key_source: Literal["header", "filename"] = "header",
 ) -> Dict[str, List[Path]]:
-    """Group input FITS by observation time and frequency (headers first, filename fallback).
+    """Group input FITS by observation time and frequency.
 
-    Files are associated with a **coarse** frequency key (default 23~kHz bins) so small
-    header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
+    Time keys come from FITS headers by default; use *time_key_source* to opt into
+    filename-based time grouping. Frequency grouping always uses headers first with a
+    filename MHz fallback when needed. Files are associated with a **coarse** frequency key
+    (default 23~kHz bins) so small
     in the Zarr for the same physical subband. For multiple paths in the same
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
     are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
@@ -1332,8 +1329,9 @@ def _discover_groups(
         ``int(round(frequency_hz / freq_bin_hz))``. Frequencies in the same bin are treated
         as one subband for grouping (up to ~``freq_bin_hz`` separation at bin edges).
     time_key_source
-        ``"header"`` (default): prefer header time, then basename patterns when missing.
-        ``"filename"``: prefer basename time when parseable (see :func:`_extract_group_metadata`).
+        ``"header"`` (default): time from ``DATE-OBS`` / :func:`_time_key_from_header` only.
+        ``"filename"``: prefer basename time when parseable, else header (see
+        :func:`_extract_group_metadata`).
 
     Returns
     -------
@@ -1352,7 +1350,7 @@ def _discover_groups(
             t_hint = (
                 "-image-YYYYMMDD_HHMMSS in basename, legacy averaged name, or DATE-OBS"
                 if time_key_source == "filename"
-                else "DATE-OBS or filename time pattern"
+                else "DATE-OBS in FITS header"
             )
             logger.warning(f"Skipping {f.name}: missing usable observation time ({t_hint}).")
             continue
