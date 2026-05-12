@@ -263,7 +263,6 @@ def dewarp_and_convert_append_each_time(
     rebuild: bool,
     fix_headers_on_demand: bool,
     cleanup_fixed_fits: bool,
-    cleanup_dewarp_staging: bool,
     discovery_freq_bin_hz: float,
     duplicate_resolver: Callable[[str, float, list[Path]], Path] | None,
     cleaned: bool = True,
@@ -276,19 +275,14 @@ def dewarp_and_convert_append_each_time(
     verbose: bool = False,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
 ) -> tuple[int, list[str]]:
-    """Dewarp each time group, append its Zarr slice, optionally clean staging/cascade dirs.
+    """Dewarp each time group, append its Zarr slice, then clean staging/cascade for that time.
 
     Builds a single global LM reference from *input_dir* (raw FITS layout) once, then for
     each observation time: run the cascade, stage dewarped FITS, run
     :class:`~ovro_lwa_portal.ingest.core.FITSToZarrConverter` with ``time_keys_only`` set to
-    that step only, then optionally remove ``{tkey}__*.fits`` from *staging_dir* and the
-    per-time cascade output directory.
-
-    Parameters
-    ----------
-    cleanup_dewarp_staging
-        If True, delete staged ``{time_key}__*.fits`` and ``cascade_parent / time_key`` after
-        each successful Zarr append (similar intent to ``cleanup_fixed_fits`` during convert).
+    that step only, then remove ``{tkey}__*.fits`` from *staging_dir* and delete
+    ``cascade_parent / time_key`` after each successful Zarr append (same intent as
+    ``cleanup_fixed_fits`` during convert: lower peak disk use for incremental runs).
     """
     from ovro_lwa_portal.ingest.core import FITSToZarrConverter, ConversionConfig
 
@@ -354,11 +348,10 @@ def dewarp_and_convert_append_each_time(
         )
         FITSToZarrConverter(config, progress_callback=progress_callback).convert()
         first_zarr_write = False
-        if cleanup_dewarp_staging:
-            remove_staged_files_for_time_key(staging_dir, tkey)
-            t_out = cascade_parent / tkey
-            if t_out.exists():
-                shutil.rmtree(t_out)
+        remove_staged_files_for_time_key(staging_dir, tkey)
+        t_out = cascade_parent / tkey
+        if t_out.exists():
+            shutil.rmtree(t_out)
         if progress_callback:
             progress_callback(
                 "dewarp_convert",

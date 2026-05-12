@@ -407,16 +407,9 @@ def dewarp_convert(
         False,
         "--append-after-each-time",
         help=(
-            "Dewarp each observation time, append that time slice to Zarr, then continue "
-            "(reduces peak dewarp staging size; combine with --cleanup-dewarp-staging)"
-        ),
-    ),
-    cleanup_dewarp_staging: bool = typer.Option(
-        False,
-        "--cleanup-dewarp-staging",
-        help=(
-            "With --append-after-each-time: remove staged dewarped FITS and per-time "
-            "cascade output directories after each successful Zarr append"
+            "Dewarp each observation time, append that time slice to Zarr, then remove that "
+            "time's staged FITS and cascade output directory before continuing (lowers peak "
+            "dewarp staging disk use)"
         ),
     ),
     discovery_freq_bin_hz: float = typer.Option(
@@ -504,7 +497,9 @@ def dewarp_convert(
     under ``--cascade-parent``.
     Resulting ``*.fits`` are staged into ``--staging-dir``, then the usual
     ``ovro-ingest convert`` pipeline runs on that staging directory (unless
-    ``--append-after-each-time`` is set; then Zarr is updated after each time group).
+    ``--append-after-each-time`` is set; then Zarr is updated after each time group,
+    and that time's staged FITS plus per-time cascade directory are removed before
+    continuing).
 
     Requires the ``image_plane_correction`` package (submodule ``flow``).
 
@@ -513,9 +508,9 @@ def dewarp_convert(
         ovro-ingest dewarp-convert /data/raw_fits /data/output --rebuild
 
     \b
-    Incremental Zarr (lower peak staging disk):
+    Incremental Zarr (lower peak staging disk; staging cleaned after each time):
         ovro-ingest dewarp-convert /data/raw /data/out --append-after-each-time \\
-            --cleanup-dewarp-staging --cleanup-fixed-fits
+            --cleanup-fixed-fits
     """
     _configure_logging(log_level)
     verbose = log_level == LogLevel.DEBUG
@@ -533,8 +528,7 @@ def dewarp_convert(
     if target_size is not None:
         console.print(f"  Target size (px):  {target_size}")
     if append_after_each_time:
-        console.print("  Append after each time: YES")
-        console.print(f"  Cleanup dewarp staging: {'YES' if cleanup_dewarp_staging else 'NO'}")
+        console.print("  Append after each time: YES (staging + per-time cascade cleaned after each append)")
     console.print(f"  Log level:           {log_level.value.upper()}\n")
 
     fixed_resolved = fixed_dir or (output_dir / "fixed_fits")
@@ -552,7 +546,6 @@ def dewarp_convert(
                 rebuild=rebuild,
                 fix_headers_on_demand=not skip_header_fixing,
                 cleanup_fixed_fits=cleanup_fixed_fits,
-                cleanup_dewarp_staging=cleanup_dewarp_staging,
                 discovery_freq_bin_hz=discovery_freq_bin_hz,
                 duplicate_resolver=None,
                 cleaned=cleaned,

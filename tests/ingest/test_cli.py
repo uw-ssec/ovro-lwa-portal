@@ -94,6 +94,7 @@ class TestCLI:
         assert "--cascade-parent" in result.stdout
         assert "--target-size" in result.stdout
         assert "--append-after-each-time" in result.stdout
+        assert "--cleanup-dewarp-staging" not in result.stdout
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""
