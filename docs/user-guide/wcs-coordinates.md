@@ -27,9 +27,9 @@ installed.
 
 ## Pixel-to-Sky Conversion
 
-Convert pixel indices along the `l` and `m` dimensions to celestial coordinates at
-a specific observation time. Pass **exactly one** of `time_idx` (index into the
-dataset `time` coordinate) or `time_mjd` (MJD; nearest time is used):
+Convert pixel indices along the `l` and `m` dimensions to celestial coordinates
+at a specific observation time. Pass **exactly one** of `time_idx` (index into
+the dataset `time` coordinate) or `time_mjd` (MJD; nearest time is used):
 
 ```python
 ra, dec = ds.radport.pixel_to_coords(l_idx=100, m_idx=100, time_idx=0)

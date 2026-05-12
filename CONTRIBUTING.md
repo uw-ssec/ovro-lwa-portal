@@ -231,9 +231,10 @@ committed `pyproject.toml` unless you have that sibling checkout.
 
 To install dewarp tooling locally:
 
-1. Clone `image-plane-correction` next to this repo so `../image-plane-correction` exists.
-2. Add this line under `[tool.pixi.environments]` in `pyproject.toml` (do not commit if your
-   lockfile would pull private paths):
+1. Clone `image-plane-correction` next to this repo so
+   `../image-plane-correction` exists.
+2. Add this line under `[tool.pixi.environments]` in `pyproject.toml` (do not
+   commit if your lockfile would pull private paths):
 
    ```toml
    dewarp = { features = ["dewarp"], solve-group = "dewarp" }
