@@ -172,7 +172,8 @@ def _execute_fits_to_zarr_conversion(
                 "\nNo matching FITS files found. Please check:\n"
                 "  • The input directory contains FITS files\n"
                 "  • FITS headers contain usable observation time/frequency metadata\n"
-                "  • Or filenames include parseable fallback patterns (e.g., YYYYMMDD_HHMMSS_*MHz_*)"
+                "  • For the default header-based grouping, FITS headers include DATE-OBS and frequency metadata\n"
+                "  • If you intend to use filename-based time parsing, enable the explicit filename time-key mode"
             )
             raise typer.Exit(code=1) from e
 
