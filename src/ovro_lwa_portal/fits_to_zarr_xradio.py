@@ -49,7 +49,7 @@ Notes
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
 * After stacking subbands along ``frequency``, ``right_ascension`` / ``declination`` are
-  collapsed to a single ``(m, l)`` frame taken from the lowest-frequency slice. If sampled
+  collapsed to a single ``(l, m)`` frame taken from the lowest-frequency slice. If sampled
   sky positions differ from that reference by more than ~one arcminute between slices, a
   warning is logged so inconsistent WCS across the band is visible.
 * Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
@@ -1000,7 +1000,7 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
         H = hdul[0].header
     w2d = WCS(H).celestial  # 2D (RA/Dec) WCS
 
-    # 3) Compute RA/Dec at pixel centers (origin=0) with shape (m,l)
+    # 3) Compute RA/Dec at pixel centers (origin=0); FITS (NAXIS2, NAXIS1) = (m, l) sizes
     ny = int(xds.sizes["m"])
     nx = int(xds.sizes["l"])
     cel_hdr = w2d.to_header()
@@ -1014,10 +1014,12 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     else:
         ra2d, dec2d, hdr_str = cached
 
-    # 4) Attach coords exactly equal to FITS WCS
+    # 4) Attach coords on the standard (l, m) grid (transpose of FITS row-major plane)
+    ra_lm = np.transpose(ra2d)
+    dec_lm = np.transpose(dec2d)
     xds = xds.assign_coords(
-        right_ascension=(("m", "l"), ra2d),
-        declination=(("m", "l"), dec2d),
+        right_ascension=(("l", "m"), ra_lm),
+        declination=(("l", "m"), dec_lm),
     )
     xds["right_ascension"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
     xds["declination"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
@@ -1049,17 +1051,17 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
 
 
 def _lm_shape(xds: xr.Dataset) -> Tuple[int, int]:
-    """Return dataset LM shape as ``(m, l)``."""
-    return int(xds.sizes["m"]), int(xds.sizes["l"])
+    """Return dataset LM shape as ``(l, m)`` pixel counts."""
+    return int(xds.sizes["l"]), int(xds.sizes["m"])
 
 
 def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
     """Select deterministic reference index from LM shapes.
 
     Selection rule:
-      1) largest pixel count (m * l)
-      2) largest m
-      3) largest l
+      1) largest pixel count (l * m)
+      2) largest l
+      3) largest m
       4) first occurrence on ties
     """
     if not shapes:
@@ -1081,14 +1083,17 @@ def _select_reference_shape_index(shapes: List[Tuple[int, int]]) -> int:
 
 
 def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
-    """Return LM shape ``(m, l)`` from FITS header without loading pixel data."""
+    """Return LM shape ``(l, m)`` from FITS header without loading pixel data.
+
+    Uses ``NAXIS1`` × ``NAXIS2`` as ``(l, m)`` to match the on-disk FITS axis order.
+    """
     header = fits.getheader(fp, ext=0)
     naxis = int(header.get("NAXIS", 0))
     if naxis < 2:
         msg = f"FITS file {fp} has NAXIS={naxis}; expected at least 2 for LM dimensions."
         raise RuntimeError(msg)
 
-    return int(header["NAXIS2"]), int(header["NAXIS1"])
+    return int(header["NAXIS1"]), int(header["NAXIS2"])
 
 
 def _strip_axis_cards_above(header: fits.Header, *, max_axis: int = 2) -> None:
@@ -1163,25 +1168,31 @@ def _resample_lm_reference_to_target_size(
     target_size: int,
     chunk_lm: int,
 ) -> xr.Dataset:
-    """Reproject ``(..., m, l)`` data variables onto a ``target_size`` square LM grid."""
+    """Reproject spatial planes onto a ``target_size`` square grid in standard ``(l, m)`` order.
+
+    ``reproject`` expects a 2D array in FITS memory order ``(NAXIS2, NAXIS1)`` = ``(m, l)``.
+    Variables whose trailing dimensions are ``(l, m)`` (the usual xradio layout) are
+    transposed before and after the call; legacy ``(m, l)`` planes are reprojected as-is
+    then transposed so stored arrays use ``(..., "l", "m")``.
+    """
     if target_size <= 0:
         msg = f"target_size must be positive, got {target_size}"
         raise ValueError(msg)
 
-    nm, nl = _lm_shape(xds)
-    if nm != nl:
+    nl, nm = _lm_shape(xds)
+    if nl != nm:
         msg = (
             f"Resampling the global LM reference to target_size={target_size} requires a "
-            f"square sky grid; got (m,l)=({nm},{nl}) from {ref_fp}"
+            f"square sky grid; got (l,m)=({nl},{nm}) from {ref_fp}"
         )
         raise ValueError(msg)
-    if nm == target_size:
+    if nl == target_size:
         return xds
 
     with fits.open(str(ref_fp), memmap=True) as hdul:
         hdr = hdul[0].header.copy()
     w_src = WCS(hdr).celestial
-    w_tgt = _make_target_wcs_scaled(w_src, nm, target_size)
+    w_tgt = _make_target_wcs_scaled(w_src, nl, target_size)
     shape_out = (target_size, target_size)
 
     xds_mat = xds.load()
@@ -1190,26 +1201,36 @@ def _resample_lm_reference_to_target_size(
         if name == "wcs_header_str":
             continue
         dims = tuple(dv.dims)
-        if len(dims) < 2 or dims[-2] != "m" or dims[-1] != "l":
+        if len(dims) < 2:
+            continue
+        tail = dims[-2:]
+        if tail == ("l", "m"):
+            transpose_for_reproject = True
+        elif tail == ("m", "l"):
+            transpose_for_reproject = False
+        else:
             continue
         arr = np.asarray(dv.values)
         lead_shape = arr.shape[:-2]
+        out_dims = dims[:-2] + ("l", "m")
         if lead_shape:
             out_dtype = np.result_type(arr.dtype, np.float32)
             out_arr = np.empty(lead_shape + shape_out, dtype=out_dtype)
             for idx in np.ndindex(lead_shape):
                 plane = np.asarray(arr[idx], dtype=np.float64)
-                out_arr[idx] = _reproject_celestial_plane(plane, w_src, w_tgt, shape_out).astype(
-                    out_dtype, copy=False
-                )
+                plane_ml = plane.T if transpose_for_reproject else plane
+                rep_ml = _reproject_celestial_plane(plane_ml, w_src, w_tgt, shape_out)
+                out_lm = np.asarray(rep_ml).T
+                out_arr[idx] = out_lm.astype(out_dtype, copy=False)
         else:
-            out_arr = _reproject_celestial_plane(
-                np.asarray(arr, dtype=np.float64), w_src, w_tgt, shape_out
-            ).astype(arr.dtype, copy=False)
-        replaced[name] = xr.DataArray(out_arr, dims=dims, attrs=dict(dv.attrs))
+            plane = np.asarray(arr, dtype=np.float64)
+            plane_ml = plane.T if transpose_for_reproject else plane
+            rep_ml = _reproject_celestial_plane(plane_ml, w_src, w_tgt, shape_out)
+            out_arr = np.asarray(rep_ml).T.astype(arr.dtype, copy=False)
+        replaced[name] = xr.DataArray(out_arr, dims=out_dims, attrs=dict(dv.attrs))
 
     if not replaced:
-        msg = f"No (…, m, l) data variables found to resample in LM reference from {ref_fp}"
+        msg = f"No (…, l, m) or (…, m, l) data variables found to resample in LM reference from {ref_fp}"
         raise RuntimeError(msg)
 
     _strip_axis_cards_above(hdr, max_axis=2)
@@ -1248,11 +1269,13 @@ def _resample_lm_reference_to_target_size(
 
     yy, xx = np.indices(shape_out, dtype=float)
     ra2d, dec2d = w_tgt.all_pix2world(xx, yy, 0)
+    ra_lm = np.transpose(ra2d)
+    dec_lm = np.transpose(dec2d)
     cel_hdr = w_tgt.to_header(relax=True)
     hdr_str = cel_hdr.tostring(sep="\n")
     out = out.assign_coords(
-        right_ascension=(("m", "l"), ra2d),
-        declination=(("m", "l"), dec2d),
+        right_ascension=(("l", "m"), ra_lm),
+        declination=(("l", "m"), dec_lm),
     )
     out["right_ascension"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
     out["declination"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
@@ -1271,9 +1294,9 @@ def _resample_lm_reference_to_target_size(
         out = out.chunk({"l": -1, "m": -1})
 
     logger.info(
-        "Global LM reference resampled from (m,l)=(%d,%d) to (%d,%d) (target_size=%d)",
-        nm,
+        "Global LM reference resampled from (l,m)=(%d,%d) to (%d,%d) (target_size=%d)",
         nl,
+        nm,
         target_size,
         target_size,
         target_size,
@@ -1321,7 +1344,7 @@ def _load_global_lm_reference_dataset(
     win_idx = _select_reference_shape_index(shapes)
     ref_fp, ref_shape = candidates[win_idx]
     logger.info(
-        "Global LM reference grid (m,l)=%s from %s",
+        "Global LM reference grid (l,m)=%s from %s",
         ref_shape,
         ref_fp.name,
     )
@@ -1430,11 +1453,11 @@ def _sky_sep_max_vs_ref_arcsec(
     Parameters
     ----------
     ra, dec
-        Arrays shaped ``(n_freq, n_m, n_l)`` in degrees.
+        Arrays shaped ``(n_freq, n_l, n_m)`` in degrees.
     ref_idx
         Reference frequency index.
     max_points
-        Maximum number of (m, l) pixels sampled per comparison (subsampled if larger).
+        Maximum number of ``(l, m)`` pixels sampled per comparison (subsampled if larger).
     """
     if ra.ndim != 3 or dec.ndim != 3:
         raise ValueError("ra/dec must be 3D arrays shaped (n_freq, n_m, n_l)")
@@ -1472,9 +1495,9 @@ def _harmonize_celestial_coords_independent_of_frequency(
     ref_freq_idx: int = 0,
     warn_max_sep_arcsec: float = _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC,
 ) -> xr.Dataset:
-    """Collapse per-frequency RA/Dec coords to a single (m, l) celestial grid.
+    """Collapse per-frequency RA/Dec coords to a single ``(l, m)`` celestial grid.
 
-    Stacked wideband cubes can carry ``(frequency, m, l)`` right ascension and
+    Stacked wideband cubes can carry ``(frequency, l, m)`` right ascension and
     declination. Downstream code expects one celestial frame for the LM grid; this
     keeps the reference slice (default: lowest ``frequency`` index after sorting)
     and emits a warning if sampled pixels differ from that reference beyond
@@ -1743,7 +1766,7 @@ def _combine_time_step(
         ref_ds = lm_reference_ds
         if len(unique_shapes) > 1 or any(_lm_shape(xds) != _lm_shape(ref_ds) for xds in xds_list):
             logger.info(
-                "Using global LM reference grid (m,l)=%s; this time step shapes: %s",
+                "Using global LM reference grid (l,m)=%s; this time step shapes: %s",
                 _lm_shape(ref_ds),
                 unique_shapes,
             )
@@ -2252,7 +2275,7 @@ def convert_fits_dir_to_zarr(
         ``target_size`` so staged FITS and the Zarr LM grid stay aligned.
 
     Within each observation time step, after subbands are stacked along ``frequency``,
-    ``right_ascension`` / ``declination`` are reduced to a single ``(m, l)`` celestial
+    ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
     frame taken from the lowest-frequency slice. If sampled on-sky positions in other
     slices disagree with that reference by more than about one arcminute, a warning
     is logged.

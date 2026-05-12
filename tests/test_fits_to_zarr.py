@@ -115,7 +115,7 @@ def test_peek_lm_shape_reads_dimensions_from_header(tmp_path: Path):
     fpath = tmp_path / "lm_shape_from_header.fits"
     fits.PrimaryHDU(data=np.zeros((5, 7), dtype=np.float32)).writeto(fpath)
 
-    assert mod._peek_lm_shape(fpath) == (5, 7)
+    assert mod._peek_lm_shape(fpath) == (7, 5)
 
 
 def test_peek_lm_shape_errors_when_naxis_less_than_two(tmp_path: Path):
@@ -1063,27 +1063,28 @@ def test_fix_headers_leaves_crval_without_image_timestamp_in_name(tmp_path: Path
 
 
 def test_harmonize_celestial_coords_collapses_frequency_dim():
-    """After combine, RA/Dec should be (m, l) only when slices share one WCS."""
+    """After combine, RA/Dec should be ``(l, m)`` only when slices share one WCS."""
     import numpy as np
     import xarray as xr
 
     mod = _import_module()
     nm, nl, nf = 5, 6, 2
-    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra0_ml = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra0 = ra0_ml.T
     ra = np.stack([ra0, ra0], axis=0)
     dec = np.stack(
-        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        [np.full((nl, nm), 40.0, dtype=np.float64), np.full((nl, nm), 40.0, dtype=np.float64)],
         axis=0,
     )
     hdr = "NAXIS = 2\nCRVAL1 = 105"
     ds = xr.Dataset(
-        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        {"SKY": (("frequency", "l", "m"), np.ones((nf, nl, nm)))},
         coords={
             "frequency": np.array([45e6, 55e6], dtype=float),
             "l": np.linspace(-0.1, 0.1, nl),
             "m": np.linspace(-0.1, 0.1, nm),
-            "right_ascension": (("frequency", "m", "l"), ra),
-            "declination": (("frequency", "m", "l"), dec),
+            "right_ascension": (("frequency", "l", "m"), ra),
+            "declination": (("frequency", "l", "m"), dec),
         },
     )
     ds["right_ascension"].attrs["fits_wcs_header"] = hdr
@@ -1091,7 +1092,7 @@ def test_harmonize_celestial_coords_collapses_frequency_dim():
 
     out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
     assert "frequency" not in out.right_ascension.dims
-    assert out.right_ascension.shape == (nm, nl)
+    assert out.right_ascension.shape == (nl, nm)
     np.testing.assert_allclose(out.right_ascension.values, ra0)
     assert out["SKY"].attrs.get("fits_wcs_header") == hdr
 
@@ -1105,21 +1106,22 @@ def test_harmonize_celestial_coords_warns_on_large_wcs_drift(caplog):
 
     mod = _import_module()
     nm, nl, nf = 5, 6, 2
-    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra0_ml = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra0 = ra0_ml.T
     ra1 = ra0 + 2.0
     ra = np.stack([ra0, ra1], axis=0)
     dec = np.stack(
-        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        [np.full((nl, nm), 40.0, dtype=np.float64), np.full((nl, nm), 40.0, dtype=np.float64)],
         axis=0,
     )
     ds = xr.Dataset(
-        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        {"SKY": (("frequency", "l", "m"), np.ones((nf, nl, nm)))},
         coords={
             "frequency": np.array([45e6, 55e6], dtype=float),
             "l": np.linspace(-0.1, 0.1, nl),
             "m": np.linspace(-0.1, 0.1, nm),
-            "right_ascension": (("frequency", "m", "l"), ra),
-            "declination": (("frequency", "m", "l"), dec),
+            "right_ascension": (("frequency", "l", "m"), ra),
+            "declination": (("frequency", "l", "m"), dec),
         },
     )
     caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
