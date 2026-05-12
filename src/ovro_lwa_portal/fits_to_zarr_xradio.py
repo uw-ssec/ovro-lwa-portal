@@ -1091,12 +1091,203 @@ def _peek_lm_shape(fp: Path) -> Tuple[int, int]:
     return int(header["NAXIS2"]), int(header["NAXIS1"])
 
 
+def _strip_axis_cards_above(header: fits.Header, *, max_axis: int = 2) -> None:
+    """Remove ``NAXISn`` and per-axis WCS cards for axes ``> max_axis`` (in-place).
+
+    Radio FITS often carry Stokes/Frequency on axes 3–4 while the image plane is 2D.
+    When building a minimal temporary FITS for xradio, those extra cards must be removed
+    so ``NAXIS=2`` matches the written array (same idea as image-plane-correction).
+    """
+    single_axis_re = re.compile(
+        r"^(NAXIS|CTYPE|CRVAL|CRPIX|CDELT|CUNIT|CROTA|CNAME|CRDER|CSYER)(\d+)$"
+    )
+    matrix_re = re.compile(r"^(CD|PC)(\d+)_(\d+)$")
+    pv_ps_re = re.compile(r"^(PV|PS)(\d+)_(\d+)$")
+    to_delete: list[str] = []
+    for key in header:
+        m = single_axis_re.match(key)
+        if m and int(m.group(2)) > max_axis:
+            to_delete.append(key)
+            continue
+        m = matrix_re.match(key)
+        if m and (int(m.group(2)) > max_axis or int(m.group(3)) > max_axis):
+            to_delete.append(key)
+            continue
+        m = pv_ps_re.match(key)
+        if m and int(m.group(2)) > max_axis:
+            to_delete.append(key)
+            continue
+    for key in to_delete:
+        try:
+            del header[key]
+        except KeyError:
+            pass
+
+
+def _make_target_wcs_scaled(seed_wcs: WCS, seed_n: int, target_size: int) -> WCS:
+    """Scale a 2D celestial WCS to ``target_size × target_size`` preserving sky coverage.
+
+    Uses the same ``CRPIX`` / ``CD`` (or ``CDELT``) rescaling as image-plane-correction
+    ``calcflow`` so dewarp outputs and the portal LM reference stay on the same grid when
+    both are driven by the same ``target_size``.
+    """
+    factor = float(seed_n) / float(target_size)
+    target = seed_wcs.deepcopy()
+    target.wcs.crpix = (np.asarray(seed_wcs.wcs.crpix, dtype=float) - 0.5) / factor + 0.5
+    if seed_wcs.wcs.has_cd():
+        target.wcs.cd = np.asarray(seed_wcs.wcs.cd, dtype=float) * factor
+    else:
+        target.wcs.cdelt = np.asarray(seed_wcs.wcs.cdelt, dtype=float) * factor
+    target.pixel_shape = (target_size, target_size)
+    return target
+
+
+def _reproject_celestial_plane(
+    plane: NDArray[np.number],
+    w_src: WCS,
+    w_tgt: WCS,
+    shape_out: tuple[int, int],
+) -> NDArray[np.floating]:
+    from reproject import reproject_interp
+
+    rep, _ = reproject_interp(
+        (np.asarray(plane, dtype=np.float64), w_src), w_tgt, shape_out=shape_out
+    )
+    return np.asarray(rep)
+
+
+def _resample_lm_reference_to_target_size(
+    xds: xr.Dataset,
+    ref_fp: Path,
+    *,
+    target_size: int,
+    chunk_lm: int,
+) -> xr.Dataset:
+    """Reproject ``(..., m, l)`` data variables onto a ``target_size`` square LM grid."""
+    if target_size <= 0:
+        msg = f"target_size must be positive, got {target_size}"
+        raise ValueError(msg)
+
+    nm, nl = _lm_shape(xds)
+    if nm != nl:
+        msg = (
+            f"Resampling the global LM reference to target_size={target_size} requires a "
+            f"square sky grid; got (m,l)=({nm},{nl}) from {ref_fp}"
+        )
+        raise ValueError(msg)
+    if nm == target_size:
+        return xds
+
+    with fits.open(str(ref_fp), memmap=True) as hdul:
+        hdr = hdul[0].header.copy()
+    w_src = WCS(hdr).celestial
+    w_tgt = _make_target_wcs_scaled(w_src, nm, target_size)
+    shape_out = (target_size, target_size)
+
+    xds_mat = xds.load()
+    replaced: dict[str, xr.DataArray] = {}
+    for name, dv in xds_mat.data_vars.items():
+        if name == "wcs_header_str":
+            continue
+        dims = tuple(dv.dims)
+        if len(dims) < 2 or dims[-2] != "m" or dims[-1] != "l":
+            continue
+        arr = np.asarray(dv.values)
+        lead_shape = arr.shape[:-2]
+        if lead_shape:
+            out_dtype = np.result_type(arr.dtype, np.float32)
+            out_arr = np.empty(lead_shape + shape_out, dtype=out_dtype)
+            for idx in np.ndindex(lead_shape):
+                plane = np.asarray(arr[idx], dtype=np.float64)
+                out_arr[idx] = _reproject_celestial_plane(plane, w_src, w_tgt, shape_out).astype(
+                    out_dtype, copy=False
+                )
+        else:
+            out_arr = _reproject_celestial_plane(
+                np.asarray(arr, dtype=np.float64), w_src, w_tgt, shape_out
+            ).astype(arr.dtype, copy=False)
+        replaced[name] = xr.DataArray(out_arr, dims=dims, attrs=dict(dv.attrs))
+
+    if not replaced:
+        msg = f"No (…, m, l) data variables found to resample in LM reference from {ref_fp}"
+        raise RuntimeError(msg)
+
+    _strip_axis_cards_above(hdr, max_axis=2)
+    hdr["NAXIS"] = 2
+    hdr["NAXIS1"] = target_size
+    hdr["NAXIS2"] = target_size
+    hdr["BITPIX"] = -32
+    if "BSCALE" in hdr:
+        hdr["BSCALE"] = 1.0
+    if "BZERO" in hdr:
+        hdr["BZERO"] = 0.0
+    tw_hdr = w_tgt.to_header(relax=True)
+    for key in tw_hdr:
+        hdr[key] = tw_hdr[key]
+    hdr["NAXIS"] = 2
+    hdr["NAXIS1"] = target_size
+    hdr["NAXIS2"] = target_size
+    if "TELESCOP" not in hdr:
+        hdr["TELESCOP"] = "UNKNOWN"
+
+    fd, tmp_name = tempfile.mkstemp(suffix=".fits")
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        fits.PrimaryHDU(
+            data=np.zeros((target_size, target_size), dtype=np.float32),
+            header=hdr,
+        ).writeto(tmp_path, overwrite=True)
+        shell = read_image(str(tmp_path), do_sky_coords=False, compute_mask=False).load()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    out = shell.copy(deep=False)
+    for name, da_new in replaced.items():
+        out[name] = da_new
+
+    yy, xx = np.indices(shape_out, dtype=float)
+    ra2d, dec2d = w_tgt.all_pix2world(xx, yy, 0)
+    cel_hdr = w_tgt.to_header(relax=True)
+    hdr_str = cel_hdr.tostring(sep="\n")
+    out = out.assign_coords(
+        right_ascension=(("m", "l"), ra2d),
+        declination=(("m", "l"), dec2d),
+    )
+    out["right_ascension"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
+    out["declination"].attrs.update({"units": "deg", "frame": "fk5", "equinox": "J2000"})
+    out.attrs["fits_wcs_header"] = hdr_str
+    out.attrs.pop("history", None)
+    out = out.assign(wcs_header_str=((), np.bytes_(hdr_str.encode("utf-8"))))
+    for dv in out.data_vars:
+        out[dv].encoding = {}
+        out[dv].attrs["fits_wcs_header"] = hdr_str
+    out["right_ascension"].attrs["fits_wcs_header"] = hdr_str
+    out["declination"].attrs["fits_wcs_header"] = hdr_str
+
+    if chunk_lm and {"l", "m"} <= set(out.dims):
+        out = out.chunk({"l": chunk_lm, "m": chunk_lm})
+    else:
+        out = out.chunk({"l": -1, "m": -1})
+
+    logger.info(
+        "Global LM reference resampled from (m,l)=(%d,%d) to (%d,%d) (target_size=%d)",
+        nm,
+        nl,
+        target_size,
+        target_size,
+        target_size,
+    )
+    return out
+
+
 def _load_global_lm_reference_dataset(
     by_time: Dict[str, List[Path]],
     fixed_dir: Path,
     *,
     chunk_lm: int,
     fix_headers_on_demand: bool,
+    target_size: int | None = None,
 ) -> xr.Dataset:
     """Load the dataset whose LM grid has the largest shape across *all* time steps.
 
@@ -1104,6 +1295,10 @@ def _load_global_lm_reference_dataset(
     imply different in-step max shapes (e.g. only 3122² files in one step and
     mixed 4096²+3122² in another). A single global reference ensures every step
     normalizes to the same ``l``/``m`` so :func:`_assert_same_lm` can succeed.
+
+    If ``target_size`` is set, the chosen reference is loaded at native resolution
+    then reprojected onto a ``target_size`` square grid (same WCS scaling as
+    image-plane-correction ``calcflow``) so the LM grid matches dewarped outputs.
     """
     candidates: List[Tuple[Path, Tuple[int, int]]] = []
     for tkey in sorted(by_time.keys()):
@@ -1132,7 +1327,12 @@ def _load_global_lm_reference_dataset(
     )
     if fix_headers_on_demand and not ref_fp.name.endswith("_fixed.fits"):
         ref_fp = fix_fits_headers([ref_fp], fixed_dir, skip_existing=True)[0]
-    return _load_for_combine(ref_fp, chunk_lm=chunk_lm)
+    xds = _load_for_combine(ref_fp, chunk_lm=chunk_lm)
+    if target_size is not None:
+        xds = _resample_lm_reference_to_target_size(
+            xds, ref_fp, target_size=target_size, chunk_lm=chunk_lm
+        )
+    return xds
 
 
 def _regrid_to_reference_lm(
@@ -2000,6 +2200,7 @@ def convert_fits_dir_to_zarr(
     discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
     time_keys_only: Optional[Sequence[str]] = None,
     lm_reference_ds: Optional[xr.Dataset] = None,
+    lm_reference_target_size: int | None = None,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -2045,6 +2246,10 @@ def convert_fits_dir_to_zarr(
         Must match the grid chosen for the full run (typically built once from the
         same input layout before dewarping). Callers should pass a deep-copied dataset
         if the same object might be mutated elsewhere.
+    lm_reference_target_size
+        When building the global LM reference (``lm_reference_ds`` is None), reproject
+        that reference onto this square grid size. Use the same value as dewarp
+        ``target_size`` so staged FITS and the Zarr LM grid stay aligned.
 
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(m, l)`` celestial
@@ -2080,6 +2285,9 @@ def convert_fits_dir_to_zarr(
     if discovery_freq_bin_hz <= 0.0:
         msg = f"discovery_freq_bin_hz must be positive, got {discovery_freq_bin_hz}"
         raise ValueError(msg)
+    if lm_reference_target_size is not None and int(lm_reference_target_size) <= 0:
+        msg = f"lm_reference_target_size must be positive, got {lm_reference_target_size}"
+        raise ValueError(msg)
 
     by_time = _discover_groups(
         input_dir,
@@ -2113,6 +2321,7 @@ def convert_fits_dir_to_zarr(
             fixed_dir,
             chunk_lm=chunk_lm,
             fix_headers_on_demand=fix_headers_on_demand,
+            target_size=lm_reference_target_size,
         )
     lm_reference = (lm_ref_ds["l"].values.copy(), lm_ref_ds["m"].values.copy())
 

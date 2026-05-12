@@ -313,6 +313,7 @@ def dewarp_and_convert_append_each_time(
         fixed_dir,
         chunk_lm=chunk_lm,
         fix_headers_on_demand=fix_headers_on_demand,
+        target_size=target_size,
     ).copy(deep=True)
 
     out_zarr = output_dir / zarr_name

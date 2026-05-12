@@ -78,6 +78,17 @@ def test_mhz_from_name_no_match():
     assert mhz == 10**9
 
 
+def test_mhz_from_name_hyphen_after_mhz_like_dewarp_staging(tmp_path: Path) -> None:
+    """``_NNMHz-`` in staged dewarp basenames must resolve (hyphenated OVRO product tag)."""
+    mod = _import_module()
+    name = "20250101_040422__18MHz-I-Deep-Taper-Robust-0-image-20250101_040422.pbcorr_dewarp.fits"
+    fpath = tmp_path / name
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
+    _, frequency_hz, notes = mod._extract_group_metadata(fpath)
+    assert frequency_hz == pytest.approx(18e6)
+    assert "frequency-from-filename" in notes
+
+
 def test_module_can_be_imported():
     """Test that the fits_to_zarr_xradio module can be imported."""
     fits_to_zarr_xradio = _import_module()
@@ -296,6 +307,68 @@ def test_load_global_lm_reference_selects_largest_shape(monkeypatch, tmp_path: P
     assert loaded == [f_large]
     assert int(out.sizes["m"]) == 64
     assert int(out.sizes["l"]) == 64
+
+
+def test_load_global_lm_reference_passes_target_size_to_resample(monkeypatch, tmp_path: Path) -> None:
+    """When ``target_size`` is set, the reference dataset is passed through resampling."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    f_small = tmp_path / "small.fits"
+    f_large = tmp_path / "large.fits"
+    f_small.touch()
+    f_large.touch()
+    by_time = {"20240101_120000": [f_small, f_large]}
+
+    monkeypatch.setattr(mod, "fix_fits_headers", lambda files, fd, skip_existing=True: list(files))
+    monkeypatch.setattr(
+        mod,
+        "_peek_lm_shape",
+        lambda fp: (32, 32) if fp.name.startswith("small") else (64, 64),
+    )
+
+    def fake_load(fp: Path, chunk_lm: int = 1024) -> xr.Dataset:
+        n = 64
+        l_ = np.linspace(-1.0, 1.0, n)
+        m_ = np.linspace(-1.0, 1.0, n)
+        sky = np.zeros((n, n))
+        hdr = "SIMPLE  =                   T\nNAXIS   =                    2"
+        return (
+            xr.Dataset(
+                {"SKY": (("m", "l"), sky)},
+                coords={
+                    "l": ("l", l_),
+                    "m": ("m", m_),
+                    "frequency": ("frequency", np.array([1.4e8])),
+                    "right_ascension": (("m", "l"), np.full((n, n), 180.0)),
+                    "declination": (("m", "l"), np.full((n, n), 45.0)),
+                },
+                attrs={"fits_wcs_header": hdr},
+            )
+            .assign(wcs_header_str=((), np.bytes_(hdr.encode("utf-8"))))
+        )
+
+    calls: list[tuple[Path, int]] = []
+
+    def fake_resample(xds: xr.Dataset, ref_fp: Path, *, target_size: int, chunk_lm: int) -> xr.Dataset:
+        calls.append((ref_fp, int(target_size)))
+        return xds
+
+    monkeypatch.setattr(mod, "_load_for_combine", fake_load)
+    monkeypatch.setattr(mod, "_resample_lm_reference_to_target_size", fake_resample)
+
+    mod._load_global_lm_reference_dataset(
+        by_time,
+        tmp_path / "fixed",
+        chunk_lm=0,
+        fix_headers_on_demand=True,
+        target_size=4096,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1] == 4096
+    assert calls[0][0].name == f_large.name
 
 
 def test_assert_same_lm_clear_error_on_length_mismatch():
