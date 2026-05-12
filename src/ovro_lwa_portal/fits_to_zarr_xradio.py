@@ -563,6 +563,16 @@ def _extract_group_metadata(
 
     if header is not None:
         frequency_hz = _frequency_hz_from_header(header)
+        if time_key_source == "header":
+            time_key = _time_key_from_header(header)
+
+    if time_key_source == "filename":
+        tk_fn = _time_key_from_filename(fp)
+        if tk_fn is not None:
+            time_key = tk_fn
+            notes.append("time-from-filename")
+        elif header is not None and time_key is None:
+            time_key = _time_key_from_header(header)
 
     if time_key_source == "filename":
         tk_name = _time_key_from_name(fp)
@@ -676,6 +686,18 @@ def _obstime_from_fits_filename(path: Path) -> Optional[Time]:
         return None
     utc = naive.replace(tzinfo=timezone.utc)
     return Time(utc)
+
+
+def _time_key_from_filename(fp: Path) -> Optional[str]:
+    """Observation time key from ``-image-YYYYMMDD_HHMMSS`` in the basename.
+
+    Same ``%Y%m%d_%H%M%S`` formatting as :func:`_time_key_from_header`. Returns ``None``
+    when the filename pattern is absent or not parseable.
+    """
+    obstime = _obstime_from_fits_filename(fp)
+    if obstime is None:
+        return None
+    return obstime.to_datetime().strftime("%Y%m%d_%H%M%S")
 
 
 def _zenith_fk5_crvals_deg(hdr: fits.Header, obstime: Time) -> Optional[Tuple[float, float]]:

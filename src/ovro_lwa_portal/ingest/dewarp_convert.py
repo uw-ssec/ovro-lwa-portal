@@ -79,9 +79,13 @@ def run_cascade_per_time_group(
 ) -> tuple[int, list[str]]:
     """Run ``flow_cascade73MHz`` once per observation-time group and stage outputs.
 
-    FITS under *input_dir* are grouped the same way as :func:`convert_fits_dir_to_zarr`
-    (see :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups`). For each time
-    key, all subband files in that group are passed as ``image_filenames`` to
+    FITS under *input_dir* are grouped like :func:`convert_fits_dir_to_zarr`, except the
+    time key prefers the basename ``-image-YYYYMMDD_HHMMSS`` stamp when present (so
+    multi-band images that share a pipeline image id stay in one group even if
+    ``DATE-OBS`` differs between symlink targets). If that pattern is missing, grouping
+    falls back to ``DATE-OBS`` like the Zarr ingest path.
+
+    For each time key, all subband files in that group are passed as ``image_filenames`` to
     ``image_plane_correction.flow.flow_cascade73MHz`` with ``outroot=cascade_parent / time_key``.
 
     Produced ``*.fits`` (immediate children of *outroot*, else recursive) are linked
@@ -93,7 +97,8 @@ def run_cascade_per_time_group(
     input_dir, cascade_parent, staging_dir
         Input FITS directory, per-time cascade output parent, and flat staging dir.
     discovery_freq_bin_hz, duplicate_resolver
-        Passed to :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups`.
+        Passed to :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups` (with
+        ``time_key_source="filename"`` so basename image times drive groups).
     cascade_fn
         Callable with the same keyword interface as
         ``image_plane_correction.flow.flow_cascade73MHz``.
@@ -125,6 +130,7 @@ def run_cascade_per_time_group(
         input_dir,
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
+        time_key_source="filename",
     )
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"

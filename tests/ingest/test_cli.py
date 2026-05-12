@@ -9,6 +9,7 @@ import zarr
 from typer.testing import CliRunner
 
 from ovro_lwa_portal.ingest.cli import app
+from ovro_lwa_portal.ingest.core import ConversionConfig
 
 
 runner = CliRunner()
@@ -106,3 +107,99 @@ class TestCLI:
 
         result = runner.invoke(app, ["convert", str(nonexistent), str(output)])
         assert result.exit_code != 0
+
+    def test_dewarp_convert_default_intermediate_paths_and_convert_input(
+        self, tmp_path: Path
+    ) -> None:
+        """dewarp-convert passes default cascade/staging paths into cascade, then Zarr input=staging."""
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        out = tmp_path / "out"
+
+        cascade_snap: list[tuple[Path, Path, Path]] = []
+        convert_snap: list[Path] = []
+
+        def fake_run_cascade(
+            input_dir: Path,
+            cascade_parent: Path,
+            staging_dir: Path,
+            **kwargs: object,
+        ) -> tuple[int, list[str]]:
+            cascade_snap.append((input_dir, cascade_parent, staging_dir))
+            assert kwargs.get("discovery_freq_bin_hz") is not None
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            (staging_dir / "placeholder.fits").touch()
+            return (1, ["20240601_120000"])
+
+        def fake_convert(config: ConversionConfig, *, log_level: Any) -> Path:
+            convert_snap.append(config.input_dir)
+            return out / "dummy.zarr"
+
+        with (
+            patch(
+                "ovro_lwa_portal.ingest.cli.run_cascade_per_time_group",
+                side_effect=fake_run_cascade,
+            ),
+            patch(
+                "ovro_lwa_portal.ingest.cli._execute_fits_to_zarr_conversion",
+                side_effect=fake_convert,
+            ),
+        ):
+            result = runner.invoke(app, ["dewarp-convert", str(raw), str(out)])
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert len(cascade_snap) == 1
+        inp, cascade_parent, staging_dir = cascade_snap[0]
+        assert inp == raw.resolve()
+        assert cascade_parent == (out / "cascade73MHz").resolve()
+        assert staging_dir == (out / "dewarped_fits_staging").resolve()
+        assert len(convert_snap) == 1
+        assert convert_snap[0] == staging_dir
+
+    def test_dewarp_convert_custom_cascade_and_staging_dirs(self, tmp_path: Path) -> None:
+        """Explicit --cascade-parent and --staging-dir are forwarded to the cascade stage."""
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        out = tmp_path / "out"
+        my_cascade = tmp_path / "my_cascade"
+        my_staging = tmp_path / "my_staging"
+
+        captured: list[tuple[Path, Path, Path]] = []
+
+        def fake_run_cascade(
+            input_dir: Path,
+            cascade_parent: Path,
+            staging_dir: Path,
+            **_kw: object,
+        ) -> tuple[int, list[str]]:
+            captured.append((input_dir, cascade_parent, staging_dir))
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            (staging_dir / "x.fits").touch()
+            return (1, ["tk"])
+
+        with (
+            patch(
+                "ovro_lwa_portal.ingest.cli.run_cascade_per_time_group",
+                side_effect=fake_run_cascade,
+            ),
+            patch(
+                "ovro_lwa_portal.ingest.cli._execute_fits_to_zarr_conversion",
+                return_value=out / "z.zarr",
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "dewarp-convert",
+                    str(raw),
+                    str(out),
+                    "--cascade-parent",
+                    str(my_cascade),
+                    "--staging-dir",
+                    str(my_staging),
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert captured[0][1] == my_cascade.resolve()
+        assert captured[0][2] == my_staging.resolve()
