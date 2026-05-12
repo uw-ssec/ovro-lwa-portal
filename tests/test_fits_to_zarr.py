@@ -1047,7 +1047,13 @@ def test_harmonize_celestial_coords_samples_dask_backed_coords(monkeypatch):
     captured = {}
     original = mod._sky_sep_max_vs_ref_arcsec
 
-    def _capture(ra_arr, dec_arr, *, ref_idx, max_points=65536):
+    def _capture(
+        ra_arr,
+        dec_arr,
+        *,
+        ref_idx,
+        max_points=mod._CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
+    ):
         captured["shape"] = tuple(ra_arr.shape)
         return original(ra_arr, dec_arr, ref_idx=ref_idx, max_points=max_points)
 
