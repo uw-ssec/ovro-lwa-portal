@@ -18,69 +18,14 @@ def _import_module():
     return fits_to_zarr_xradio
 
 
-def test_parse_filename_pattern():
-    """Test parsing metadata from FITS filenames using PAT regex."""
-    # Import the pattern directly to avoid loading xradio dependencies
-    import sys
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "fits_to_zarr_xradio",
-        Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    )
-    if spec is None or spec.loader is None:
-        pytest.skip("Cannot load fits_to_zarr_xradio module")
-
-    # Read the pattern from the file directly
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-
-    # Extract the PAT regex pattern
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None, "PAT pattern not found in module"
-
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
-    match = PAT.match(filename)
-
-    assert match is not None
-    assert match.group("date") == "20240524"
-    assert match.group("hms") == "050009"
-    assert match.group("sb") == "41"
-
-
-def test_parse_filename_pattern_with_fixed():
-    """Test parsing metadata from fixed FITS filenames."""
-    # Extract pattern from module
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "20240524_050009_41MHz_averaged_20000_iterations-I-image_fixed.fits"
-    match = PAT.match(filename)
-
-    assert match is not None
-    assert match.group("date") == "20240524"
-    assert match.group("hms") == "050009"
-    assert match.group("sb") == "41"
-
-
-def test_parse_filename_pattern_invalid():
-    """Test parsing metadata from invalid filenames."""
-    # Extract pattern from module
-    module_path = Path(__file__).parent.parent / "src" / "ovro_lwa_portal" / "fits_to_zarr_xradio.py"
-    content = module_path.read_text()
-    pat_match = re.search(r'PAT = re\.compile\(\s*r"([^"]+)"\s*\)', content)
-    assert pat_match is not None
-    PAT = re.compile(pat_match.group(1))
-
-    filename = "invalid.fits"
-    match = PAT.match(filename)
-
-    assert match is None
+def test_time_does_not_fall_back_to_filename(tmp_path: Path):
+    """Time grouping should require DATE-OBS (no filename-based time fallback)."""
+    mod = _import_module()
+    fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
+    time_key, _, notes = mod._extract_group_metadata(fpath)
+    assert time_key is None
+    assert "time-from-filename" not in notes
 
 
 def test_mhz_from_name():
@@ -137,7 +82,6 @@ def test_module_can_be_imported():
     """Test that the fits_to_zarr_xradio module can be imported."""
     fits_to_zarr_xradio = _import_module()
     assert hasattr(fits_to_zarr_xradio, "convert_fits_dir_to_zarr")
-    assert hasattr(fits_to_zarr_xradio, "PAT")
     assert hasattr(fits_to_zarr_xradio, "MHZ_RE")
 
 
@@ -382,22 +326,60 @@ def test_extract_group_metadata_from_header(tmp_path: Path):
     assert notes == []
 
 
-def test_extract_group_metadata_fallback_to_filename(tmp_path: Path):
-    """Filename fallback should be used when headers are missing metadata."""
+def test_extract_group_metadata_requires_date_obs(tmp_path: Path):
+    """Grouping requires DATE-OBS; time does not fall back to filenames."""
     mod = _import_module()
     fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
 
     time_key, frequency_hz, notes = mod._extract_group_metadata(fpath)
 
-    assert time_key == "20240524_050009"
+    assert time_key is None
     assert frequency_hz == pytest.approx(4.1e7)
-    assert "time-from-filename" in notes
     assert "frequency-from-filename" in notes
 
 
+def test_extract_group_metadata_filename_time_overrides_header(tmp_path: Path) -> None:
+    """``time_key_source='filename'`` prefers ``-image-`` basename over DATE-OBS."""
+    mod = _import_module()
+    fpath = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_x.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-21T00:00:00", "RESTFREQ": 18e6}),
+    ).writeto(fpath)
+
+    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath, time_key_source="filename")
+
+    assert time_key == "20241221_102109"
+    assert frequency_hz == pytest.approx(18e6)
+    assert "time-from-filename" in notes
+
+
+def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> None:
+    """Same ``-image-YYYYMMDD_HHMMSS`` basename groups together even if DATE-OBS differs."""
+    mod = _import_module()
+    a = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_a.fits"
+    b = tmp_path / "73MHz-I-Deep-Taper-Robust-0-image-20241221_102109_b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-21T01:00:00", "RESTFREQ": 18e6}),
+    ).writeto(a)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-22T23:00:00", "RESTFREQ": 73e6}),
+    ).writeto(b)
+
+    by_header = mod._discover_groups(tmp_path, time_key_source="header")
+    by_name = mod._discover_groups(tmp_path, time_key_source="filename")
+
+    assert len(by_header) == 2
+    assert len(by_name) == 1
+    assert list(by_name.keys()) == ["20241221_102109"]
+    assert {p.name for p in by_name["20241221_102109"]} == {a.name, b.name}
+
+
 def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
-    """Same time + same 10 kHz bin: keep the first file and warn; do not stack duplicates."""
+    """Same time + same discovery frequency bin: keep the first file and warn; do not stack duplicates."""
     mod = _import_module()
     hdr = fits.Header({"DATE-OBS": "2024-05-24T05:00:09.0", "RESTFREQ": 4.1e7})
     f1 = tmp_path / "first_name.fits"
@@ -410,7 +392,7 @@ def test_discover_groups_duplicate_without_resolver_keeps_first(tmp_path: Path):
 
 
 def test_discover_groups_header_frequency_jitter_single_plane(tmp_path: Path):
-    """RESTFREQ differing by <<10 kHz should map to one binned subband (one FITS kept)."""
+    """RESTFREQ differing by <<23 kHz should map to one binned subband (one FITS kept)."""
     mod = _import_module()
     t = "2024-05-24T05:00:09.0"
     f1 = tmp_path / "a.fits"
@@ -425,6 +407,28 @@ def test_discover_groups_header_frequency_jitter_single_plane(tmp_path: Path):
     ).writeto(f2)
     groups = mod._discover_groups(tmp_path)
     assert groups["20240524_050009"] == [f1]
+
+
+def test_discover_groups_freq_bin_hz_controls_merge_window(tmp_path: Path):
+    """Narrow bin (10 kHz) splits ~15 kHz RESTFREQ offset; 23 kHz bin merges as one subband."""
+    mod = _import_module()
+    t = "2024-05-24T05:00:09.0"
+    f1 = tmp_path / "a.fits"
+    f2 = tmp_path / "b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7}),
+    ).writeto(f1)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": t, "RESTFREQ": 4.1e7 + 15_000.0}),
+    ).writeto(f2)
+
+    merged = mod._discover_groups(tmp_path, freq_bin_hz=23_000.0)
+    assert merged["20240524_050009"] == [f1]
+
+    split = mod._discover_groups(tmp_path, freq_bin_hz=10_000.0)
+    assert len(split["20240524_050009"]) == 2
 
 
 def test_discover_groups_duplicate_with_resolver_selects_one(tmp_path: Path):
@@ -622,7 +626,7 @@ def test_rechunk_lm_for_zarr_fixes_nonuniform_coord_time_chunks(tmp_path):
 
 
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
-    """Legacy OVRO-LWA filename pattern should still group when headers are incomplete."""
+    """Files missing DATE-OBS should be skipped (no filename time fallback)."""
     mod = _import_module()
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
         tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
@@ -632,10 +636,7 @@ def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     )
 
     groups = mod._discover_groups(tmp_path)
-
-    assert "20240524_050009" in groups
-    freqs = [mod._extract_group_metadata(p)[1] for p in groups["20240524_050009"]]
-    assert freqs == [pytest.approx(4.1e7), pytest.approx(8.2e7)]
+    assert groups == {}
 
 
 def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
@@ -866,3 +867,197 @@ def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Pat
     assert result == out_zarr
     assert combine_calls == []
     assert write_calls == []
+
+
+def test_fix_headers_sets_crval_to_fk5_zenith_from_filename_image_stamp(tmp_path: Path):
+    """_fix_headers sets CRVAL1/2 from FK5 zenith at ``-image-YYYYMMDD_HHMMSS`` in the basename."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241218_030201-test.fits"
+    out_path = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241218_030201-test_fixed.fits"
+
+    data = np.zeros((8, 8), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 2,
+            "NAXIS1": 8,
+            "NAXIS2": 8,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CRVAL1": 0.0,
+            "CRVAL2": 0.0,
+            "CRPIX1": 4.5,
+            "CRPIX2": 4.5,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+            "DATE-OBS": "2024-12-18T03:00:01.4",
+            "TIMESYS": "UTC",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+
+    # 20241218_030201 → 2024-12-18 03:02:01 UTC (not DATE-OBS).
+    assert hdr["CRVAL1"] == pytest.approx(14.0996845, rel=0, abs=1e-4)
+    assert hdr["CRVAL2"] == pytest.approx(37.0948037, rel=0, abs=1e-4)
+    assert hdr["RADESYS"] == "FK5"
+
+
+def test_fix_headers_leaves_crval_without_image_timestamp_in_name(tmp_path: Path):
+    """If the basename has no ``-image-YYYYMMDD_HHMMSS``, CRVAL1/2 are not overwritten."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "no_stamp.fits"
+    out_path = tmp_path / "no_stamp_fixed.fits"
+
+    data = np.zeros((8, 8), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 2,
+            "NAXIS1": 8,
+            "NAXIS2": 8,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CRVAL1": 1.25,
+            "CRVAL2": 2.5,
+            "CRPIX1": 4.5,
+            "CRPIX2": 4.5,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+
+    assert hdr["CRVAL1"] == pytest.approx(1.25)
+    assert hdr["CRVAL2"] == pytest.approx(2.5)
+
+
+def test_harmonize_celestial_coords_collapses_frequency_dim():
+    """After combine, RA/Dec should be (m, l) only when slices share one WCS."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nm, nl, nf = 5, 6, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra = np.stack([ra0, ra0], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    hdr = "NAXIS = 2\nCRVAL1 = 105"
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (("frequency", "m", "l"), ra),
+            "declination": (("frequency", "m", "l"), dec),
+        },
+    )
+    ds["right_ascension"].attrs["fits_wcs_header"] = hdr
+    ds["declination"].attrs["fits_wcs_header"] = hdr
+
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
+    assert "frequency" not in out.right_ascension.dims
+    assert out.right_ascension.shape == (nm, nl)
+    np.testing.assert_allclose(out.right_ascension.values, ra0)
+    assert out["SKY"].attrs.get("fits_wcs_header") == hdr
+
+
+def test_harmonize_celestial_coords_warns_on_large_wcs_drift(caplog):
+    """Large per-channel RA/Dec drift vs reference should emit one warning."""
+    import logging
+
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nm, nl, nf = 5, 6, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra1 = ra0 + 2.0
+    ra = np.stack([ra0, ra1], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (("frequency", "m", "l"), ra),
+            "declination": (("frequency", "m", "l"), dec),
+        },
+    )
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds, warn_max_sep_arcsec=60.0)
+    assert "Celestial coordinate grids differ" in caplog.text
+    assert "frequency" not in out.right_ascension.dims
+
+
+def test_harmonize_celestial_coords_samples_dask_backed_coords(monkeypatch):
+    """Dask-backed celestial coords should be sampled before drift computation."""
+    import numpy as np
+    import xarray as xr
+
+    da = pytest.importorskip("dask.array")
+    mod = _import_module()
+    nm, nl, nf = 300, 300, 2
+    ra0 = np.broadcast_to(np.linspace(100.0, 110.0, nl), (nm, nl)).copy()
+    ra = np.stack([ra0, ra0 + 0.01], axis=0)
+    dec = np.stack(
+        [np.full((nm, nl), 40.0, dtype=np.float64), np.full((nm, nl), 40.0, dtype=np.float64)],
+        axis=0,
+    )
+    ds = xr.Dataset(
+        {"SKY": (("frequency", "m", "l"), np.ones((nf, nm, nl)))},
+        coords={
+            "frequency": np.array([45e6, 55e6], dtype=float),
+            "l": np.linspace(-0.1, 0.1, nl),
+            "m": np.linspace(-0.1, 0.1, nm),
+            "right_ascension": (
+                ("frequency", "m", "l"),
+                da.from_array(ra, chunks=(1, 75, 75)),
+            ),
+            "declination": (
+                ("frequency", "m", "l"),
+                da.from_array(dec, chunks=(1, 75, 75)),
+            ),
+        },
+    )
+
+    captured = {}
+    original = mod._sky_sep_max_vs_ref_arcsec
+
+    def _capture(
+        ra_arr,
+        dec_arr,
+        *,
+        ref_idx,
+        max_points=mod._CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
+    ):
+        captured["shape"] = tuple(ra_arr.shape)
+        return original(ra_arr, dec_arr, ref_idx=ref_idx, max_points=max_points)
+
+    monkeypatch.setattr(mod, "_sky_sep_max_vs_ref_arcsec", _capture)
+    out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
+    assert captured["shape"] == (nf, 1, mod._CELESTIAL_DRIFT_SAMPLE_MAX_POINTS)
+    assert "frequency" not in out.right_ascension.dims

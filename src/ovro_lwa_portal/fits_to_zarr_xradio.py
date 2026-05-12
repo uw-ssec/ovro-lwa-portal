@@ -40,7 +40,7 @@ Library usage
 
 Notes
 -----
-* Discovery groups files by observation time and by a **10~kHz binned** frequency key
+* Discovery groups files by observation time and by a **23~kHz binned** frequency key
   from FITS headers (so Hz-level jitter does not create extra ``frequency`` planes for
   one subband). Multiple files in the same (time, bin) without a duplicate resolver
   keep the first and skip the rest (with a warning). Filename parsing is only used as
@@ -48,6 +48,10 @@ Notes
 * LM grids must match across time steps after global and per-step mixed-resolution normalization;
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
+* After stacking subbands along ``frequency``, ``right_ascension`` / ``declination`` are
+  collapsed to a single ``(m, l)`` frame taken from the lowest-frequency slice. If sampled
+  sky positions differ from that reference by more than ~one arcminute between slices, a
+  warning is logged so inconsistent WCS across the band is visible.
 * Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
   Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
 * On append, only the pending time step is appended along the ``time`` dimension.
@@ -61,12 +65,15 @@ import re
 import shutil
 import time
 from collections import OrderedDict
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import xarray as xr
 import zarr
+import astropy.units as u
+from astropy.coordinates import AltAz, EarthLocation, FK5, SkyCoord
 from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
@@ -84,9 +91,22 @@ logger = logging.getLogger(__name__)
 
 # Grouping key for "same subband" when discovering FITS. Raw ``int(round(hz))`` can differ
 # by 1--1000+ Hz between files for the same 55~MHz (etc.) product; that produced multiple
-# ``frequency`` planes in the Zarr from one logical band. Bins of 10~kHz merge that jitter
+# ``frequency`` planes in the Zarr from one logical band. Bins of 23~kHz merge that jitter
 # while keeping distinct LWA subbands (MHz-scale) separate.
-_DISCOVERY_FREQ_BIN_HZ: float = 10_000.0
+_DISCOVERY_FREQ_BIN_HZ: float = 23_000.0
+
+# Log a warning when any stacked frequency slice disagrees with the reference slice by
+# more than this on-sky separation (sampled on the LM grid). Used after ``combine`` so
+# per-channel WCS drift across a wideband time step is visible before collapsing coords.
+_CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC: float = 60.0
+_CELESTIAL_DRIFT_SAMPLE_MAX_POINTS: int = 65536
+_CELESTIAL_DRIFT_SAMPLE_SEED: int = 0
+
+# Default OVRO-LWA / OVRO geodetic site when FITS lacks ``OBSGEO-*`` (matches
+# ``EarthLocation.of_site("ovro")`` in Astropy data; avoids network at import).
+_OVRO_LWA_DEFAULT_LON_DEG = -118.28340511
+_OVRO_LWA_DEFAULT_LAT_DEG = 37.23338698
+_OVRO_LWA_DEFAULT_HEIGHT_M = 1188.6
 
 # Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
 # Keep this bounded so long-running conversions do not accumulate unlimited RA/Dec grids.
@@ -120,14 +140,18 @@ PAT = re.compile(
     r"^(?P<date>\d{8})_(?P<hms>\d{6})_(?P<sb>\d+)MHz_averaged_.*-I-image(?:_fixed)?\.fits$"
 )
 MHZ_RE = re.compile(r"_(\d+)MHz_")
+_IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
 
 
 def _time_key_from_name(p: Path) -> Optional[str]:
-    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from filename when possible."""
+    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from basename when possible."""
     m = PAT.match(p.name)
-    if not m:
+    if m:
+        return f"{m.group('date')}_{m.group('hms')}"
+    m_img = _IMAGE_TIME_RE.search(p.name)
+    if not m_img:
         return None
-    return f"{m.group('date')}_{m.group('hms')}"
+    return f"{m_img.group(1)}_{m_img.group(2)}"
 
 
 def _mhz_from_name(p: Path) -> int:
@@ -150,12 +174,10 @@ def _mhz_from_name(p: Path) -> int:
 def _time_key_from_header(header: fits.Header) -> Optional[str]:
     """Extract observation time from FITS headers as ``YYYYMMDD_HHMMSS``.
 
-    Header precedence:
-      1) ``DATE-OBS`` (optionally with ``TIME-OBS`` if date-only)
-      2) ``MJD-OBS``
-      3) ``MJD``
+    This project requires ``DATE-OBS`` to be present and parseable.
+    ``TIME-OBS`` is used only when ``DATE-OBS`` is date-only (no ``T``).
 
-    Returns ``None`` when no usable timestamp is found.
+    Returns ``None`` when no usable ``DATE-OBS`` timestamp is found.
     """
     date_obs = header.get("DATE-OBS")
     if date_obs:
@@ -170,14 +192,6 @@ def _time_key_from_header(header: fits.Header) -> Optional[str]:
             return t.to_datetime().strftime("%Y%m%d_%H%M%S")
         except Exception:
             logger.debug(f"Could not parse DATE-OBS/TIME-OBS timestamp: {dt_value}")
-
-    for mjd_key in ("MJD-OBS", "MJD"):
-        if mjd_key in header:
-            try:
-                t = Time(float(header[mjd_key]), format="mjd", scale="utc")
-                return t.to_datetime().strftime("%Y%m%d_%H%M%S")
-            except Exception:
-                logger.debug(f"Could not parse {mjd_key} timestamp: {header.get(mjd_key)}")
 
     return None
 
@@ -511,14 +525,25 @@ def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
     return None
 
 
-def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], List[str]]:
-    """Extract grouping metadata from headers with filename fallback.
+def _extract_group_metadata(
+    fp: Path,
+    *,
+    time_key_source: Literal["header", "filename"] = "header",
+) -> Tuple[Optional[str], Optional[float], List[str]]:
+    """Extract grouping metadata from headers with optional filename time preference.
 
     Returns
     -------
     Tuple[Optional[str], Optional[float], List[str]]
         Tuple of ``(time_key, frequency_hz, fallback_notes)`` where fallback_notes
         records when filename-based fallback was used.
+
+    When *time_key_source* is ``"filename"``, a parseable basename (legacy averaged pattern
+    or ``-image-YYYYMMDD_HHMMSS``) wins over header times so multi-band pipeline products
+    group together when ``DATE-OBS`` differs across symlink targets.
+
+    ``frequency_hz`` is read from headers when possible with a filename fallback for
+    frequency only.
     """
     time_key: Optional[str] = None
     frequency_hz: Optional[float] = None
@@ -531,14 +556,18 @@ def _extract_group_metadata(fp: Path) -> Tuple[Optional[str], Optional[float], L
         logger.warning(f"Could not read FITS header for {fp.name}: {e}")
 
     if header is not None:
-        time_key = _time_key_from_header(header)
         frequency_hz = _frequency_hz_from_header(header)
 
-    if time_key is None:
-        name_time_key = _time_key_from_name(fp)
-        if name_time_key is not None:
-            time_key = name_time_key
+    if time_key_source == "filename":
+        tk_name = _time_key_from_name(fp)
+        if tk_name is not None:
+            time_key = tk_name
             notes.append("time-from-filename")
+        elif header is not None:
+            time_key = _time_key_from_header(header)
+    else:
+        if header is not None:
+            time_key = _time_key_from_header(header)
 
     if frequency_hz is None:
         mhz = _mhz_from_name(fp)
@@ -610,12 +639,67 @@ def _reindex_time_step_to_expected_frequencies(
     return xds_norm.reindex({"frequency": expected}, fill_value=np.nan)
 
 
+def _earth_location_from_header(hdr: fits.Header) -> EarthLocation:
+    """Geodetic Earth location from FITS ``OBSGEO-*`` or OVRO-LWA defaults."""
+    if "OBSGEO-L" in hdr and "OBSGEO-B" in hdr:
+        height = float(hdr.get("OBSGEO-H", 0.0))
+        return EarthLocation.from_geodetic(
+            float(hdr["OBSGEO-L"]) * u.deg,
+            float(hdr["OBSGEO-B"]) * u.deg,
+            height * u.m,
+        )
+    return EarthLocation.from_geodetic(
+        _OVRO_LWA_DEFAULT_LON_DEG * u.deg,
+        _OVRO_LWA_DEFAULT_LAT_DEG * u.deg,
+        _OVRO_LWA_DEFAULT_HEIGHT_M * u.m,
+    )
+
+
+def _obstime_from_fits_filename(path: Path) -> Optional[Time]:
+    """Parse ``-image-YYYYMMDD_HHMMSS`` from a FITS basename as UTC :class:`~astropy.time.Time`.
+
+    Returns ``None`` if the pattern is missing or digits are not a valid civil time.
+    """
+    m = _IMAGE_TIME_RE.search(path.name)
+    if not m:
+        return None
+    ymd, hms = m.group(1), m.group(2)
+    try:
+        naive = datetime.strptime(ymd + hms, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    utc = naive.replace(tzinfo=timezone.utc)
+    return Time(utc)
+
+
+def _zenith_fk5_crvals_deg(hdr: fits.Header, obstime: Time) -> Optional[Tuple[float, float]]:
+    """Return FK5 ``(RA, Dec)`` in degrees for the zenith at ``obstime``, or None if not applicable."""
+    ctype1 = str(hdr.get("CTYPE1", "")).strip().upper()
+    ctype2 = str(hdr.get("CTYPE2", "")).strip().upper()
+    if "RA" not in ctype1 or "DEC" not in ctype2:
+        return None
+
+    loc = _earth_location_from_header(hdr)
+    zen = SkyCoord(alt=90.0 * u.deg, az=0.0 * u.deg, frame=AltAz(obstime=obstime, location=loc))
+    equinox = hdr.get("EQUINOX", 2000.0)
+    try:
+        eq_time = Time(equinox, format="jyear")
+    except (ValueError, TypeError):
+        eq_time = Time(2000.0, format="jyear")
+    fk5 = zen.transform_to(FK5(equinox=eq_time))
+    return (float(fk5.ra.deg), float(fk5.dec.deg))
+
+
 def _fix_headers(path_in: Path, path_out: Path) -> None:
     """Write a *_fixed.fits with BSCALE/BZERO applied and minimal WCS/spectral keys.
 
     Adds/ensures:
       RESTFREQ/RESTFRQ, SPECSYS=LSRK, TIMESYS=UTC, RADESYS=FK5, LATPOLE=90,
       identity PC matrix for LM, nominal beam (BMAJ/BMIN=6 arcmin), BUNIT=Jy/beam.
+      For celestial ``RA``/``DEC`` axes, ``CRVAL1``/``CRVAL2`` are set to the FK5
+      zenith at the UTC instant parsed from ``-image-YYYYMMDD_HHMMSS`` in the input
+      filename. If that pattern is absent, ``CRVAL1``/``CRVAL2`` are left unchanged.
+      Geodetic position comes from ``OBSGEO-*`` when present, otherwise OVRO-LWA defaults.
 
     Parameters
     ----------
@@ -658,6 +742,14 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         phdu = fits.PrimaryHDU(data=data, header=hdr)
         H = phdu.header
 
+        obs_time = _obstime_from_fits_filename(path_in)
+        if obs_time is None:
+            logger.warning(
+                "No -image-YYYYMMDD_HHMMSS timestamp in filename %s; "
+                "leaving CRVAL1/CRVAL2 unchanged.",
+                path_in.name,
+            )
+
         # Spectral / frame basics
         if "CRVAL3" in H:  # fall back to CRVAL3 if set
             H["RESTFREQ"] = H["CRVAL3"]
@@ -666,6 +758,19 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         H["TIMESYS"] = "UTC"
         H["RADESYS"] = "FK5"
         H["LATPOLE"] = 90.0
+
+        if obs_time is not None:
+            zc = _zenith_fk5_crvals_deg(H, obs_time)
+            if zc is not None:
+                cr1, cr2 = zc
+                H["CRVAL1"] = cr1
+                H["CRVAL2"] = cr2
+                logger.debug(
+                    "Set CRVAL1/CRVAL2 to FK5 zenith at filename time for %s: %.6f, %.6f deg",
+                    path_in.name,
+                    cr1,
+                    cr2,
+                )
 
         # Identity PC for LM axes
         H["PC1_1"] = 1.0
@@ -1086,14 +1191,148 @@ def _regrid_to_reference_lm(
     return regridded
 
 
+def _sky_sep_max_vs_ref_arcsec(
+    ra: NDArray[np.floating],
+    dec: NDArray[np.floating],
+    *,
+    ref_idx: int,
+    max_points: int = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
+) -> float:
+    """Worst-case on-sky separation (arcsec) of any non-ref channel from ``ref_idx``.
+
+    Parameters
+    ----------
+    ra, dec
+        Arrays shaped ``(n_freq, n_m, n_l)`` in degrees.
+    ref_idx
+        Reference frequency index.
+    max_points
+        Maximum number of (m, l) pixels sampled per comparison (subsampled if larger).
+    """
+    if ra.ndim != 3 or dec.ndim != 3:
+        raise ValueError("ra/dec must be 3D arrays shaped (n_freq, n_m, n_l)")
+    nf, nm, nl = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
+    if nf <= 1:
+        return 0.0
+    ri = int(np.clip(ref_idx, 0, nf - 1))
+    total = nm * nl
+    rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
+    if total > max_points:
+        flat_idx = rng.choice(total, size=max_points, replace=False)
+    else:
+        flat_idx = np.arange(total, dtype=np.intp)
+    idx_m, idx_l = np.unravel_index(flat_idx, (nm, nl))
+    ref_ra = ra[ri][idx_m, idx_l]
+    ref_dec = dec[ri][idx_m, idx_l]
+    worst = 0.0
+    for fi in range(nf):
+        if fi == ri:
+            continue
+        ra_i = ra[fi][idx_m, idx_l]
+        dec_i = dec[fi][idx_m, idx_l]
+        ok = np.isfinite(ref_ra) & np.isfinite(ref_dec) & np.isfinite(ra_i) & np.isfinite(dec_i)
+        if not np.any(ok):
+            continue
+        c_a = SkyCoord(ra=ref_ra[ok] * u.deg, dec=ref_dec[ok] * u.deg, frame="fk5")
+        c_b = SkyCoord(ra=ra_i[ok] * u.deg, dec=dec_i[ok] * u.deg, frame="fk5")
+        worst = max(worst, float(c_a.separation(c_b).max().to(u.arcsec).value))
+    return worst
+
+
+def _harmonize_celestial_coords_independent_of_frequency(
+    xds: xr.Dataset,
+    *,
+    ref_freq_idx: int = 0,
+    warn_max_sep_arcsec: float = _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC,
+) -> xr.Dataset:
+    """Collapse per-frequency RA/Dec coords to a single (m, l) celestial grid.
+
+    Stacked wideband cubes can carry ``(frequency, m, l)`` right ascension and
+    declination. Downstream code expects one celestial frame for the LM grid; this
+    keeps the reference slice (default: lowest ``frequency`` index after sorting)
+    and emits a warning if sampled pixels differ from that reference beyond
+    ``warn_max_sep_arcsec``.
+    """
+    ra_c = xds.coords.get("right_ascension")
+    dec_c = xds.coords.get("declination")
+    if ra_c is None or dec_c is None:
+        return xds
+    if "frequency" not in ra_c.dims:
+        return xds
+
+    nf = int(xds.sizes["frequency"])
+    ri = int(np.clip(ref_freq_idx, 0, nf - 1))
+
+    ra_ord = ra_c.transpose("frequency", "m", "l")
+    dec_ord = dec_c.transpose("frequency", "m", "l")
+    if hasattr(ra_ord.data, "compute") or hasattr(dec_ord.data, "compute"):
+        # Sample before materialization so dask-backed coords do not compute full
+        # (frequency, m, l) cubes just for drift estimation.
+        max_points = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS
+        stacked_dims = ("m", "l")
+        total = int(ra_ord.sizes["m"]) * int(ra_ord.sizes["l"])
+        rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
+        if total > max_points:
+            flat_idx = rng.choice(total, size=max_points, replace=False)
+        else:
+            flat_idx = np.arange(total, dtype=np.intp)
+        ra_sample = ra_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        dec_sample = dec_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        ra_np = np.asarray(ra_sample.data, dtype=np.float64)[:, np.newaxis, :]
+        dec_np = np.asarray(dec_sample.data, dtype=np.float64)[:, np.newaxis, :]
+    else:
+        ra_np = np.asarray(ra_ord.data, dtype=np.float64)
+        dec_np = np.asarray(dec_ord.data, dtype=np.float64)
+
+    max_sep = _sky_sep_max_vs_ref_arcsec(ra_np, dec_np, ref_idx=ri)
+    if max_sep > warn_max_sep_arcsec:
+        freqs = xds.coords["frequency"].values
+        logger.warning(
+            "Celestial coordinate grids differ by up to %.1f arcsec across %d frequency "
+            "slice(s) in this combined time step (threshold %.1f arcsec). "
+            "Using the reference channel index %d (%.6g Hz) for a single "
+            "right_ascension / declination frame shared by all frequencies; "
+            "inspect per-FITS WCS or phase tracking if this is unexpected.",
+            max_sep,
+            nf,
+            warn_max_sep_arcsec,
+            ri,
+            float(freqs[ri]),
+        )
+
+    ra_ref = xds.right_ascension.isel(frequency=ri, drop=True)
+    dec_ref = xds.declination.isel(frequency=ri, drop=True)
+    hdr_ref = ra_ref.attrs.get("fits_wcs_header")
+
+    out = xds.assign_coords(right_ascension=ra_ref, declination=dec_ref)
+
+    if hdr_ref is not None:
+        out.right_ascension.attrs["fits_wcs_header"] = hdr_ref
+        out.declination.attrs["fits_wcs_header"] = hdr_ref
+        for dv in out.data_vars:
+            out[dv].attrs["fits_wcs_header"] = hdr_ref
+
+    if "wcs_header_str" in out.data_vars:
+        wh = out["wcs_header_str"]
+        if "frequency" in wh.dims:
+            out = out.assign(wcs_header_str=wh.isel(frequency=ri, drop=True))
+
+    return out
+
+
 def _discover_groups(
     in_dir: Path,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
+    *,
+    freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
+    time_key_source: Literal["header", "filename"] = "header",
 ) -> Dict[str, List[Path]]:
-    """Group input FITS by observation time and frequency (headers first, filename fallback).
+    """Group input FITS by observation time and frequency.
 
-    Files are associated with a **coarse** frequency key (10~kHz bins) so small
-    header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
+    Time keys come from FITS headers by default; use *time_key_source* to opt into
+    filename-based time grouping. Frequency grouping always uses headers first with a
+    filename MHz fallback when needed. Files are associated with a **coarse** frequency key
+    (default 23~kHz bins) so small
     in the Zarr for the same physical subband. For multiple paths in the same
     (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
     are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
@@ -1105,20 +1344,35 @@ def _discover_groups(
     duplicate_resolver
         Optional callback ``(time_key, frequency_hz, candidates) -> Path`` when multiple
         files share the same time and binned frequency group.
+    freq_bin_hz
+        Width in Hz for rounding header frequencies to a discovery key,
+        ``int(round(frequency_hz / freq_bin_hz))``. Frequencies in the same bin are treated
+        as one subband for grouping (up to ~``freq_bin_hz`` separation at bin edges).
+    time_key_source
+        ``"header"`` (default): time from ``DATE-OBS`` / :func:`_time_key_from_header` only.
+        ``"filename"``: prefer basename time when parseable, else header (see
+        :func:`_extract_group_metadata`).
 
     Returns
     -------
     Dict[str, List[Path]]
         Dictionary mapping time keys to lists of FITS file paths.
     """
+    if freq_bin_hz <= 0.0:
+        msg = f"freq_bin_hz must be positive, got {freq_bin_hz}"
+        raise ValueError(msg)
+
     by_time: Dict[str, List[Path]] = {}
     by_time_freq: Dict[str, Dict[int, List[Path]]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        time_key, frequency_hz, notes = _extract_group_metadata(f)
+        time_key, frequency_hz, notes = _extract_group_metadata(f, time_key_source=time_key_source)
         if time_key is None:
-            logger.warning(
-                f"Skipping {f.name}: missing usable observation time in FITS headers and filename."
+            t_hint = (
+                "-image-YYYYMMDD_HHMMSS in basename, legacy averaged name, or DATE-OBS"
+                if time_key_source == "filename"
+                else "DATE-OBS in FITS header"
             )
+            logger.warning(f"Skipping {f.name}: missing usable observation time ({t_hint}).")
             continue
         if frequency_hz is None:
             logger.warning(
@@ -1127,7 +1381,7 @@ def _discover_groups(
             by_time.setdefault(time_key, []).append(f)
             continue
 
-        freq_key = int(round(frequency_hz / _DISCOVERY_FREQ_BIN_HZ))
+        freq_key = int(round(frequency_hz / freq_bin_hz))
         time_freq_map = by_time_freq.setdefault(time_key, {})
         candidates = time_freq_map.setdefault(freq_key, [])
         candidates.append(f)
@@ -1143,7 +1397,7 @@ def _discover_groups(
                     "(binned key=%s, ~%.3f MHz): %s. Using only %s. "
                     "Remove extras or pass duplicate_resolver to select a file.",
                     time_key,
-                    _DISCOVERY_FREQ_BIN_HZ,
+                    freq_bin_hz,
                     freq_key,
                     frequency_hz / 1e6,
                     duplicate_names,
@@ -1152,8 +1406,8 @@ def _discover_groups(
                 time_freq_map[freq_key] = [kept]
                 continue
 
-            _, rep_hz, _ = _extract_group_metadata(candidates[0])
-            resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * _DISCOVERY_FREQ_BIN_HZ
+            _, rep_hz, _ = _extract_group_metadata(candidates[0], time_key_source=time_key_source)
+            resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * freq_bin_hz
             selected = duplicate_resolver(time_key, resolver_hz, candidates.copy())
             if selected not in candidates:
                 msg = (
@@ -1304,6 +1558,8 @@ def _combine_time_step(
     for v in xds_t.data_vars:
         xds_t[v].encoding = {}
 
+    xds_t = _harmonize_celestial_coords_independent_of_frequency(xds_t)
+
     xds_t = _rechunk_lm_for_zarr(xds_t, chunk_lm)
 
     return xds_t, sorted(set(freqs_seen)), created_fixed_paths
@@ -1366,59 +1622,6 @@ def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
         if bad_dims:
             chunk_arg = {d: -1 for d in bad_dims}
             out = out.assign_coords({name: c.chunk(chunk_arg)})
-    return out
-
-
-def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
-    """Clear encodings on coordinates and data variables before Zarr write.
-
-    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
-    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
-    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
-    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
-    encodings matches the pattern already used for data variables after
-    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
-    """
-    for name in xds.coords:
-        xds[name].encoding = {}
-    for name in xds.data_vars:
-        xds[name].encoding = {}
-    return xds
-
-
-def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
-    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
-
-    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
-    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
-    along one dimension). ``xarray``'s Zarr writer requires all non-final
-    chunks to share the same size along each dimension; otherwise it raises
-    (``wcs_header_str`` is a known case).
-
-    Parameters
-    ----------
-    xds
-        Dataset possibly containing small dask-backed aux variables.
-
-    Returns
-    -------
-    xarray.Dataset
-        Dataset with offending variables rechunks to one chunk per dimension.
-    """
-    out = xds
-    for name in list(out.data_vars):
-        v = out[name]
-        da_ = v.data
-        if not hasattr(da_, "chunks") or not da_.chunks:
-            continue
-        bad = False
-        for dim_chunks in da_.chunks:
-            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
-                bad = True
-                break
-        if bad:
-            chunk_arg = {d: -1 for d in v.dims}
-            out = out.assign(**{name: v.chunk(chunk_arg)})
     return out
 
 
@@ -1684,6 +1887,7 @@ def convert_fits_dir_to_zarr(
     cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
+    discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -1718,6 +1922,15 @@ def convert_fits_dir_to_zarr(
     duplicate_resolver
         Optional callback to resolve duplicate files that map to the same
         time/frequency group. Signature: ``(time_key, frequency_hz, candidates) -> selected_path``.
+    discovery_freq_bin_hz
+        Bin width in Hz for treating header frequencies as the same subband during
+        discovery (default 23~kHz). Must be positive.
+
+    Within each observation time step, after subbands are stacked along ``frequency``,
+    ``right_ascension`` / ``declination`` are reduced to a single ``(m, l)`` celestial
+    frame taken from the lowest-frequency slice. If sampled on-sky positions in other
+    slices disagree with that reference by more than about one arcminute, a warning
+    is logged.
 
     Mixed-resolution inputs (different ``l``/``m`` pixel shapes) are supported: the
     largest LM grid among all selected files becomes the conversion-wide reference,
@@ -1744,7 +1957,15 @@ def convert_fits_dir_to_zarr(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     out_zarr = out_dir / zarr_name
 
-    by_time = _discover_groups(input_dir, duplicate_resolver=duplicate_resolver)
+    if discovery_freq_bin_hz <= 0.0:
+        msg = f"discovery_freq_bin_hz must be positive, got {discovery_freq_bin_hz}"
+        raise ValueError(msg)
+
+    by_time = _discover_groups(
+        input_dir,
+        duplicate_resolver=duplicate_resolver,
+        freq_bin_hz=discovery_freq_bin_hz,
+    )
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():

@@ -42,7 +42,7 @@ Locate the Crab pulsar. If WCS coordinates are available, use RA/Dec:
 ```python
 if ds.radport.has_wcs:
     # Crab Nebula: RA = 83.633°, Dec = 22.014°
-    l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014)
+    l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014, time_idx=0)
     print(f"Crab pulsar at pixel: l={l_idx}, m={m_idx}")
 else:
     # Fall back to the image center or a known pixel position

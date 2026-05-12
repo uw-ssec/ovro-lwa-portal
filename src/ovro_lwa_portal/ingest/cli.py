@@ -27,11 +27,13 @@ from rich.progress import (
 from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
+    _DISCOVERY_FREQ_BIN_HZ,
     fix_fits_headers,
     repair_zarr_store,
     validate_zarr_store,
 )
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
+from ovro_lwa_portal.ingest.dewarp_convert import run_cascade_per_time_group
 
 __all__ = ["main", "app"]
 
@@ -94,6 +96,104 @@ def _configure_logging(level: LogLevel) -> None:
         level=log_level_map[level],
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+
+def _execute_fits_to_zarr_conversion(
+    config: ConversionConfig,
+    *,
+    log_level: LogLevel,
+) -> Path:
+    """Run FITS→Zarr with progress UI; raise :class:`typer.Exit` on failure."""
+    verbose = log_level == LogLevel.DEBUG
+
+    if log_level != LogLevel.DEBUG:
+        logging.getLogger("ovro_lwa_portal.fits_to_zarr_xradio").setLevel(logging.WARNING)
+        logging.getLogger("ovro_lwa_portal.ingest.core").setLevel(logging.WARNING)
+        logging.getLogger("viperlog").setLevel(logging.ERROR)
+        logging.getLogger("astropy").setLevel(logging.ERROR)
+        warnings.filterwarnings("ignore", category=Warning, module="astropy")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Converting...", total=100)
+        duplicate_prompt_context = {"active": False}
+
+        def progress_callback(stage: str, current: int, total: int, message: str) -> None:
+            if duplicate_prompt_context["active"]:
+                return
+            if total > 0:
+                percentage = (current / total) * 100
+                progress.update(task, completed=percentage, description=message)
+
+        def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
+            duplicate_prompt_context["active"] = True
+            progress.stop()
+            try:
+                console.print(
+                    "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
+                    f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
+                )
+                for idx, candidate in enumerate(candidates, start=1):
+                    console.print(f"  {idx}. {candidate}")
+                choices = [str(i) for i in range(1, len(candidates) + 1)]
+                selection = Prompt.ask(
+                    "Select which file to use",
+                    choices=choices,
+                    default="1",
+                    console=console,
+                )
+                return candidates[int(selection) - 1]
+            finally:
+                progress.start()
+                duplicate_prompt_context["active"] = False
+
+        config.duplicate_resolver = duplicate_resolver
+        converter = FITSToZarrConverter(config, progress_callback=progress_callback)
+
+        try:
+            if log_level != LogLevel.DEBUG:
+                with suppress_stderr():
+                    result = converter.convert()
+            else:
+                result = converter.convert()
+            progress.update(task, completed=100, description="Conversion complete")
+            console.print(f"\n[bold green]✓[/bold green] Successfully created: {result}")
+            return result
+
+        except FileNotFoundError as e:
+            console.print(f"\n[bold red]✗[/bold red] Error: {e}", style="red")
+            console.print(
+                "\nNo matching FITS files found. Please check:\n"
+                "  • The input directory contains FITS files\n"
+                "  • FITS headers contain usable observation time/frequency metadata\n"
+                "  • For the default header-based grouping, FITS headers include DATE-OBS and frequency metadata\n"
+                "  • If you intend to use filename-based time parsing, enable the explicit filename time-key mode"
+            )
+            raise typer.Exit(code=1) from e
+
+        except RuntimeError as e:
+            console.print(f"\n[bold red]✗[/bold red] Conversion failed: {e}", style="red")
+            if "lock" in str(e).lower():
+                console.print(
+                    "\nAnother process may be writing to the same output location.\n"
+                    "Please ensure no other conversion processes are running."
+                )
+            raise typer.Exit(code=1) from e
+
+        except Exception as e:
+            console.print(
+                f"\n[bold red]✗[/bold red] Unexpected error: {e}",
+                style="red",
+            )
+            if verbose:
+                console.print_exception()
+            raise typer.Exit(code=1) from e
 
 
 @app.command()
@@ -160,6 +260,15 @@ def convert(
             "after each time-step is written (reduces peak disk usage)"
         ),
     ),
+    discovery_freq_bin_hz: float = typer.Option(
+        _DISCOVERY_FREQ_BIN_HZ,
+        "--discovery-freq-bin-hz",
+        help=(
+            "Treat header frequencies within this bin width (Hz) as one subband when "
+            "grouping FITS (default: library default, 23 kHz)"
+        ),
+        min=1e-6,
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -212,6 +321,7 @@ def convert(
         fix_headers_on_demand=not skip_header_fixing,  # Invert the flag
         cleanup_fixed_fits=cleanup_fixed_fits,
         duplicate_resolver=None,
+        discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
     )
 
@@ -228,106 +338,222 @@ def convert(
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
-    # Temporarily suppress INFO-level logging during progress display
-    # (unless user explicitly requested verbose output)
-    if log_level != LogLevel.DEBUG:
-        # Suppress our own loggers
-        logging.getLogger("ovro_lwa_portal.fits_to_zarr_xradio").setLevel(logging.WARNING)
-        logging.getLogger("ovro_lwa_portal.ingest.core").setLevel(logging.WARNING)
+    _execute_fits_to_zarr_conversion(config, log_level=log_level)
 
-        # Suppress external library loggers
-        logging.getLogger("viperlog").setLevel(logging.ERROR)  # xradio logging
-        logging.getLogger("astropy").setLevel(logging.ERROR)   # astropy logging
 
-        # Suppress astropy warnings
-        warnings.filterwarnings("ignore", category=Warning, module="astropy")
+@app.command()
+def dewarp_convert(
+    input_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing raw FITS files (same discovery rules as convert)",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    output_dir: Path = typer.Argument(
+        ...,
+        help="Directory where Zarr and intermediate cascade/staging dirs are written",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    zarr_name: str = typer.Option(
+        "ovro_lwa_full_lm_only.zarr",
+        "--zarr-name",
+        "-z",
+        help="Name of the output Zarr store",
+    ),
+    fixed_dir: Optional[Path] = typer.Option(
+        None,
+        "--fixed-dir",
+        "-f",
+        help="Directory for storing fixed FITS files (default: OUTPUT_DIR/fixed_fits)",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    chunk_lm: int = typer.Option(
+        1024,
+        "--chunk-lm",
+        "-c",
+        help="Chunk size for l and m spatial dimensions (0 to disable)",
+        min=0,
+    ),
+    rebuild: bool = typer.Option(
+        False,
+        "--rebuild",
+        "-r",
+        help="Overwrite existing Zarr store instead of appending",
+    ),
+    skip_header_fixing: bool = typer.Option(
+        False,
+        "--skip-header-fixing",
+        "-s",
+        help="Skip header fixing (assume headers already fixed with fix-headers command)",
+    ),
+    cleanup_fixed_fits: bool = typer.Option(
+        False,
+        "--cleanup-fixed-fits",
+        help=(
+            "Delete temporary *_fixed.fits files created during on-demand conversion "
+            "after each time-step is written (reduces peak disk usage)"
+        ),
+    ),
+    discovery_freq_bin_hz: float = typer.Option(
+        _DISCOVERY_FREQ_BIN_HZ,
+        "--discovery-freq-bin-hz",
+        help=(
+            "Treat header frequencies within this bin width (Hz) as one subband when "
+            "grouping FITS (default: library default, 23 kHz)"
+        ),
+        min=1e-6,
+    ),
+    cascade_parent: Optional[Path] = typer.Option(
+        None,
+        "--cascade-parent",
+        help=(
+            "Directory under which per-time cascade outputs are written "
+            "(default: OUTPUT_DIR/cascade73MHz); from "
+            "``image_plane_correction.flow.flow_cascade73MHz``"
+        ),
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    staging_dir: Optional[Path] = typer.Option(
+        None,
+        "--staging-dir",
+        help=(
+            "Flat directory of dewarped FITS passed to Zarr conversion "
+            "(default: OUTPUT_DIR/dewarped_fits_staging)"
+        ),
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    cleaned: bool = typer.Option(
+        True,
+        "--cleaned/--no-cleaned",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
+    ),
+    qa: bool = typer.Option(
+        True,
+        "--qa/--no-qa",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
+    ),
+    use_best_pb_model: bool = typer.Option(
+        True,
+        "--use-best-pb-model/--no-use-best-pb-model",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
+    ),
+    bright_source_flux_qa: bool = typer.Option(
+        True,
+        "--bright-source-flux-qa/--no-bright-source-flux-qa",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
+    ),
+    write: bool = typer.Option(
+        True,
+        "--write/--no-write",
+        help=(
+            "Forwarded to image_plane_correction.flow.flow_cascade73MHz "
+            "(keep True for file-based handoff)"
+        ),
+    ),
+    log_level: LogLevel = typer.Option(
+        LogLevel.INFO,
+        "--log-level",
+        "-l",
+        help="Logging verbosity level",
+        case_sensitive=False,
+    ),
+) -> None:
+    """Dewarp each time's subbands, then run Zarr convert.
 
-    # Create progress display
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Converting...", total=100)
+    FITS in INPUT_DIR are grouped by observation time (same logic as ``convert``).
+    For each time key, all subband files in that group are passed to
+    ``image_plane_correction.flow.flow_cascade73MHz`` with a per-time ``outroot``
+    under ``--cascade-parent``.
+    Resulting ``*.fits`` are staged into ``--staging-dir``, then the usual
+    ``ovro-ingest convert`` pipeline runs on that staging directory.
 
-        duplicate_prompt_context = {"active": False}
+    Requires the ``image_plane_correction`` package (submodule ``flow``).
 
-        def progress_callback(stage: str, current: int, total: int, message: str) -> None:
-            """Update progress bar based on conversion stage."""
-            if duplicate_prompt_context["active"]:
-                return
-            if total > 0:
-                percentage = (current / total) * 100
-                progress.update(task, completed=percentage, description=message)
+    \b
+    Example:
+        ovro-ingest dewarp-convert /data/raw_fits /data/output --rebuild
+    """
+    _configure_logging(log_level)
+    verbose = log_level == LogLevel.DEBUG
 
-        def duplicate_resolver(time_key: str, frequency_hz: float, candidates: list[Path]) -> Path:
-            """Prompt user to resolve duplicate files in the same time/subband."""
-            duplicate_prompt_context["active"] = True
-            progress.stop()
-            try:
-                console.print(
-                    "\n[bold yellow]Duplicate FITS candidates detected[/bold yellow] "
-                    f"for time={time_key}, frequency={frequency_hz:.1f} Hz"
-                )
-                for idx, candidate in enumerate(candidates, start=1):
-                    console.print(f"  {idx}. {candidate}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cascade_root = cascade_parent or (output_dir / "cascade73MHz")
+    staging = staging_dir or (output_dir / "dewarped_fits_staging")
 
-                choices = [str(i) for i in range(1, len(candidates) + 1)]
-                selection = Prompt.ask(
-                    "Select which file to use",
-                    choices=choices,
-                    default="1",
-                    console=console,
-                )
-                return candidates[int(selection) - 1]
-            finally:
-                progress.start()
-                duplicate_prompt_context["active"] = False
+    console.print("\n[bold cyan]OVRO-LWA dewarp-convert[/bold cyan]")
+    console.print(f"  Input directory:     {input_dir}")
+    console.print(f"  Output directory:    {output_dir}")
+    console.print(f"  Cascade parent:      {cascade_root}")
+    console.print(f"  Staging (→ Zarr):    {staging}")
+    console.print(f"  Zarr store name:     {zarr_name}")
+    console.print(f"  Log level:           {log_level.value.upper()}\n")
 
-        # Execute conversion (suppress CASA stderr warnings unless in debug mode)
-        config.duplicate_resolver = duplicate_resolver
-        converter = FITSToZarrConverter(config, progress_callback=progress_callback)
+    try:
+        n_staged, time_keys = run_cascade_per_time_group(
+            input_dir,
+            cascade_root,
+            staging,
+            discovery_freq_bin_hz=discovery_freq_bin_hz,
+            duplicate_resolver=None,
+            cleaned=cleaned,
+            qa=qa,
+            use_best_pb_model=use_best_pb_model,
+            bright_source_flux_qa=bright_source_flux_qa,
+            write=write,
+        )
+    except ImportError as e:
+        console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
+        raise typer.Exit(code=1) from e
+    except FileNotFoundError as e:
+        console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
+        raise typer.Exit(code=1) from e
+    except RuntimeError as e:
+        console.print(f"\n[bold red]✗[/bold red] Dewarp failed: {e}", style="red")
+        if verbose:
+            console.print_exception()
+        raise typer.Exit(code=1) from e
 
-        try:
-            if log_level != LogLevel.DEBUG:
-                with suppress_stderr():
-                    result = converter.convert()
-            else:
-                result = converter.convert()
+    console.print(
+        f"[bold green]✓[/bold green] Staged {n_staged} FITS file(s) "
+        f"from {len(time_keys)} time step(s) for conversion.\n"
+    )
 
-            progress.update(task, completed=100, description="Conversion complete")
-            console.print(f"\n[bold green]✓[/bold green] Successfully created: {result}")
+    config = ConversionConfig(
+        input_dir=staging,
+        output_dir=output_dir,
+        zarr_name=zarr_name,
+        fixed_dir=fixed_dir,
+        chunk_lm=chunk_lm,
+        rebuild=rebuild,
+        fix_headers_on_demand=not skip_header_fixing,
+        cleanup_fixed_fits=cleanup_fixed_fits,
+        duplicate_resolver=None,
+        discovery_freq_bin_hz=discovery_freq_bin_hz,
+        verbose=verbose,
+    )
 
-        except FileNotFoundError as e:
-            console.print(f"\n[bold red]✗[/bold red] Error: {e}", style="red")
-            console.print(
-                "\nNo matching FITS files found. Please check:\n"
-                "  • The input directory contains FITS files\n"
-                "  • FITS headers contain usable observation time/frequency metadata\n"
-                "  • Or filenames include parseable fallback patterns (e.g., YYYYMMDD_HHMMSS_*MHz_*)"
-            )
-            raise typer.Exit(code=1) from e
+    console.print("[bold cyan]OVRO-LWA FITS → Zarr Conversion[/bold cyan]")
+    console.print(f"  Input directory:  {staging}")
+    console.print(f"  Output directory: {output_dir}")
+    console.print(f"  Zarr store name:  {zarr_name}")
+    console.print(f"  Fixed FITS dir:   {config.fixed_dir}")
+    console.print(f"  Chunk size (l,m): {chunk_lm}")
+    console.print(f"  Mode:             {'REBUILD' if rebuild else 'APPEND'}")
+    console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
+    console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
+    console.print(f"  Log level:        {log_level.value.upper()}\n")
 
-        except RuntimeError as e:
-            console.print(f"\n[bold red]✗[/bold red] Conversion failed: {e}", style="red")
-            if "lock" in str(e).lower():
-                console.print(
-                    "\nAnother process may be writing to the same output location.\n"
-                    "Please ensure no other conversion processes are running."
-                )
-            raise typer.Exit(code=1) from e
-
-        except Exception as e:
-            console.print(
-                f"\n[bold red]✗[/bold red] Unexpected error: {e}",
-                style="red",
-            )
-            if verbose:
-                console.print_exception()
-            raise typer.Exit(code=1) from e
+    _execute_fits_to_zarr_conversion(config, log_level=log_level)
 
 
 @app.command()

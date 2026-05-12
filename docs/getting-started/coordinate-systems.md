@@ -29,7 +29,7 @@ If WCS information is present, you can work with celestial coordinates:
 
 ```python
 # Check if dataset has WCS
-if ds.radport.has_wcs():
+if ds.radport.has_wcs:
     print("WCS available")
 else:
     print("No WCS information")
@@ -37,11 +37,14 @@ else:
 
 ### Pixel to Sky Coordinates
 
-Convert pixel coordinates to RA/Dec:
+Convert pixel **indices** to RA/Dec at a given time (same epoch as `time_idx` on
+the dataset):
 
 ```python
-# Convert (l, m) to (RA, Dec)
-ra, dec = ds.radport.pixel_to_coords(l=0.1, m=0.2)
+# Nearest pixel to l≈0.1, m≈0.2 (use indices from coords or searchsorted)
+l_idx = int(abs(ds.coords["l"] - 0.1).argmin())
+m_idx = int(abs(ds.coords["m"] - 0.2).argmin())
+ra, dec = ds.radport.pixel_to_coords(l_idx, m_idx, time_idx=0)
 print(f"RA: {ra:.3f}°, Dec: {dec:.3f}°")
 ```
 
@@ -51,7 +54,7 @@ Convert RA/Dec to pixel coordinates:
 
 ```python
 # Convert (RA, Dec) to (l, m)
-l, m = ds.radport.coords_to_pixel(ra=180.0, dec=20.0)
+l, m = ds.radport.coords_to_pixel(ra=180.0, dec=20.0, time_idx=0)
 print(f"l: {l:.3f}, m: {m:.3f}")
 ```
 
@@ -147,8 +150,8 @@ ds = ovro.open_dataset("path/to/data.zarr")
 freq_idx = ds.radport.nearest_freq_idx(freq_mhz=40.0)
 time_idx = ds.radport.nearest_time_idx(mjd=59000.5)
 
-# Convert sky position to pixels
-l, m = ds.radport.coords_to_pixel(ra=180.0, dec=20.0)
+# Convert sky position to pixels (requires an epoch)
+l, m = ds.radport.coords_to_pixel(ra=180.0, dec=20.0, time_idx=time_idx)
 l_idx, m_idx = ds.radport.nearest_lm_idx(l=l, m=m)
 
 # Extract data at that point

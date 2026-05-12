@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+import importlib.util
+import os
+from typing import Final
+
 import numpy as np
 import pytest
 import xarray as xr
+
+
+def image_plane_correction_available() -> bool:
+    """Return True if the optional ``image_plane_correction`` package is importable."""
+    return importlib.util.find_spec("image_plane_correction") is not None
+
+
+_SKIP_DEWARP_ORCHESTRATION_ON_CI: Final[bool] = (
+    os.environ.get("GITHUB_ACTIONS") == "true" and not image_plane_correction_available()
+)
+
+
+skip_github_ci_without_image_plane_correction = pytest.mark.skipif(
+    _SKIP_DEWARP_ORCHESTRATION_ON_CI,
+    reason=(
+        "GitHub Actions omits the optional image_plane_correction checkout; "
+        "install the dewarp env locally to exercise these tests."
+    ),
+)
 
 
 @pytest.fixture
