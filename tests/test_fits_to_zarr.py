@@ -441,6 +441,34 @@ def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> N
     assert {p.name for p in by_name["20241221_102109"]} == {a.name, b.name}
 
 
+def test_discover_groups_filename_only_skips_getheader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Filename-only discovery uses basename time and ``_NNNMHz_`` without ``getheader``."""
+    mod = _import_module()
+
+    def boom(*_a: object, **_k: object) -> None:
+        pytest.fail("fits.getheader should not be called in filename-only discovery")
+
+    monkeypatch.setattr(mod.fits, "getheader", boom)
+
+    a = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_a.fits"
+    b = tmp_path / "73MHz-I-Deep-Taper-Robust-0-image-20241221_102109_b.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-21T01:00:00", "RESTFREQ": 99e6}),
+    ).writeto(a)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"DATE-OBS": "2024-12-22T23:00:00", "RESTFREQ": 1e6}),
+    ).writeto(b)
+
+    groups = mod._discover_groups(tmp_path, group_metadata_source="filename")
+
+    assert list(groups.keys()) == ["20241221_102109"]
+    assert [p.name for p in groups["20241221_102109"]] == [a.name, b.name]
+
+
 def test_extract_group_metadata_requires_date_obs(tmp_path: Path):
     """OVRO-style name without ``-image-`` stamp needs DATE-OBS for the time key."""
     mod = _import_module()

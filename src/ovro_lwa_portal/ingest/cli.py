@@ -13,7 +13,7 @@ import warnings
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 
 import typer
 from rich.console import Console
@@ -39,6 +39,15 @@ from ovro_lwa_portal.ingest.dewarp_convert import (
 )
 
 __all__ = ["main", "app"]
+
+
+def _cli_group_metadata_source(value: str) -> Literal["fits", "filename"]:
+    if value not in ("fits", "filename"):
+        raise typer.BadParameter(
+            f'expected "fits" or "filename", got {value!r}',
+            param_hint="--discovery-metadata-source",
+        )
+    return value  # type: ignore[return-value]
 
 
 @contextmanager
@@ -272,6 +281,16 @@ def convert(
         ),
         min=1e-6,
     ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help=(
+            'How to infer observation time and subband when grouping: "fits" reads FITS '
+            'headers (with filename fallbacks; default). "filename" uses only basename '
+            "``-image-YYYYMMDD_HHMMSS`` and ``_NNNMHz_`` tags, avoiding FITS header reads "
+            "during discovery and frequency ordering."
+        ),
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -312,6 +331,8 @@ def convert(
 
     verbose = log_level == LogLevel.DEBUG
 
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
+
     # Build configuration
     config = ConversionConfig(
         input_dir=input_dir,
@@ -326,6 +347,7 @@ def convert(
         duplicate_resolver=None,
         discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
+        group_metadata_source=group_metadata_source,
     )
 
     # Display configuration
@@ -339,6 +361,7 @@ def convert(
     console.print(f"  Resume mode:      {'ON' if resume else 'OFF'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
+    console.print(f"  Discovery meta:   {group_metadata_source}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     _execute_fits_to_zarr_conversion(config, log_level=log_level)
@@ -420,6 +443,16 @@ def dewarp_convert(
             "grouping FITS (default: library default, 23 kHz)"
         ),
         min=1e-6,
+    ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help=(
+            'How to infer observation time and subband when grouping raw FITS: "fits" reads '
+            'FITS headers (with filename fallbacks; default). "filename" uses only basename '
+            "``-image-YYYYMMDD_HHMMSS`` and ``_NNNMHz_`` tags, avoiding FITS header reads "
+            "during discovery and frequency ordering."
+        ),
     ),
     cascade_parent: Optional[Path] = typer.Option(
         None,
@@ -514,6 +547,7 @@ def dewarp_convert(
     """
     _configure_logging(log_level)
     verbose = log_level == LogLevel.DEBUG
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     cascade_root = cascade_parent or (output_dir / "cascade73MHz")
@@ -529,6 +563,7 @@ def dewarp_convert(
         console.print(f"  Target size (px):  {target_size}")
     if append_after_each_time:
         console.print("  Append after each time: YES (staging + per-time cascade cleaned after each append)")
+    console.print(f"  Discovery meta:      {group_metadata_source}")
     console.print(f"  Log level:           {log_level.value.upper()}\n")
 
     fixed_resolved = fixed_dir or (output_dir / "fixed_fits")
@@ -557,6 +592,7 @@ def dewarp_convert(
                 cascade_fn=None,
                 verbose=verbose,
                 progress_callback=None,
+                group_metadata_source=group_metadata_source,
             )
         else:
             n_staged, time_keys = run_cascade_per_time_group(
@@ -571,6 +607,7 @@ def dewarp_convert(
                 bright_source_flux_qa=bright_source_flux_qa,
                 write=write,
                 target_size=target_size,
+                group_metadata_source=group_metadata_source,
             )
     except ImportError as e:
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
@@ -611,6 +648,7 @@ def dewarp_convert(
         duplicate_resolver=None,
         discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
+        group_metadata_source=group_metadata_source,
     )
 
     console.print("[bold cyan]OVRO-LWA FITS → Zarr Conversion[/bold cyan]")
@@ -622,6 +660,7 @@ def dewarp_convert(
     console.print(f"  Mode:             {'REBUILD' if rebuild else 'APPEND'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
+    console.print(f"  Discovery meta:   {group_metadata_source}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     _execute_fits_to_zarr_conversion(config, log_level=log_level)

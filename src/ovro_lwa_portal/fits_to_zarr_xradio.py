@@ -42,10 +42,11 @@ Library usage
 Notes
 -----
 * Discovery groups files by observation time and by a **23~kHz binned** frequency key
-  from FITS headers (so Hz-level jitter does not create extra ``frequency`` planes for
-  one subband). Multiple files in the same (time, bin) without a duplicate resolver
-  keep the first and skip the rest (with a warning). Filename parsing is only used as
-  a fallback when header metadata is missing.
+  (from FITS headers when ``group_metadata_source`` is ``"fits"``, or from basename
+  ``_NNNMHz_`` when ``group_metadata_source`` is ``"filename"``), so Hz-level jitter does
+  not create extra ``frequency`` planes for one subband. Multiple files in the same
+  (time, bin) without a duplicate resolver keep the first and skip the rest (with a warning).
+  With ``"fits"``, filename parsing is a fallback when header metadata is missing.
 * LM grids must match across time steps after global and per-step mixed-resolution normalization;
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
@@ -622,9 +623,38 @@ def _extract_group_metadata(
     return time_key, frequency_hz, notes
 
 
-def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
-    """Sort key for deterministic frequency ordering with fallback."""
-    _, frequency_hz, _ = _extract_group_metadata(fp)
+def _extract_group_metadata_filename_only(fp: Path) -> Tuple[Optional[str], Optional[float], List[str]]:
+    """Time and frequency for discovery using only the basename (no FITS I/O).
+
+    Observation time comes from :func:`_time_key_from_filename` (``-image-YYYYMMDD_HHMMSS``).
+    Subband frequency is ``int(MHz) * 1e6`` from :func:`_mhz_from_name` when the
+    ``_NNNMHz_`` / ``_NNNMHz-`` pattern is present.
+
+    Returns
+    -------
+    Tuple[Optional[str], Optional[float], List[str]]
+        ``(time_key, frequency_hz, notes)``. ``frequency_hz`` is ``None`` when no MHz
+        token appears in the filename (same sentinel behavior as :func:`_mhz_from_name`).
+    """
+    notes: List[str] = []
+    time_key = _time_key_from_filename(fp)
+    mhz = _mhz_from_name(fp)
+    frequency_hz: Optional[float] = None
+    if mhz != 10**9:
+        frequency_hz = float(mhz * 1_000_000)
+    else:
+        notes.append("frequency-from-filename-missing")
+    return time_key, frequency_hz, notes
+
+
+def _discovery_frequency_sort_tuple(
+    fp: Path, *, group_metadata_source: Literal["fits", "filename"]
+) -> Tuple[float, str]:
+    """Sort key for deterministic frequency ordering (header+filename vs filename-only)."""
+    if group_metadata_source == "filename":
+        _, frequency_hz, _ = _extract_group_metadata_filename_only(fp)
+    else:
+        _, frequency_hz, _ = _extract_group_metadata(fp)
     if frequency_hz is None:
         return (float(10**15), fp.name)
     return (float(frequency_hz), fp.name)
@@ -915,7 +945,12 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
             raise last_error
 
 
-def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
+def _get_fixed_paths(
+    files: List[Path],
+    fixed_dir: Path,
+    *,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
+) -> List[Path]:
     """Get paths to fixed FITS files, assuming they already exist.
 
     This function assumes that headers have already been fixed using
@@ -928,6 +963,9 @@ def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
         List of FITS file paths (may be original or already-fixed files).
     fixed_dir : Path
         Directory containing the ``*_fixed.fits`` files.
+    group_metadata_source
+        Same as :func:`_discover_groups`: ``"fits"`` uses header-backed frequency sort keys;
+        ``"filename"`` uses basename MHz only (no FITS I/O).
 
     Returns
     -------
@@ -935,7 +973,8 @@ def _get_fixed_paths(files: List[Path], fixed_dir: Path) -> List[Path]:
         List of paths to fixed FITS files, sorted by frequency.
     """
     fixed_paths: List[Path] = []
-    for f in sorted(files, key=_frequency_sort_tuple):
+    sort_key = lambda p: _discovery_frequency_sort_tuple(p, group_metadata_source=group_metadata_source)
+    for f in sorted(files, key=sort_key):
         if f.name.endswith("_fixed.fits"):
             fixed_paths.append(f)
         else:
@@ -949,6 +988,7 @@ def fix_fits_headers(
     fixed_dir: Path,
     *,
     skip_existing: bool = True,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> List[Path]:
     """Fix FITS headers for a list of files, creating ``*_fixed.fits`` files.
 
@@ -966,6 +1006,9 @@ def fix_fits_headers(
     skip_existing : bool, optional
         If True, skip files that already have corresponding fixed versions.
         Default is True.
+    group_metadata_source
+        Frequency sort order for processing files (see :func:`_discover_groups`).
+        Default ``"fits"`` uses header-backed keys; ``"filename"`` uses basename MHz only.
 
     Returns
     -------
@@ -992,7 +1035,8 @@ def fix_fits_headers(
     fixed_dir.mkdir(parents=True, exist_ok=True)
     fixed_paths: List[Path] = []
 
-    for f in sorted(files, key=_frequency_sort_tuple):
+    sort_key = lambda p: _discovery_frequency_sort_tuple(p, group_metadata_source=group_metadata_source)
+    for f in sorted(files, key=sort_key):
         if f.name.endswith("_fixed.fits"):
             # Already fixed, use as-is
             fixed_paths.append(f)
@@ -1376,6 +1420,7 @@ def _load_global_lm_reference_dataset(
     chunk_lm: int,
     fix_headers_on_demand: bool,
     target_size: int | None = None,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> xr.Dataset:
     """Load the dataset whose LM grid has the largest shape across *all* time steps.
 
@@ -1395,9 +1440,12 @@ def _load_global_lm_reference_dataset(
         # Header LM dimensions (NAXIS1/NAXIS2) are sufficient for choosing
         # the global reference grid and dramatically reduce temporary disk use.
         if fix_headers_on_demand:
-            shape_paths = sorted(files, key=_frequency_sort_tuple)
+            sort_key = lambda p: _discovery_frequency_sort_tuple(
+                p, group_metadata_source=group_metadata_source
+            )
+            shape_paths = sorted(files, key=sort_key)
         else:
-            shape_paths = _get_fixed_paths(files, fixed_dir)
+            shape_paths = _get_fixed_paths(files, fixed_dir, group_metadata_source=group_metadata_source)
         for fp in shape_paths:
             candidates.append((fp, _peek_lm_shape(fp)))
 
@@ -1641,6 +1689,7 @@ def _discover_groups(
     *,
     freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
     time_key_source: Literal["header", "filename"] = "filename",
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> Dict[str, List[Path]]:
     """Group input FITS by observation time and frequency.
 
@@ -1686,7 +1735,10 @@ def _discover_groups(
     by_time: Dict[str, List[Path]] = {}
     by_time_freq: Dict[str, Dict[int, List[Path]]] = {}
     for f in sorted(in_dir.glob("*.fits")):
-        time_key, frequency_hz, notes = _extract_group_metadata(f, time_key_source=time_key_source)
+        if group_metadata_source == "filename":
+            time_key, frequency_hz, notes = _extract_group_metadata_filename_only(f)
+        else:
+            time_key, frequency_hz, notes = _extract_group_metadata(f, time_key_source=time_key_source)
         if time_key is None:
             t_hint = (
                 "-image-YYYYMMDD_HHMMSS in basename, legacy averaged name, or DATE-OBS"
@@ -1727,7 +1779,10 @@ def _discover_groups(
                 time_freq_map[freq_key] = [kept]
                 continue
 
-            _, rep_hz, _ = _extract_group_metadata(candidates[0], time_key_source=time_key_source)
+            if group_metadata_source == "filename":
+                _, rep_hz, _ = _extract_group_metadata_filename_only(candidates[0])
+            else:
+                _, rep_hz, _ = _extract_group_metadata(candidates[0], time_key_source=time_key_source)
             resolver_hz = float(rep_hz) if rep_hz is not None else float(freq_key) * freq_bin_hz
             selected = duplicate_resolver(time_key, resolver_hz, candidates.copy())
             if selected not in candidates:
@@ -1758,8 +1813,9 @@ def _discover_groups(
             logger.warning(f"Using fallback metadata for {f.name}: {', '.join(notes)}")
         by_time.setdefault(time_key, []).append(f)
 
+    sort_key = lambda p: _discovery_frequency_sort_tuple(p, group_metadata_source=group_metadata_source)
     for time_key, files in by_time.items():
-        by_time[time_key] = sorted(files, key=_frequency_sort_tuple)
+        by_time[time_key] = sorted(files, key=sort_key)
     return by_time
 
 
@@ -1770,6 +1826,7 @@ def _combine_time_step(
     chunk_lm: int,
     fix_headers_on_demand: bool = True,
     lm_reference_ds: Optional[xr.Dataset] = None,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> Tuple[xr.Dataset, List[float], List[Path]]:
     """Create a single-time dataset by combining frequency slices from subbands.
 
@@ -1788,6 +1845,9 @@ def _combine_time_step(
         If provided, regrid all slices to this dataset's ``l``/``m`` grid (used for
         a conversion-wide max-shape reference). If omitted, the largest slice in
         this time step is the reference.
+    group_metadata_source
+        Same as :func:`_discover_groups` for deterministic frequency ordering when fixing
+        headers or resolving ``*_fixed.fits`` paths.
 
     Returns
     -------
@@ -1796,16 +1856,19 @@ def _combine_time_step(
         newly-created ``*_fixed.fits`` paths for optional cleanup).
     """
     created_fixed_paths: List[Path] = []
+    sort_key = lambda p: _discovery_frequency_sort_tuple(p, group_metadata_source=group_metadata_source)
     if fix_headers_on_demand:
         existed_before: Dict[Path, bool] = {}
-        for f in sorted(files, key=_frequency_sort_tuple):
+        for f in sorted(files, key=sort_key):
             if f.name.endswith("_fixed.fits"):
                 continue
             candidate = fixed_dir / (f.stem + "_fixed.fits")
             existed_before[candidate] = candidate.exists()
         # Fix headers if needed (skips existing fixed files)
-        fixed_paths = fix_fits_headers(files, fixed_dir, skip_existing=True)
-        for f in sorted(files, key=_frequency_sort_tuple):
+        fixed_paths = fix_fits_headers(
+            files, fixed_dir, skip_existing=True, group_metadata_source=group_metadata_source
+        )
+        for f in sorted(files, key=sort_key):
             if f.name.endswith("_fixed.fits"):
                 continue
             candidate = fixed_dir / (f.stem + "_fixed.fits")
@@ -1813,7 +1876,7 @@ def _combine_time_step(
                 created_fixed_paths.append(candidate)
     else:
         # Just get the paths to already-fixed files
-        fixed_paths = _get_fixed_paths(files, fixed_dir)
+        fixed_paths = _get_fixed_paths(files, fixed_dir, group_metadata_source=group_metadata_source)
 
     xds_list: List[xr.Dataset] = []
     freqs_seen: List[float] = []
@@ -2289,6 +2352,7 @@ def convert_fits_dir_to_zarr(
     time_keys_only: Optional[Sequence[str]] = None,
     lm_reference_ds: Optional[xr.Dataset] = None,
     lm_reference_target_size: int | None = None,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -2338,6 +2402,11 @@ def convert_fits_dir_to_zarr(
         When building the global LM reference (``lm_reference_ds`` is None), reproject
         that reference onto this square grid size. Use the same value as dewarp
         ``target_size`` so staged FITS and the Zarr LM grid stay aligned.
+    group_metadata_source
+        ``"fits"`` (default): discover and sort by time/frequency using FITS headers
+        (with filename fallbacks) as in :func:`_discover_groups`. ``"filename"``: group
+        and order files using only basename ``-image-`` time and ``_NNNMHz_`` tokens,
+        avoiding ``fits.getheader`` during discovery and frequency sorting.
 
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
@@ -2381,6 +2450,7 @@ def convert_fits_dir_to_zarr(
         input_dir,
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
+        group_metadata_source=group_metadata_source,
     )
     if time_keys_only is not None:
         allowed = {str(k) for k in time_keys_only}
@@ -2395,7 +2465,10 @@ def convert_fits_dir_to_zarr(
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
-        freqs_hz = [_extract_group_metadata(p)[1] for p in v]
+        if group_metadata_source == "filename":
+            freqs_hz = [_extract_group_metadata_filename_only(p)[1] for p in v]
+        else:
+            freqs_hz = [_extract_group_metadata(p)[1] for p in v]
         logger.info(f"  time {k}: {len(v)} file(s), frequencies (Hz): {freqs_hz}")
 
     if not by_time:
@@ -2410,6 +2483,7 @@ def convert_fits_dir_to_zarr(
             chunk_lm=chunk_lm,
             fix_headers_on_demand=fix_headers_on_demand,
             target_size=lm_reference_target_size,
+            group_metadata_source=group_metadata_source,
         )
     lm_reference = (lm_ref_ds["l"].values.copy(), lm_ref_ds["m"].values.copy())
 
@@ -2454,6 +2528,7 @@ def convert_fits_dir_to_zarr(
             chunk_lm=chunk_lm,
             fix_headers_on_demand=fix_headers_on_demand,
             lm_reference_ds=lm_ref_ds,
+            group_metadata_source=group_metadata_source,
         )
         xds_t = _reindex_time_step_to_expected_frequencies(xds_t, expected_frequencies_hz)
         logger.info(f"  combined dims: {dict(xds_t.sizes)}")

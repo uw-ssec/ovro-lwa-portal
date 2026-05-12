@@ -6,7 +6,7 @@ import logging
 import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
     _discover_groups,
@@ -157,14 +157,18 @@ def run_cascade_per_time_group(
     write: bool = True,
     target_size: int | None = None,
     clear_staging: bool = True,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> tuple[int, list[str]]:
     """Run ``flow_cascade73MHz`` once per observation-time group and stage outputs.
 
-    FITS under *input_dir* are grouped like :func:`convert_fits_dir_to_zarr`, except the
-    time key prefers the basename ``-image-YYYYMMDD_HHMMSS`` stamp when present (so
-    multi-band images that share a pipeline image id stay in one group even if
-    ``DATE-OBS`` differs between symlink targets). If that pattern is missing, grouping
-    falls back to ``DATE-OBS`` like the Zarr ingest path.
+    FITS under *input_dir* are grouped like :func:`convert_fits_dir_to_zarr`. With the
+    default ``group_metadata_source="fits"``, the time key prefers the basename
+    ``-image-YYYYMMDD_HHMMSS`` stamp when present (so multi-band images that share a pipeline
+    image id stay in one group even if ``DATE-OBS`` differs between symlink targets). If that
+    pattern is missing, grouping falls back to ``DATE-OBS`` like the Zarr ingest path.
+    Pass ``group_metadata_source="filename"`` to infer time and subband **only** from the
+    basename (no FITS header reads during discovery); that requires the ``-image-`` stamp and
+    ``_NNNMHz_`` tokens when frequency bins matter.
 
     For each time key, all subband files in that group are passed as ``image_filenames`` to
     ``image_plane_correction.flow.flow_cascade73MHz`` with ``outroot=cascade_parent / time_key``.
@@ -184,7 +188,12 @@ def run_cascade_per_time_group(
         Input FITS directory, per-time cascade output parent, and flat staging dir.
     discovery_freq_bin_hz, duplicate_resolver
         Passed to :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups` (with
-        ``time_key_source="filename"`` so basename image times drive groups).
+        ``time_key_source="filename"`` so basename image times drive groups when
+        ``group_metadata_source`` is ``"fits"``).
+    group_metadata_source
+        ``"fits"`` or ``"filename"`` for :func:`~ovro_lwa_portal.fits_to_zarr_xradio._discover_groups`.
+        Use ``"filename"`` to avoid FITS header reads during discovery when basenames carry
+        ``-image-`` time and ``_NNNMHz_`` subband tags.
     cascade_fn
         Callable with the same keyword interface as
         ``image_plane_correction.flow.flow_cascade73MHz``.
@@ -226,6 +235,7 @@ def run_cascade_per_time_group(
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
         time_key_source="filename",
+        group_metadata_source=group_metadata_source,
     )
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
@@ -274,6 +284,7 @@ def dewarp_and_convert_append_each_time(
     cascade_fn: Callable[..., Any] | None = None,
     verbose: bool = False,
     progress_callback: Callable[[str, int, int, str], None] | None = None,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> tuple[int, list[str]]:
     """Dewarp each time group, append its Zarr slice, then clean staging/cascade for that time.
 
@@ -283,6 +294,10 @@ def dewarp_and_convert_append_each_time(
     that step only, then remove ``{tkey}__*.fits`` from *staging_dir* and delete
     ``cascade_parent / time_key`` after each successful Zarr append (same intent as
     ``cleanup_fixed_fits`` during convert: lower peak disk use for incremental runs).
+
+    Pass ``group_metadata_source="filename"`` to align with
+    :func:`run_cascade_per_time_group` when raw OVRO basenames carry ``-image-`` and
+    ``_NNNMHz_`` tags so discovery avoids FITS header reads.
     """
     from ovro_lwa_portal.ingest.core import FITSToZarrConverter, ConversionConfig
 
@@ -297,6 +312,7 @@ def dewarp_and_convert_append_each_time(
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
         time_key_source="filename",
+        group_metadata_source=group_metadata_source,
     )
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
@@ -308,6 +324,7 @@ def dewarp_and_convert_append_each_time(
         chunk_lm=chunk_lm,
         fix_headers_on_demand=fix_headers_on_demand,
         target_size=target_size,
+        group_metadata_source=group_metadata_source,
     ).copy(deep=True)
 
     out_zarr = output_dir / zarr_name
@@ -345,6 +362,7 @@ def dewarp_and_convert_append_each_time(
             verbose=verbose,
             time_keys_only=(tkey,),
             lm_reference_ds=lm_ref_ds,
+            group_metadata_source=group_metadata_source,
         )
         FITSToZarrConverter(config, progress_callback=progress_callback).convert()
         first_zarr_write = False
