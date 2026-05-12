@@ -35,6 +35,15 @@ if TYPE_CHECKING:
 # keeping pathologically large results lazy.
 _EAGER_LOAD_THRESHOLD = 10 * 1024 * 1024  # bytes
 
+# :meth:`_compute_pixel_track_batched_radec_grid` loads RA/Dec in
+# ``(time_chunk, m, l)`` blocks.  Limits:
+#   * ``_MAX_PIXEL_TRACK_PLANE_ELEMENTS`` — max ``m * l`` for one time slice; if
+#     larger, fall back to per-time :meth:`_compute_pixel_at_time`.
+#   * ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` — max ``time_chunk * m * l`` per Dask
+#     ``compute`` (per field); two fields are computed together per chunk.
+_MAX_PIXEL_TRACK_PLANE_ELEMENTS = 72_000_000
+_MAX_PIXEL_TRACK_CHUNK_ELEMENTS = 40_000_000
+
 
 def _maybe_load(da: xr.DataArray) -> xr.DataArray:
     """Eagerly load a dask-backed DataArray if it is below the size threshold."""
@@ -336,7 +345,13 @@ class RadportAccessor:
         n_m: int,
         n_times: int,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-        """Batched (time, m, l) nearest-pixel search; ``None`` to fall back to per-time loop."""
+        """Batched (time, m, l) nearest-pixel search; ``None`` to fall back to per-time loop.
+
+        Loads RA/Dec in ``(time_chunk, m, l)`` blocks.  Each chunk has at most
+        ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` samples per field; a single ``(m, l)``
+        plane may be at most ``_MAX_PIXEL_TRACK_PLANE_ELEMENTS`` samples (else
+        ``None``).  See module constants for defaults.
+        """
         from astropy.coordinates import EarthLocation
 
         if observatory is None:
@@ -386,47 +401,81 @@ class RadportAccessor:
 
         if "time" not in ra_b.dims or "time" not in dec_b.dims:
             return None
+
         try:
             ra_bt = ra_b.transpose("time", "m", "l")
             dec_bt = dec_b.transpose("time", "m", "l")
         except (KeyError, ValueError):
             return None
 
-        ra_da = ra_bt.data
-        dec_da = dec_bt.data
-        if hasattr(ra_da, "compute"):
-            ra_all = np.asarray(ra_da.compute(), dtype=np.float64)
-        else:
-            ra_all = np.asarray(ra_da, dtype=np.float64)
-        if hasattr(dec_da, "compute"):
-            dec_all = np.asarray(dec_da.compute(), dtype=np.float64)
-        else:
-            dec_all = np.asarray(dec_da, dtype=np.float64)
-        if ra_all.shape != dec_all.shape:
-            dec_all = np.broadcast_to(dec_all, ra_all.shape)
-        if ra_all.shape[0] != n_times:
+        nt_sz = int(ra_bt.sizes["time"])
+        nm_sz = int(ra_bt.sizes["m"])
+        nl_sz = int(ra_bt.sizes["l"])
+        spatial = nm_sz * nl_sz
+        if spatial == 0 or spatial > _MAX_PIXEL_TRACK_PLANE_ELEMENTS:
+            return None
+        if nt_sz != n_times:
             return None
 
-        dra = (ra_all - float(ra) + 180.0) % 360.0 - 180.0
-        ddec = dec_all - float(dec)
-        cos_dec = np.cos(np.deg2rad(dec_all))
-        dist2 = dra * dra * cos_dec * cos_dec + ddec * ddec
-        dist2 = np.where(np.isfinite(ra_all) & np.isfinite(dec_all), dist2, np.inf)
-        dist2[~horiz_ok, :, :] = np.inf
+        chunk_nt = max(1, min(nt_sz, _MAX_PIXEL_TRACK_CHUNK_ELEMENTS // spatial))
 
-        nm, nl = int(ra_all.shape[1]), int(ra_all.shape[2])
-        flat = np.argmin(dist2.reshape(n_times, nm * nl), axis=1)
-        mi = (flat // nl).astype(np.intp)
-        li = (flat % nl).astype(np.intp)
+        l_indices = np.full(nt_sz, n_l, dtype=int)
+        m_indices = np.full(nt_sz, n_m, dtype=int)
+        visible = np.zeros(nt_sz, dtype=bool)
 
-        row_min = dist2.reshape(n_times, nm * nl)[np.arange(n_times), flat]
-        in_bounds = (li >= 0) & (li < n_l) & (mi >= 0) & (mi < n_m)
-        visible = horiz_ok & np.isfinite(row_min) & in_bounds
+        for t0 in range(0, nt_sz, chunk_nt):
+            t1 = min(t0 + chunk_nt, nt_sz)
+            ra_sl = ra_bt.isel(time=slice(t0, t1))
+            dec_sl = dec_bt.isel(time=slice(t0, t1))
 
-        l_indices = np.full(n_times, n_l, dtype=int)
-        m_indices = np.full(n_times, n_m, dtype=int)
-        l_indices[visible] = li[visible]
-        m_indices[visible] = mi[visible]
+            ra_da = ra_sl.data
+            dec_da = dec_sl.data
+            ra_lazy = hasattr(ra_da, "compute")
+            dec_lazy = hasattr(dec_da, "compute")
+            if ra_lazy or dec_lazy:
+                from dask import compute as dask_compute
+
+                ra_raw, dec_raw = dask_compute(ra_da, dec_da)
+                ra_blk = np.asarray(ra_raw, dtype=np.float64)
+                dec_blk = np.asarray(dec_raw, dtype=np.float64)
+            else:
+                ra_blk = np.asarray(ra_da, dtype=np.float64)
+                dec_blk = np.asarray(dec_da, dtype=np.float64)
+
+            if ra_blk.shape != dec_blk.shape:
+                dec_blk = np.broadcast_to(dec_blk, ra_blk.shape)
+            nchunk = int(ra_blk.shape[0])
+            if nchunk != t1 - t0:
+                return None
+            if int(ra_blk.shape[1]) != nm_sz or int(ra_blk.shape[2]) != nl_sz:
+                return None
+
+            horiz_chunk = horiz_ok[t0:t1]
+
+            dra = (ra_blk - float(ra) + 180.0) % 360.0 - 180.0
+            ddec = dec_blk - float(dec)
+            cos_dec = np.cos(np.deg2rad(dec_blk))
+            dist2 = dra * dra * cos_dec * cos_dec + ddec * ddec
+            dist2 = np.where(
+                np.isfinite(ra_blk) & np.isfinite(dec_blk), dist2, np.inf
+            )
+            dist2[~horiz_chunk, :, :] = np.inf
+
+            nm_b, nl_b = int(ra_blk.shape[1]), int(ra_blk.shape[2])
+            flat = np.argmin(dist2.reshape(nchunk, nm_b * nl_b), axis=1)
+            mi = (flat // nl_b).astype(np.intp)
+            li = (flat % nl_b).astype(np.intp)
+            row_min = dist2.reshape(nchunk, nm_b * nl_b)[np.arange(nchunk), flat]
+            in_bounds = (li >= 0) & (li < n_l) & (mi >= 0) & (mi < n_m)
+            vis_blk = horiz_chunk & np.isfinite(row_min) & in_bounds
+
+            l_sub = np.full(nchunk, n_l, dtype=int)
+            m_sub = np.full(nchunk, n_m, dtype=int)
+            l_sub[vis_blk] = li[vis_blk]
+            m_sub[vis_blk] = mi[vis_blk]
+            l_indices[t0:t1] = l_sub
+            m_indices[t0:t1] = m_sub
+            visible[t0:t1] = vis_blk
 
         return l_indices, m_indices, visible
 
@@ -445,8 +494,8 @@ class RadportAccessor:
         For each dataset time index, uses :meth:`coords_to_pixel` (via
         :meth:`_compute_pixel_at_time`) so pixel selection matches all other
         extraction APIs, except when per-time ``right_ascension`` /
-        ``declination`` grids allow a single batched ``(time, m, l)`` argmin
-        (same horizon and distance rules as :meth:`_compute_pixel_at_time`).
+        ``declination`` grids allow a time-chunked batched ``(time, m, l)``
+        argmin (same horizon and distance rules as :meth:`_compute_pixel_at_time`).
         Before the loop, LST for all times is computed once (see
         :meth:`_ensure_lst_deg_vector_cached`) so the analytical branch does not
         repeat Astropy work per index.
