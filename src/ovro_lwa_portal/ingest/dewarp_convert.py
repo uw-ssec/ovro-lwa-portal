@@ -1,4 +1,4 @@
-"""Dewarp (``flow_cascade73MHz``) staging prior to FITS→Zarr conversion."""
+"""Dewarp (``image_plane_correction.flow.flow_cascade73MHz``) staging before FITS→Zarr."""
 
 from __future__ import annotations
 
@@ -20,24 +20,29 @@ logger = logging.getLogger(__name__)
 
 
 def import_flow_cascade73mhz() -> Callable[..., Any]:
-    """Import and return ``flow.flow_cascade73MHz``.
+    """Import and return ``image_plane_correction.flow.flow_cascade73MHz``.
 
     Raises
     ------
     ImportError
-        If ``flow`` is not installed or does not expose ``flow_cascade73MHz``.
+        If ``image_plane_correction`` is not installed, or ``flow`` has no
+        ``flow_cascade73MHz``.
     """
     try:
-        from image_plane_correction import flow
+        from image_plane_correction import flow as flow_mod
     except ImportError as e:
         msg = (
-            "The dewarp-convert command requires the `flow` package providing "
-            "`flow.flow_cascade73MHz`. Install it in your environment."
+            "Could not import `image_plane_correction.flow` (install the "
+            "`image-plane-correction` / `image_plane_correction` package in the "
+            "same Python environment you use to run `ovro-ingest`)."
         )
         raise ImportError(msg) from e
-    fn = getattr(flow, "flow_cascade73MHz", None)
+    fn = getattr(flow_mod, "flow_cascade73MHz", None)
     if fn is None:
-        msg = "The installed `flow` package has no attribute `flow_cascade73MHz`."
+        msg = (
+            "`image_plane_correction.flow` has no attribute `flow_cascade73MHz`. "
+            "Check your image_plane_correction version."
+        )
         raise ImportError(msg)
     return fn
 
@@ -77,7 +82,7 @@ def run_cascade_per_time_group(
     FITS under *input_dir* are grouped the same way as :func:`convert_fits_dir_to_zarr`
     (see :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups`). For each time
     key, all subband files in that group are passed as ``image_filenames`` to
-    ``flow_cascade73MHz`` with ``outroot=cascade_parent / time_key``.
+    ``image_plane_correction.flow.flow_cascade73MHz`` with ``outroot=cascade_parent / time_key``.
 
     Produced ``*.fits`` (immediate children of *outroot*, else recursive) are linked
     or copied into *staging_dir* as ``{time_key}__{basename}`` so the flat directory
@@ -90,8 +95,9 @@ def run_cascade_per_time_group(
     discovery_freq_bin_hz, duplicate_resolver
         Passed to :func:`ovro_lwa_portal.fits_to_zarr_xradio._discover_groups`.
     cascade_fn
-        Callable with the same keyword interface as ``flow.flow_cascade73MHz``.
-        Defaults to importing ``flow.flow_cascade73MHz``.
+        Callable with the same keyword interface as
+        ``image_plane_correction.flow.flow_cascade73MHz``.
+        Defaults to importing that function.
     cleaned, qa, use_best_pb_model, bright_source_flux_qa, write
         Forwarded to *cascade_fn* together with ``image_filenames`` and ``outroot``.
 

@@ -412,8 +412,9 @@ def dewarp_convert(
         None,
         "--cascade-parent",
         help=(
-            "Directory under which per-time ``flow_cascade73MHz`` outputs are written "
-            "(default: OUTPUT_DIR/cascade73MHz)"
+            "Directory under which per-time cascade outputs are written "
+            "(default: OUTPUT_DIR/cascade73MHz); from "
+            "``image_plane_correction.flow.flow_cascade73MHz``"
         ),
         file_okay=False,
         dir_okay=True,
@@ -433,27 +434,30 @@ def dewarp_convert(
     cleaned: bool = typer.Option(
         True,
         "--cleaned/--no-cleaned",
-        help="Forwarded to flow.flow_cascade73MHz",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
     ),
     qa: bool = typer.Option(
         True,
         "--qa/--no-qa",
-        help="Forwarded to flow.flow_cascade73MHz",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
     ),
     use_best_pb_model: bool = typer.Option(
         True,
         "--use-best-pb-model/--no-use-best-pb-model",
-        help="Forwarded to flow.flow_cascade73MHz",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
     ),
     bright_source_flux_qa: bool = typer.Option(
         True,
         "--bright-source-flux-qa/--no-bright-source-flux-qa",
-        help="Forwarded to flow.flow_cascade73MHz",
+        help="Forwarded to image_plane_correction.flow.flow_cascade73MHz",
     ),
     write: bool = typer.Option(
         True,
         "--write/--no-write",
-        help="Forwarded to flow.flow_cascade73MHz (should stay True for file-based handoff)",
+        help=(
+            "Forwarded to image_plane_correction.flow.flow_cascade73MHz "
+            "(keep True for file-based handoff)"
+        ),
     ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
@@ -463,15 +467,16 @@ def dewarp_convert(
         case_sensitive=False,
     ),
 ) -> None:
-    """Dewarp each time's subbands with ``flow_cascade73MHz``, then run Zarr convert.
+    """Dewarp each time's subbands, then run Zarr convert.
 
     FITS in INPUT_DIR are grouped by observation time (same logic as ``convert``).
     For each time key, all subband files in that group are passed to
-    ``flow.flow_cascade73MHz`` with a per-time ``outroot`` under ``--cascade-parent``.
+    ``image_plane_correction.flow.flow_cascade73MHz`` with a per-time ``outroot``
+    under ``--cascade-parent``.
     Resulting ``*.fits`` are staged into ``--staging-dir``, then the usual
     ``ovro-ingest convert`` pipeline runs on that staging directory.
 
-    Requires the external ``flow`` package providing ``flow.flow_cascade73MHz``.
+    Requires the ``image_plane_correction`` package (submodule ``flow``).
 
     \b
     Example:
