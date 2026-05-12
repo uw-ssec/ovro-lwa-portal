@@ -107,6 +107,7 @@ markers = [
     "network: tests requiring network access (deselect with '-m \"not network\"')",
     "osn: tests requiring OSN credentials (deselect with '-m \"not osn\"')",
     "slow: performance tests on production-scale data (deselect with '-m \"not slow\"')",
+    "dewarp: dewarp / cascade workflow (optional image_plane_correction; may be skipped on CI)",
 ]
 
 [tool.mypy]

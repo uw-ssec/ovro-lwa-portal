@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
+from tests.conftest import skip_github_ci_without_image_plane_correction
+
 from ovro_lwa_portal.ingest.dewarp_convert import (
     collect_cascade_fits,
     run_cascade_per_time_group,
@@ -43,6 +45,8 @@ def test_collect_cascade_fits_recursive(tmp_path: Path) -> None:
     assert found[0].name == "c.fits"
 
 
+@skip_github_ci_without_image_plane_correction
+@pytest.mark.dewarp
 def test_run_cascade_per_time_group_fake_cascade(tmp_path: Path) -> None:
     """Staging receives one link per cascade output per time group."""
 
@@ -82,6 +86,8 @@ def test_run_cascade_per_time_group_fake_cascade(tmp_path: Path) -> None:
     assert all("__dewarped_" in p.name for p in staged)
 
 
+@skip_github_ci_without_image_plane_correction
+@pytest.mark.dewarp
 def test_run_cascade_per_time_group_raises_if_no_outputs(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
     raw.mkdir()
