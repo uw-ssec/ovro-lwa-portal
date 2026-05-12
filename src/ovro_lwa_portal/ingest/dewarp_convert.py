@@ -28,7 +28,7 @@ def import_flow_cascade73mhz() -> Callable[..., Any]:
         If ``flow`` is not installed or does not expose ``flow_cascade73MHz``.
     """
     try:
-        import flow
+        from image_plane_correction import flow
     except ImportError as e:
         msg = (
             "The dewarp-convert command requires the `flow` package providing "
