@@ -36,7 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pre-commit",
-    "pytest>=6",
+    "pytest>=7",
     "pytest-cov",
     "pytest-xdist",
     "pytest-mock",
@@ -97,7 +97,10 @@ local_scheme = "no-local-version"
 exclude = ["/tests"]
 
 [tool.pytest.ini_options]
-minversion = "6.0"
+# Prefer the in-repo package under src/ so tests do not pick up a stale
+# site-packages install when running from a git checkout (requires pytest>=7).
+minversion = "7.0"
+pythonpath = ["src"]
 addopts = ["-vvv", "-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = false
 filterwarnings = ["error"]
@@ -202,7 +205,7 @@ gh = ">=2.0.0"
 # Pre-commit feature for code quality and consistency
 [tool.pixi.feature.pre-commit.dependencies]
 pre-commit = ">=4.3.0"
-pytest = ">=6"
+pytest = ">=7"
 pytest-cov = ">=3.0.0"
 nodejs = ">=20"
 
