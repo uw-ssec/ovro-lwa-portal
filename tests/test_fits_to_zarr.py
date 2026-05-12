@@ -1012,6 +1012,114 @@ def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Pat
     assert write_calls == []
 
 
+def test_fix_headers_relabels_singleton_axis_to_stokes_for_4d(tmp_path: Path) -> None:
+    """4D cubes with a mis-tagged length-1 axis must expose a literal ``STOKES`` CTYPE for xradio."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "in4d.fits"
+    out_path = tmp_path / "out4d_fixed.fits"
+    data = np.zeros((1, 1, 4, 4), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 4,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "NAXIS4": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CTYPE4": "TABULAR",
+            "CRVAL1": 180.0,
+            "CRVAL2": 45.0,
+            "CRVAL3": 4.1e7,
+            "CRVAL4": 0.0,
+            "CRPIX1": 2.0,
+            "CRPIX2": 2.0,
+            "CRPIX3": 1.0,
+            "CRPIX4": 1.0,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CDELT3": 1.0,
+            "CDELT4": 1.0,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+            "CUNIT3": "Hz",
+            "CUNIT4": "",
+            "DATE-OBS": "2024-01-01T00:00:00",
+            "RADESYS": "FK5",
+            "EQUINOX": 2000.0,
+            "LONPOLE": 180.0,
+            "TELESCOP": "TEST",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    with fits.open(out_path) as hdul:
+        hdr = hdul[0].header
+        assert hdr["CTYPE4"] == "STOKES"
+        assert hdr["CRVAL4"] == pytest.approx(1.0)
+
+    xds = mod._read_fits_via_xradio(out_path, do_sky_coords=False, compute_mask=False)
+    assert "SKY" in xds.data_vars
+
+
+def test_fix_headers_strips_padded_stokes_ctype_for_xradio(tmp_path: Path) -> None:
+    """Trailing spaces on ``STOKES`` must not break xradio ``ctype.index('STOKES')``."""
+    import numpy as np
+
+    mod = _import_module()
+    in_path = tmp_path / "pad_stokes.fits"
+    out_path = tmp_path / "pad_stokes_fixed.fits"
+    data = np.zeros((1, 1, 4, 4), dtype=np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 4,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "NAXIS4": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CTYPE4": "STOKES   ",
+            "CRVAL1": 180.0,
+            "CRVAL2": 45.0,
+            "CRVAL3": 4.1e7,
+            "CRVAL4": 1.0,
+            "CRPIX1": 2.0,
+            "CRPIX2": 2.0,
+            "CRPIX3": 1.0,
+            "CRPIX4": 1.0,
+            "CDELT1": -0.03,
+            "CDELT2": 0.03,
+            "CDELT3": 1.0,
+            "CDELT4": 1.0,
+            "CUNIT1": "deg",
+            "CUNIT2": "deg",
+            "CUNIT3": "Hz",
+            "CUNIT4": "",
+            "DATE-OBS": "2024-01-01T00:00:00",
+            "RADESYS": "FK5",
+            "EQUINOX": 2000.0,
+            "LONPOLE": 180.0,
+            "TELESCOP": "TEST",
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    mod._fix_headers(in_path, out_path)
+
+    ctypes = [fits.getheader(out_path)[f"CTYPE{i}"] for i in range(1, 5)]
+    assert ctypes[-1] == "STOKES"
+
+    xds = mod._read_fits_via_xradio(out_path, do_sky_coords=False, compute_mask=False)
+    assert "SKY" in xds.data_vars
+
+
 def test_fix_headers_sets_crval_to_fk5_zenith_from_filename_image_stamp(tmp_path: Path):
     """_fix_headers sets CRVAL1/2 from FK5 zenith at ``-image-YYYYMMDD_HHMMSS`` in the basename."""
     import numpy as np

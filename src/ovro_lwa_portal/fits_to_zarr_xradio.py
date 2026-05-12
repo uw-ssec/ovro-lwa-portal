@@ -758,6 +758,36 @@ def _time_key_from_filename(fp: Path) -> Optional[str]:
     return obstime.to_datetime().strftime("%Y%m%d_%H%M%S")
 
 
+def _strip_fits_ctype_cards(hdr: fits.Header) -> None:
+    """Strip FITS ``CTYPEn`` string values of padding.
+
+    xradio's FITS reader uses ``helpers['ctype'].index('STOKES')`` (exact match). Some
+    writers leave trailing spaces in ``CTYPE`` values so the string is not equal to
+    ``'STOKES'``, which raises ``ValueError: 'STOKES' is not in the list``.
+    """
+    nax = int(hdr.get("NAXIS", 0))
+    for i in range(1, nax + 1):
+        key = f"CTYPE{i}"
+        if key not in hdr:
+            continue
+        val = hdr[key]
+        if isinstance(val, str):
+            hdr[key] = val.strip()
+
+
+def _fits_axis_is_freq_like(ctype_u: str) -> bool:
+    u = ctype_u.strip().upper()
+    return u.startswith("FREQ") or u in ("VOPT", "VRAD")
+
+
+def _header_has_exact_stokes_axis(hdr: fits.Header) -> bool:
+    """True if some ``CTYPEn`` is exactly ``STOKES`` (after strip / case fold)."""
+    nax = int(hdr.get("NAXIS", 0))
+    return any(
+        str(hdr.get(f"CTYPE{i}", "")).strip().upper() == "STOKES" for i in range(1, nax + 1)
+    )
+
+
 def _zenith_fk5_crvals_deg(hdr: fits.Header, obstime: Time) -> Optional[Tuple[float, float]]:
     """Return FK5 ``(RA, Dec)`` in degrees for the zenith at ``obstime``, or None if not applicable."""
     ctype1 = str(hdr.get("CTYPE1", "")).strip().upper()
@@ -813,13 +843,35 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         # 2D (RA, DEC) only or 3D (RA, DEC, FREQ) without STOKES; promote so FITS parsing
         # succeeds. Pure 2D images become a 4D (RA, DEC, FREQ, STOKES) singleton cube so
         # xradio also builds ``helpers['frequency']`` (required for velocity coords).
-        ctype_values = [
-            str(hdr.get(f"CTYPE{i}", "")).strip().upper()
-            for i in range(1, int(hdr.get("NAXIS", 0)) + 1)
-        ]
-        has_stokes = any("STOKES" in c for c in ctype_values)
+        #
+        # Strip ``CTYPE`` padding first: xradio uses ``helpers['ctype'].index('STOKES')``
+        # (exact string match). Some writers leave trailing spaces so the value is not
+        # equal to ``'STOKES'``, which raises ``ValueError: 'STOKES' is not in the list``.
+        _strip_fits_ctype_cards(hdr)
+        naxis_in = int(hdr.get("NAXIS", 0))
+        if data is not None and not _header_has_exact_stokes_axis(hdr) and naxis_in == 4:
+            # 4D cubes sometimes carry a length-1 axis mis-labeled (not RA/DEC/FREQ). xradio
+            # still requires a literal ``STOKES`` axis name for polarization metadata.
+            for i in range(1, 5):
+                if int(hdr[f"NAXIS{i}"]) != 1:
+                    continue
+                axu = str(hdr.get(f"CTYPE{i}", "")).strip().upper()
+                if axu.startswith("RA-") or axu.startswith("DEC-"):
+                    continue
+                if _fits_axis_is_freq_like(axu):
+                    continue
+                if axu == "STOKES":
+                    continue
+                hdr[f"CTYPE{i}"] = "STOKES"
+                hdr[f"CRVAL{i}"] = 1.0
+                hdr[f"CRPIX{i}"] = 1.0
+                hdr[f"CDELT{i}"] = 1.0
+                hdr.setdefault(f"CUNIT{i}", "")
+                break
+            _strip_fits_ctype_cards(hdr)
+
         naxis = int(hdr.get("NAXIS", 0))
-        if data is not None and not has_stokes:
+        if data is not None and not _header_has_exact_stokes_axis(hdr):
             if naxis == 3:
                 data = np.expand_dims(data, axis=0)
                 hdr["NAXIS"] = 4
@@ -901,6 +953,8 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
             H["BPA"] = 0.0
         if "BUNIT" not in H:
             H["BUNIT"] = "Jy/beam"
+
+        _strip_fits_ctype_cards(H)
 
         # Write via temporary file + atomic replace to avoid leaving a partial
         # output file when the underlying filesystem intermittently short-writes.
