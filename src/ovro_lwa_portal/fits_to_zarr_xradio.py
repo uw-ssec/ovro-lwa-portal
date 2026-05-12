@@ -125,6 +125,9 @@ def _read_fits_via_xradio(
     raise ``ValueError: 'STOKES' is not in list``. On that specific failure we
     materialize a temporary copy with :func:`_fix_headers` and read again so raw
     paths and stale ``*_fixed.fits`` still work without a separate fix step.
+
+    Pixel data are Dask-delayed reads of that temp path; we :meth:`xarray.Dataset.load`
+    before unlinking so later ``compute()`` does not hit a missing file.
     """
     from xradio.image._util._fits.xds_from_fits import _fits_image_to_xds
 
@@ -153,7 +156,11 @@ def _read_fits_via_xradio(
         tmp_path = Path(tmp_name)
         try:
             _fix_headers(p, tmp_path)
-            return _fits_image_to_xds(str(tmp_path), c, verbose, do_sky_coords, compute_mask)
+            xds = _fits_image_to_xds(str(tmp_path), c, verbose, do_sky_coords, compute_mask)
+            # xradio wraps FITS pixels in dask.delayed reads that still reference
+            # ``tmp_path``; unlinking in ``finally`` before compute would raise ENOENT.
+            xds.load()
+            return xds
         finally:
             try:
                 tmp_path.unlink(missing_ok=True)
