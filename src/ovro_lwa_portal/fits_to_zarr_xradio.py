@@ -1,7 +1,8 @@
 """xradio-powered FITS → Zarr conversion for OVRO-LWA.
 
 This module converts per-time, per-subb and FITS images into a single LM-only Zarr store.
-It uses `xradio` for FITS I/O and Zarr writing, and enforces deterministic ordering by
+It uses `xradio` for FITS I/O (via Astropy-based helpers, not CASA-first ``read_image``)
+and Zarr writing, and enforces deterministic ordering by
 sorting on frequency and time. It also materializes FITS scaling (BSCALE/BZERO) and adds
 a minimal set of header keywords so `xradio` can parse images reliably.
 
@@ -78,7 +79,7 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
-from xradio.image import read_image, write_image
+from xradio.image import write_image
 
 __all__ = [
     "convert_fits_dir_to_zarr",
@@ -88,6 +89,34 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+def _read_fits_via_xradio(
+    path: str | Path,
+    *,
+    chunks: Optional[Dict] = None,
+    verbose: bool = False,
+    do_sky_coords: bool = False,
+    compute_mask: bool = False,
+) -> xr.Dataset:
+    """Load a FITS image as an xradio-style :class:`xarray.Dataset` (FITS-only).
+
+    :func:`xradio.image.read_image` tries a casacore/CASA image read on every path
+    before falling back to FITS. OVRO-LWA ingest is FITS-only, so we call xradio's
+    Astropy FITS helper directly to skip that probe and any associated stderr/log
+    noise.
+
+    Notes
+    -----
+    Uses the private ``_fits_image_to_xds`` from xradio; it may move between
+    xradio releases—keep the dependency pin exercised in CI.
+    """
+    from xradio.image._util._fits.xds_from_fits import _fits_image_to_xds
+
+    c: Dict = {} if chunks is None else chunks
+    p = os.path.expanduser(str(path))
+    return _fits_image_to_xds(p, c, verbose, do_sky_coords, compute_mask)
+
 
 # Grouping key for "same subband" when discovering FITS. Raw ``int(round(hz))`` can differ
 # by 1--1000+ Hz between files for the same 55~MHz (etc.) product; that produced multiple
@@ -956,7 +985,7 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     and persist the exact WCS header for FITS-free WCSAxes plotting later.
 
     This function:
-      • reads pixels via :func:`xradio.image.read_image` with sky coords disabled
+      • reads pixels via :func:`_read_fits_via_xradio` (FITS-only; sky coords off)
       • evaluates RA/Dec at pixel centers (origin=0) using the 2D celestial WCS
       • attaches 2D ``right_ascension``/``declination`` coordinates (deg; FK5/J2000)
       • stores the exact celestial WCS header string redundantly so it survives merges
@@ -992,8 +1021,8 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     * Uses :class:`numpy.bytes_` (NumPy ≥ 2.0) for the scalar variable payload.
 
     """
-    # 1) Load image pixels via xradio (no sky coord math here)
-    xds = read_image(str(fp), do_sky_coords=False, compute_mask=False)
+    # 1) Load image pixels via xradio FITS path only (no CASA probe)
+    xds = _read_fits_via_xradio(fp, do_sky_coords=False, compute_mask=False)
 
     # 2) Open FITS header and extract 2D celestial WCS matching the image plane
     with fits.open(str(fp), memmap=True) as hdul:
@@ -1259,7 +1288,9 @@ def _resample_lm_reference_to_target_size(
             data=np.zeros((target_size, target_size), dtype=np.float32),
             header=hdr,
         ).writeto(tmp_path, overwrite=True)
-        shell = read_image(str(tmp_path), do_sky_coords=False, compute_mask=False).load()
+        shell = _read_fits_via_xradio(
+            tmp_path, do_sky_coords=False, compute_mask=False
+        ).load()
     finally:
         tmp_path.unlink(missing_ok=True)
 

@@ -45,8 +45,8 @@ __all__ = ["main", "app"]
 def suppress_stderr() -> Iterator[None]:
     """Context manager to temporarily suppress stderr output.
 
-    This is useful for suppressing C++ library warnings from casacore
-    that cannot be controlled via Python logging.
+    Some native dependencies still write to stderr outside Python logging;
+    this keeps non-debug CLI runs quiet during conversion.
     """
     # Save the original stderr file descriptor
     stderr_fd = sys.stderr.fileno()
@@ -730,7 +730,7 @@ def fix_headers(
                     description=f"Fixing {f.name}..."
                 )
 
-                # Fix this single file (suppress CASA stderr warnings unless in debug mode)
+                # Fix this single file (suppress native stderr unless in debug mode)
                 if log_level != LogLevel.DEBUG:
                     with suppress_stderr():
                         result = fix_fits_headers([f], fixed_dir, skip_existing=skip_existing)
