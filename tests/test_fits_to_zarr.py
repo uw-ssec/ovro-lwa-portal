@@ -19,7 +19,7 @@ def _import_module():
 
 
 def test_time_does_not_fall_back_to_filename(tmp_path: Path):
-    """Time grouping should require DATE-OBS (no filename-based time fallback)."""
+    """Without ``-image-YYYYMMDD_HHMMSS`` or DATE-OBS, time key stays unknown."""
     mod = _import_module()
     fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
@@ -327,7 +327,7 @@ def test_extract_group_metadata_from_header(tmp_path: Path):
 
 
 def test_extract_group_metadata_filename_time_overrides_header(tmp_path: Path) -> None:
-    """Basename ``-image-`` stamp can define the time key when requested."""
+    """Basename ``-image-`` stamp is the default time key and overrides DATE-OBS."""
     mod = _import_module()
     fpath = tmp_path / "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_x.fits"
     fits.PrimaryHDU(
@@ -335,11 +335,14 @@ def test_extract_group_metadata_filename_time_overrides_header(tmp_path: Path) -
         header=fits.Header({"DATE-OBS": "2024-12-21T00:00:00", "RESTFREQ": 18e6}),
     ).writeto(fpath)
 
-    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath, time_key_source="filename")
+    time_key, frequency_hz, notes = mod._extract_group_metadata(fpath)
 
     assert time_key == "20241221_102109"
     assert frequency_hz == pytest.approx(18e6)
-    assert "time-from-filename" in notes
+    assert notes == []
+
+    time_header, _, _ = mod._extract_group_metadata(fpath, time_key_source="header")
+    assert time_header == "20241221_000000"
 
 
 def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> None:
@@ -357,7 +360,7 @@ def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> N
     ).writeto(b)
 
     by_header = mod._discover_groups(tmp_path, time_key_source="header")
-    by_name = mod._discover_groups(tmp_path, time_key_source="filename")
+    by_name = mod._discover_groups(tmp_path)
 
     assert len(by_header) == 2
     assert len(by_name) == 1
@@ -366,7 +369,7 @@ def test_discover_groups_filename_time_merges_same_image_id(tmp_path: Path) -> N
 
 
 def test_extract_group_metadata_requires_date_obs(tmp_path: Path):
-    """Grouping requires DATE-OBS; time does not fall back to filenames."""
+    """OVRO-style name without ``-image-`` stamp needs DATE-OBS for the time key."""
     mod = _import_module()
     fpath = tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(fpath)
@@ -665,7 +668,7 @@ def test_rechunk_lm_for_zarr_fixes_nonuniform_coord_time_chunks(tmp_path):
 
 
 def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
-    """Files missing DATE-OBS should be skipped (no filename time fallback)."""
+    """Files missing DATE-OBS and the ``-image-`` time stamp should be skipped."""
     mod = _import_module()
     fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"SIMPLE": True})).writeto(
         tmp_path / "20240524_050009_41MHz_averaged_20000_iterations-I-image.fits"

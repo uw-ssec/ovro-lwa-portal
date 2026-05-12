@@ -534,7 +534,7 @@ def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
 def _extract_group_metadata(
     fp: Path,
     *,
-    time_key_source: Literal["header", "filename"] = "header",
+    time_key_source: Literal["header", "filename"] = "filename",
 ) -> Tuple[Optional[str], Optional[float], List[str]]:
     """Extract grouping metadata from headers with optional filename time preference.
 
@@ -570,7 +570,6 @@ def _extract_group_metadata(
         tk_fn = _time_key_from_filename(fp)
         if tk_fn is not None:
             time_key = tk_fn
-            notes.append("time-from-filename")
         elif header is not None and time_key is None:
             time_key = _time_key_from_header(header)
 
@@ -1353,7 +1352,7 @@ def _discover_groups(
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
     *,
     freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
-    time_key_source: Literal["header", "filename"] = "header",
+    time_key_source: Literal["header", "filename"] = "filename",
 ) -> Dict[str, List[Path]]:
     """Group input FITS by observation time and frequency.
 
