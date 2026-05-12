@@ -76,6 +76,7 @@ def run_cascade_per_time_group(
     use_best_pb_model: bool = True,
     bright_source_flux_qa: bool = True,
     write: bool = True,
+    target_size: int | None = None,
 ) -> tuple[int, list[str]]:
     """Run ``flow_cascade73MHz`` once per observation-time group and stage outputs.
 
@@ -103,8 +104,11 @@ def run_cascade_per_time_group(
         Callable with the same keyword interface as
         ``image_plane_correction.flow.flow_cascade73MHz``.
         Defaults to importing that function.
-    cleaned, qa, use_best_pb_model, bright_source_flux_qa, write
+    cleaned, qa, use_best_pb_model, bright_source_flux_qa, write, target_size
         Forwarded to *cascade_fn* together with ``image_filenames`` and ``outroot``.
+        *target_size* matches ``image_plane_correction`` dewarp entry points
+        (e.g. ``calcflow``, ``flow_cascade73MHz``): side length in pixels for the
+        output raster, or ``None`` for the library default.
 
     Returns
     -------
@@ -159,6 +163,7 @@ def run_cascade_per_time_group(
             bright_source_flux_qa=bright_source_flux_qa,
             write=write,
             outroot=str(outroot),
+            target_size=target_size,
         )
         produced = collect_cascade_fits(outroot)
         if not produced:

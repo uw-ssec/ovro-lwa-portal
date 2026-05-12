@@ -92,6 +92,7 @@ class TestCLI:
         assert "flow_cascade73MHz" in result.stdout
         assert "image_plane_correction" in result.stdout
         assert "--cascade-parent" in result.stdout
+        assert "--target-size" in result.stdout
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""
@@ -203,3 +204,39 @@ class TestCLI:
         assert result.exit_code == 0, result.stdout + result.stderr
         assert captured[0][1] == my_cascade.resolve()
         assert captured[0][2] == my_staging.resolve()
+
+    def test_dewarp_convert_forwards_target_size(self, tmp_path: Path) -> None:
+        """--target-size is passed through to run_cascade_per_time_group."""
+        raw = tmp_path / "raw"
+        raw.mkdir()
+        out = tmp_path / "out"
+        seen: list[Any] = []
+
+        def fake_run_cascade(
+            _input_dir: Path,
+            _cascade_parent: Path,
+            staging_dir: Path,
+            **kwargs: object,
+        ) -> tuple[int, list[str]]:
+            seen.append(kwargs.get("target_size"))
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            (staging_dir / "placeholder.fits").touch()
+            return (1, ["20240601_120000"])
+
+        with (
+            patch(
+                "ovro_lwa_portal.ingest.cli.run_cascade_per_time_group",
+                side_effect=fake_run_cascade,
+            ),
+            patch(
+                "ovro_lwa_portal.ingest.cli._execute_fits_to_zarr_conversion",
+                return_value=out / "dummy.zarr",
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["dewarp-convert", str(raw), str(out), "--target-size", "2048"],
+            )
+
+        assert result.exit_code == 0, result.stdout + result.stderr
+        assert seen == [2048]

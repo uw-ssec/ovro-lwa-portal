@@ -460,6 +460,15 @@ def dewarp_convert(
             "(keep True for file-based handoff)"
         ),
     ),
+    target_size: Optional[int] = typer.Option(
+        None,
+        "--target-size",
+        help=(
+            "Output raster size in pixels (square side length), forwarded to "
+            "image_plane_correction.flow.flow_cascade73MHz / calcflow; omit for library default"
+        ),
+        min=1,
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -496,6 +505,8 @@ def dewarp_convert(
     console.print(f"  Cascade parent:      {cascade_root}")
     console.print(f"  Staging (→ Zarr):    {staging}")
     console.print(f"  Zarr store name:     {zarr_name}")
+    if target_size is not None:
+        console.print(f"  Target size (px):  {target_size}")
     console.print(f"  Log level:           {log_level.value.upper()}\n")
 
     try:
@@ -510,6 +521,7 @@ def dewarp_convert(
             use_best_pb_model=use_best_pb_model,
             bright_source_flux_qa=bright_source_flux_qa,
             write=write,
+            target_size=target_size,
         )
     except ImportError as e:
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")

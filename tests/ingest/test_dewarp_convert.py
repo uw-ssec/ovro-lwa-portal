@@ -122,6 +122,7 @@ def test_run_cascade_per_time_group_passes_absolute_paths_and_outroot(tmp_path: 
         use_best_pb_model: bool,
         bright_source_flux_qa: bool,
         write: bool,
+        target_size: int | None = None,
     ) -> None:
         recorded.append(
             {
@@ -132,6 +133,7 @@ def test_run_cascade_per_time_group_passes_absolute_paths_and_outroot(tmp_path: 
                 "use_best_pb_model": use_best_pb_model,
                 "bright_source_flux_qa": bright_source_flux_qa,
                 "write": write,
+                "target_size": target_size,
             }
         )
         out = Path(outroot)
@@ -172,6 +174,7 @@ def test_run_cascade_per_time_group_passes_absolute_paths_and_outroot(tmp_path: 
     assert call["use_best_pb_model"] is False
     assert call["bright_source_flux_qa"] is False
     assert call["write"] is False
+    assert call["target_size"] is None
 
     expected_outroot = cascade_parent / "20240601_120000"
     assert Path(call["outroot"]) == expected_outroot
@@ -311,3 +314,37 @@ def test_run_cascade_groups_by_basename_image_time_not_header(tmp_path: Path) ->
         "18MHz-I-Deep-Taper-Robust-0-image-20241221_102109_a.fits",
         "73MHz-I-Deep-Taper-Robust-0-image-20241221_102109_b.fits",
     }
+
+
+def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None:
+    recorded: list[int | None] = []
+
+    def cascade_kw(
+        *,
+        image_filenames: Sequence[str],
+        outroot: str,
+        target_size: int | None = None,
+        **_kw: Any,
+    ) -> None:
+        recorded.append(target_size)
+        out = Path(outroot)
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image_filenames[0], out / "one.fits")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_minimal_fits(
+        raw / "one.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+    )
+
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=cascade_kw,
+        target_size=3122,
+    )
+    assert n == 1
+    assert keys == ["20240601_120000"]
+    assert recorded == [3122]
