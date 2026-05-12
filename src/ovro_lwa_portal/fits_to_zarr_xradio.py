@@ -1200,9 +1200,10 @@ def _resample_lm_reference_to_target_size(
     """Reproject spatial planes onto a ``target_size`` square grid in standard ``(l, m)`` order.
 
     ``reproject`` expects a 2D array in FITS memory order ``(NAXIS2, NAXIS1)`` = ``(m, l)``.
-    Variables whose trailing dimensions are ``(l, m)`` (the usual xradio layout) are
-    transposed before and after the call; legacy ``(m, l)`` planes are reprojected as-is
-    then transposed so stored arrays use ``(..., "l", "m")``.
+    Each data variable that includes both ``l`` and ``m`` dimensions is transposed to
+    ``(..., "l", "m")`` before slicing 2D planes so non-trailing layouts (e.g. another axis
+    between ``l`` and ``m``) are still handled. Legacy ``(m, l)`` trailing pairs are
+    normalized by that transpose. Output arrays are stored as ``(..., "l", "m")``.
     """
     if target_size <= 0:
         msg = f"target_size must be positive, got {target_size}"
@@ -1229,17 +1230,16 @@ def _resample_lm_reference_to_target_size(
     for name, dv in xds_mat.data_vars.items():
         if name == "wcs_header_str":
             continue
-        dims = tuple(dv.dims)
-        if len(dims) < 2:
+        if dv.ndim < 2 or not ({"l", "m"} <= set(dv.dims)):
             continue
-        tail = dims[-2:]
-        if tail == ("l", "m"):
-            transpose_for_reproject = True
-        elif tail == ("m", "l"):
-            transpose_for_reproject = False
-        else:
+        try:
+            dv_lm = dv.transpose(..., "l", "m")
+        except ValueError:
             continue
-        arr = np.asarray(dv.values)
+        dims = tuple(dv_lm.dims)
+        if dims[-2:] != ("l", "m"):
+            continue
+        arr = np.asarray(dv_lm.values)
         lead_shape = arr.shape[:-2]
         out_dims = dims[:-2] + ("l", "m")
         if lead_shape:
@@ -1247,19 +1247,23 @@ def _resample_lm_reference_to_target_size(
             out_arr = np.empty(lead_shape + shape_out, dtype=out_dtype)
             for idx in np.ndindex(lead_shape):
                 plane = np.asarray(arr[idx], dtype=np.float64)
-                plane_ml = plane.T if transpose_for_reproject else plane
+                plane_ml = plane.T
                 rep_ml = _reproject_celestial_plane(plane_ml, w_src, w_tgt, shape_out)
                 out_lm = np.asarray(rep_ml).T
                 out_arr[idx] = out_lm.astype(out_dtype, copy=False)
         else:
             plane = np.asarray(arr, dtype=np.float64)
-            plane_ml = plane.T if transpose_for_reproject else plane
+            plane_ml = plane.T
             rep_ml = _reproject_celestial_plane(plane_ml, w_src, w_tgt, shape_out)
             out_arr = np.asarray(rep_ml).T.astype(arr.dtype, copy=False)
         replaced[name] = xr.DataArray(out_arr, dims=out_dims, attrs=dict(dv.attrs))
 
     if not replaced:
-        msg = f"No (…, l, m) or (…, m, l) data variables found to resample in LM reference from {ref_fp}"
+        dv_dims = {k: tuple(v.dims) for k, v in xds_mat.data_vars.items()}
+        msg = (
+            f"No data variables with both 'l' and 'm' dimensions could be resampled "
+            f"for global LM reference from {ref_fp}. data_vars (name -> dims): {dv_dims}"
+        )
         raise RuntimeError(msg)
 
     _strip_axis_cards_above(hdr, max_axis=2)
