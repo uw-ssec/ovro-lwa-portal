@@ -75,11 +75,13 @@ def test_run_cascade_per_time_group_fake_cascade(tmp_path: Path) -> None:
     raw.mkdir()
     cascade_parent = tmp_path / "cascade"
     staging = tmp_path / "staging"
+    # At least one file in the group must carry the ``73MHz`` cascade-reference
+    # token so :func:`_filter_time_groups_without_cascade_reference` keeps the group.
     _write_minimal_fits(
-        raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
     _write_minimal_fits(
-        raw / "b.fits", restfreq_hz=74e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "b_82MHz.fits", restfreq_hz=82e6, date_obs="2024-06-01T12:00:00.0"
     )
 
     n, keys = run_cascade_per_time_group(
@@ -102,7 +104,7 @@ def test_run_cascade_per_time_group_raises_if_no_outputs(tmp_path: Path) -> None
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "only.fits", restfreq_hz=70e6, date_obs="2024-06-02T12:00:00.0"
+        raw / "only_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-02T12:00:00.0"
     )
 
     def noop_cascade(**_kwargs: Any) -> None:
@@ -155,10 +157,12 @@ def test_run_cascade_per_time_group_passes_absolute_paths_and_outroot(tmp_path: 
     cascade_parent = tmp_path / "cascade"
     staging = tmp_path / "staging"
     _write_minimal_fits(
-        raw / "low.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "low_70MHz.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
     )
+    # ``high_73MHz`` is the cascade-reference subband; without a 73 MHz file the
+    # whole group would now be filtered out before the cascade runs.
     _write_minimal_fits(
-        raw / "high.fits", restfreq_hz=74e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "high_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
 
     n, keys = run_cascade_per_time_group(
@@ -189,12 +193,12 @@ def test_run_cascade_per_time_group_passes_absolute_paths_and_outroot(tmp_path: 
     assert Path(call["outroot"]) == expected_outroot
     assert Path(call["outroot"]).is_dir()
 
-    # Frequency order: 70 MHz before 74 MHz (same as _discover_groups sort).
+    # Frequency order: 70 MHz before 73 MHz (same as _discover_groups sort).
     paths = [Path(p) for p in call["image_filenames"]]
     assert all(p.is_absolute() for p in paths)
-    assert [p.name for p in paths] == ["low.fits", "high.fits"]
-    assert paths[0].resolve() == (raw / "low.fits").resolve()
-    assert paths[1].resolve() == (raw / "high.fits").resolve()
+    assert [p.name for p in paths] == ["low_70MHz.fits", "high_73MHz.fits"]
+    assert paths[0].resolve() == (raw / "low_70MHz.fits").resolve()
+    assert paths[1].resolve() == (raw / "high_73MHz.fits").resolve()
 
     staged = sorted(staging.glob("*.fits"))
     assert [p.name for p in staged] == [
@@ -216,11 +220,13 @@ def test_run_cascade_per_time_group_multiple_time_keys(tmp_path: Path) -> None:
 
     raw = tmp_path / "raw"
     raw.mkdir()
+    # Both groups carry the ``73MHz`` cascade-reference token so the filter
+    # introduced for missing 73 MHz files keeps them.
     _write_minimal_fits(
-        raw / "day1.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "day1_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
     _write_minimal_fits(
-        raw / "day2.fits", restfreq_hz=70e6, date_obs="2024-06-02T12:00:00.0"
+        raw / "day2_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-02T12:00:00.0"
     )
 
     n, keys = run_cascade_per_time_group(
@@ -254,7 +260,7 @@ def test_run_cascade_per_time_group_clears_staging_and_per_time_outroot(tmp_path
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "one.fits", restfreq_hz=70e6, date_obs="2024-06-03T12:00:00.0"
+        raw / "one_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-03T12:00:00.0"
     )
 
     staging = tmp_path / "staging"
@@ -349,13 +355,15 @@ def test_dewarp_and_convert_append_each_time_calls_zarr_per_step(tmp_path: Path,
     # ``_filter_invalid_beam_files`` opens the primary header of each discovered file,
     # so the paths returned by ``fake_discover`` must point at real FITS with valid
     # BMAJ/BMIN — otherwise the filter drops them and discovery yields nothing.
-    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
-    _write_minimal_fits(raw / "b.fits", restfreq_hz=74e6, date_obs="2024-06-02T12:00:00.0")
+    # The basenames also need a ``73MHz`` token so the cascade-reference filter keeps
+    # each single-file time group.
+    _write_minimal_fits(raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "b_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-02T12:00:00.0")
 
     def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
         return {
-            "20240601_120000": [raw / "a.fits"],
-            "20240602_120000": [raw / "b.fits"],
+            "20240601_120000": [raw / "a_73MHz.fits"],
+            "20240602_120000": [raw / "b_73MHz.fits"],
         }
 
     monkeypatch.setattr(dewarp_convert_mod, "_discover_groups", fake_discover)
@@ -437,11 +445,14 @@ def test_run_cascade_per_time_group_skips_files_with_invalid_beam(tmp_path: Path
     cascade_parent = tmp_path / "cascade"
     staging = tmp_path / "staging"
 
-    good = raw / "good_70MHz.fits"
+    # ``good`` doubles as the cascade-reference subband (73 MHz) so the
+    # missing-73MHz filter doesn't drop the whole group while we're really
+    # testing the invalid-beam skip.
+    good = raw / "good_73MHz.fits"
     bad_missing = raw / "bad_missing_74MHz.fits"
     bad_zero = raw / "bad_zero_78MHz.fits"
 
-    _write_minimal_fits(good, restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(good, restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0")
     # Bad files have valid time/freq metadata but no usable beam.
     hdu = fits.PrimaryHDU(data=np.zeros((4, 4), dtype=np.float32))
     hdu.header["DATE-OBS"] = "2024-06-01T12:00:00.0"
@@ -467,7 +478,7 @@ def test_run_cascade_per_time_group_skips_files_with_invalid_beam(tmp_path: Path
     assert keys == ["20240601_120000"]
     assert len(cascade_inputs) == 1
     forwarded = {Path(p).name for p in cascade_inputs[0]}
-    assert forwarded == {"good_70MHz.fits"}
+    assert forwarded == {"good_73MHz.fits"}
 
 
 def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None:
@@ -488,7 +499,7 @@ def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "one.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "one_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
 
     n, keys = run_cascade_per_time_group(
@@ -539,10 +550,10 @@ def test_run_cascade_per_time_group_skips_completed_time_keys(tmp_path: Path) ->
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "done.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "done_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
     _write_minimal_fits(
-        raw / "todo.fits", restfreq_hz=70e6, date_obs="2024-06-02T12:00:00.0"
+        raw / "todo_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-02T12:00:00.0"
     )
 
     out_zarr = tmp_path / "out" / "store.zarr"
@@ -572,7 +583,7 @@ def test_run_cascade_per_time_group_resume_full_is_noop(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "only.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "only_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
 
     out_zarr = tmp_path / "out" / "store.zarr"
@@ -606,7 +617,7 @@ def test_run_cascade_per_time_group_rebuild_ignores_resume(tmp_path: Path) -> No
     raw = tmp_path / "raw"
     raw.mkdir()
     _write_minimal_fits(
-        raw / "one.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+        raw / "one_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
     )
 
     out_zarr = tmp_path / "out" / "store.zarr"
@@ -640,16 +651,16 @@ def test_dewarp_and_convert_append_each_time_skips_completed_time_keys(
     for d in (raw, out, cascade, staging, fixed):
         d.mkdir()
 
-    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
-    _write_minimal_fits(raw / "b.fits", restfreq_hz=74e6, date_obs="2024-06-02T12:00:00.0")
+    _write_minimal_fits(raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "b_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-02T12:00:00.0")
 
     out_zarr = out / "z.zarr"
     _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
 
     def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
         return {
-            "20240601_120000": [raw / "a.fits"],
-            "20240602_120000": [raw / "b.fits"],
+            "20240601_120000": [raw / "a_73MHz.fits"],
+            "20240602_120000": [raw / "b_73MHz.fits"],
         }
 
     monkeypatch.setattr(dewarp_convert_mod, "_discover_groups", fake_discover)
@@ -719,7 +730,7 @@ def test_dewarp_and_convert_append_each_time_resume_full_is_noop(
     for d in (raw, out, cascade, staging, fixed):
         d.mkdir()
 
-    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0")
 
     out_zarr = out / "z.zarr"
     _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
@@ -727,7 +738,7 @@ def test_dewarp_and_convert_append_each_time_resume_full_is_noop(
     monkeypatch.setattr(
         dewarp_convert_mod,
         "_discover_groups",
-        lambda *a, **k: {"20240601_120000": [raw / "a.fits"]},
+        lambda *a, **k: {"20240601_120000": [raw / "a_73MHz.fits"]},
     )
     mref = MagicMock()
     mref.copy = MagicMock(return_value=mref)
@@ -752,6 +763,300 @@ def test_dewarp_and_convert_append_each_time_resume_full_is_noop(
             zarr_name="z.zarr",
             chunk_lm=64,
             rebuild=False,
+            fix_headers_on_demand=False,
+            cleanup_fixed_fits=False,
+            discovery_freq_bin_hz=23e3,
+            duplicate_resolver=None,
+            cascade_fn=lambda **kw: None,
+        )
+
+    assert keys == []
+    assert n_staged == 0
+    conv_cls.assert_not_called()
+
+
+# -------------------------------------------------------------------------
+# Cascade-reference (73 MHz) filter
+# -------------------------------------------------------------------------
+
+
+def test_file_subband_mhz_parses_prefix_and_underscore_tokens(tmp_path: Path) -> None:
+    """Both ``NNNMHz-...`` (prefix) and ``..._NNNMHz_...`` styles must parse."""
+    fn = dewarp_convert_mod._file_subband_mhz
+    assert fn(tmp_path / "73MHz-I-Deep-Taper-Robust-0-image-X.fits") == 73
+    assert fn(tmp_path / "ovro_73MHz_averaged_iter.fits") == 73
+    assert fn(tmp_path / "ovro-73MHz-image.fits") == 73
+    assert fn(tmp_path / "stage__73MHz_image.fits") == 73
+    assert fn(tmp_path / "18MHz_band.fits") == 18
+
+
+def test_file_subband_mhz_rejects_non_boundary_match(tmp_path: Path) -> None:
+    """``1473MHz`` and similar must not be misread as 73 MHz."""
+    fn = dewarp_convert_mod._file_subband_mhz
+    assert fn(tmp_path / "1473MHz-image.fits") == 1473
+    # No leading separator; the regex requires ^ / _ / - before the digits,
+    # so a token like ``foo73MHz_x.fits`` does not parse a subband.
+    assert fn(tmp_path / "foo73MHz_x.fits") is None
+    assert fn(tmp_path / "no_subband_tag.fits") is None
+
+
+def test_has_cascade_reference_subband_positive_and_negative(tmp_path: Path) -> None:
+    """At least one path must carry the ``73MHz`` token for the group to be cascadable."""
+    fn = dewarp_convert_mod._has_cascade_reference_subband
+    assert fn(
+        [tmp_path / "73MHz-image.fits", tmp_path / "41MHz_other.fits"],
+    )
+    assert not fn(
+        [tmp_path / "41MHz_a.fits", tmp_path / "82MHz_b.fits"],
+    )
+    # Custom target stays orthogonal to the default 73 MHz path.
+    assert fn(
+        [tmp_path / "41MHz_a.fits", tmp_path / "82MHz_b.fits"],
+        target_mhz=82,
+    )
+
+
+def test_filter_time_groups_without_cascade_reference_drops_groups(
+    tmp_path: Path, caplog
+) -> None:
+    """Groups missing a 73 MHz reference are dropped with a warning."""
+    import logging
+
+    fn = dewarp_convert_mod._filter_time_groups_without_cascade_reference
+    by_time = {
+        "20240601_120000": [
+            tmp_path / "41MHz_a.fits",
+            tmp_path / "73MHz_b.fits",
+            tmp_path / "82MHz_c.fits",
+        ],
+        "20240602_120000": [
+            tmp_path / "41MHz_a.fits",
+            tmp_path / "82MHz_b.fits",
+        ],
+    }
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.ingest.dewarp_convert")
+    filtered = fn(by_time)
+
+    assert "20240601_120000" in filtered
+    assert "20240602_120000" not in filtered
+    assert "no 73MHz reference image found" in caplog.text
+    assert "[41, 82]" in caplog.text
+
+
+def test_filter_time_groups_without_cascade_reference_returns_empty_when_no_groups_cascadable(
+    tmp_path: Path,
+) -> None:
+    """If no group has the 73 MHz reference, the filter returns an empty dict."""
+    fn = dewarp_convert_mod._filter_time_groups_without_cascade_reference
+    by_time = {
+        "20240601_120000": [tmp_path / "41MHz_a.fits"],
+        "20240602_120000": [tmp_path / "82MHz_b.fits"],
+    }
+    assert fn(by_time) == {}
+
+
+def test_run_cascade_per_time_group_skips_groups_without_73mhz(
+    tmp_path: Path, caplog
+) -> None:
+    """Time groups whose files have no ``73MHz`` subband tag must be dropped pre-cascade."""
+    import logging
+
+    cascade_calls: list[str] = []
+
+    def fake_cascade(*, image_filenames: Sequence[str], outroot: str, **_kw: Any) -> None:
+        cascade_calls.append(Path(outroot).name)
+        out = Path(outroot)
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image_filenames[0], out / "band.fits")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    # Time A has a 73 MHz reference → keep.
+    _write_minimal_fits(
+        raw / "a_41MHz.fits", restfreq_hz=41e6, date_obs="2024-06-01T12:00:00.0"
+    )
+    _write_minimal_fits(
+        raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0"
+    )
+    # Time B has no 73 MHz reference → drop.
+    _write_minimal_fits(
+        raw / "b_41MHz.fits", restfreq_hz=41e6, date_obs="2024-06-02T12:00:00.0"
+    )
+    _write_minimal_fits(
+        raw / "b_82MHz.fits", restfreq_hz=82e6, date_obs="2024-06-02T12:00:00.0"
+    )
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.ingest.dewarp_convert")
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=fake_cascade,
+    )
+
+    assert keys == ["20240601_120000"]
+    assert n == 1
+    assert cascade_calls == ["20240601_120000"]
+    assert "Skipping time=20240602_120000" in caplog.text
+    assert "no 73MHz reference image found" in caplog.text
+
+
+def test_run_cascade_per_time_group_returns_empty_when_no_group_has_73mhz(
+    tmp_path: Path, caplog
+) -> None:
+    """If every discovered group lacks a 73 MHz file, the cascade is not invoked."""
+    import logging
+
+    def explode(**_kw: Any) -> None:
+        raise AssertionError("cascade_fn must not run when no group has a 73 MHz reference.")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_minimal_fits(
+        raw / "a_41MHz.fits", restfreq_hz=41e6, date_obs="2024-06-01T12:00:00.0"
+    )
+    _write_minimal_fits(
+        raw / "a_82MHz.fits", restfreq_hz=82e6, date_obs="2024-06-01T12:00:00.0"
+    )
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.ingest.dewarp_convert")
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=explode,
+    )
+
+    assert n == 0
+    assert keys == []
+    assert "no 73MHz reference image found" in caplog.text
+
+
+def test_dewarp_and_convert_append_each_time_skips_groups_without_73mhz(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """Per-step append mode must also skip time groups missing the 73 MHz reference."""
+    import logging
+
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    cascade = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+    fixed = tmp_path / "fixed"
+    for d in (raw, out, cascade, staging, fixed):
+        d.mkdir()
+
+    _write_minimal_fits(raw / "a_73MHz.fits", restfreq_hz=73e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "b_82MHz.fits", restfreq_hz=82e6, date_obs="2024-06-02T12:00:00.0")
+
+    def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
+        return {
+            "20240601_120000": [raw / "a_73MHz.fits"],   # keep (has 73 MHz)
+            "20240602_120000": [raw / "b_82MHz.fits"],   # drop (no 73 MHz)
+        }
+
+    monkeypatch.setattr(dewarp_convert_mod, "_discover_groups", fake_discover)
+    mref = MagicMock()
+    mref.copy = MagicMock(return_value=mref)
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_load_global_lm_reference_dataset",
+        lambda *a, **k: mref,
+    )
+
+    cascade_calls: list[str] = []
+
+    def fake_run_cascade(
+        tkey: str,
+        files: Sequence[Path],
+        _cascade_parent: Path,
+        staging_dir: Path,
+        *,
+        cascade_fn: Any,
+        **_kw: Any,
+    ) -> int:
+        cascade_calls.append(tkey)
+        (staging_dir / f"{tkey}__out.fits").touch()
+        return 1
+
+    monkeypatch.setattr(dewarp_convert_mod, "run_cascade_for_time_key", fake_run_cascade)
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.ingest.dewarp_convert")
+    with patch("ovro_lwa_portal.ingest.core.FITSToZarrConverter") as conv_cls:
+        inst = MagicMock()
+        conv_cls.return_value = inst
+        n_staged, keys = dewarp_and_convert_append_each_time(
+            raw,
+            out,
+            cascade,
+            staging,
+            fixed,
+            zarr_name="z.zarr",
+            chunk_lm=64,
+            rebuild=True,
+            fix_headers_on_demand=False,
+            cleanup_fixed_fits=False,
+            discovery_freq_bin_hz=23e3,
+            duplicate_resolver=None,
+            cascade_fn=lambda **kw: None,
+        )
+
+    assert keys == ["20240601_120000"]
+    assert n_staged == 1
+    assert cascade_calls == ["20240601_120000"]
+    assert inst.convert.call_count == 1
+    cfg = conv_cls.call_args_list[0][0][0]
+    assert cfg.time_keys_only == ("20240601_120000",)
+    assert "Skipping time=20240602_120000" in caplog.text
+
+
+def test_dewarp_and_convert_append_each_time_returns_when_no_group_has_73mhz(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """If no discovered group has a 73 MHz file, neither cascade nor convert runs."""
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    cascade = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+    fixed = tmp_path / "fixed"
+    for d in (raw, out, cascade, staging, fixed):
+        d.mkdir()
+
+    _write_minimal_fits(raw / "a_41MHz.fits", restfreq_hz=41e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "a_82MHz.fits", restfreq_hz=82e6, date_obs="2024-06-01T12:00:00.0")
+
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_discover_groups",
+        lambda *a, **k: {
+            "20240601_120000": [raw / "a_41MHz.fits", raw / "a_82MHz.fits"]
+        },
+    )
+
+    def explode_lm_ref(*_a: object, **_k: object) -> Any:
+        raise AssertionError("LM reference must not be built when no group is cascadable.")
+
+    monkeypatch.setattr(
+        dewarp_convert_mod, "_load_global_lm_reference_dataset", explode_lm_ref
+    )
+
+    def explode_run_cascade(*_a: object, **_k: object) -> int:
+        raise AssertionError("run_cascade_for_time_key must not run.")
+
+    monkeypatch.setattr(dewarp_convert_mod, "run_cascade_for_time_key", explode_run_cascade)
+
+    with patch("ovro_lwa_portal.ingest.core.FITSToZarrConverter") as conv_cls:
+        n_staged, keys = dewarp_and_convert_append_each_time(
+            raw,
+            out,
+            cascade,
+            staging,
+            fixed,
+            zarr_name="z.zarr",
+            chunk_lm=64,
+            rebuild=True,
             fix_headers_on_demand=False,
             cleanup_fixed_fits=False,
             discovery_freq_bin_hz=23e3,

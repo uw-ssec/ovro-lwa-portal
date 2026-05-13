@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -25,6 +26,85 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+
+# Subband-token regex used to test whether a basename carries a given
+# ``<N>MHz`` tag without false-positive matches on substrings like
+# ``1473MHz``. Matches start-of-string, ``_``, or ``-`` before the digits
+# and the same separators (or ``.``/end-of-string) after the ``MHz`` token.
+_CASCADE_SUBBAND_TOKEN_RE = re.compile(r"(?:^|[_-])(\d+)MHz(?:[_-]|\.|$)")
+
+
+def _file_subband_mhz(fp: Path) -> int | None:
+    """Return the subband (in MHz) parsed from *fp*'s basename, or ``None`` if absent.
+
+    Mirrors the OVRO-LWA naming convention (e.g. ``73MHz-I-Deep-…`` or
+    ``_73MHz_averaged_…``). Stricter than ``MHZ_RE`` in
+    ``ovro_lwa_portal.fits_to_zarr_xradio``: it accepts start-of-string and the
+    hyphen separator that OVRO product names use, while still requiring a
+    boundary so ``1473MHz`` does not match the ``73MHz`` cascade token.
+    """
+    m = _CASCADE_SUBBAND_TOKEN_RE.search(fp.name)
+    return int(m.group(1)) if m else None
+
+
+def _has_cascade_reference_subband(files: Sequence[Path], *, target_mhz: int = 73) -> bool:
+    """Whether any path in *files* carries the ``{target_mhz}MHz`` cascade reference tag.
+
+    ``image_plane_correction.flow.flow_cascade73MHz`` is anchored at 73 MHz and
+    locates its peer subbands by substring-replacing the literal ``73MHz`` token
+    in each input path. A group with no 73 MHz file cannot be cascaded, so we
+    use this check (rather than the FITS header frequency) to decide whether the
+    cascade can run for the group.
+    """
+    return any(_file_subband_mhz(fp) == target_mhz for fp in files)
+
+
+def _filter_time_groups_without_cascade_reference(
+    by_time: dict[str, list[Path]],
+    *,
+    target_mhz: int = 73,
+) -> dict[str, list[Path]]:
+    """Drop time groups whose files have no ``{target_mhz}MHz`` reference subband.
+
+    The dewarp cascade ``flow_cascade73MHz`` is anchored at 73 MHz and locates
+    peer subbands by substring replacement of ``73MHz`` in each input path.
+    Time groups missing that reference cannot be cascaded; this filter removes
+    them with a warning so the (expensive) cascade is never invoked on an
+    incomplete group and the downstream Zarr is not contaminated with partially
+    dewarped products for those observation times.
+
+    Parameters
+    ----------
+    by_time
+        Discovery output mapping observation-time key → list of FITS file paths,
+        typically already passed through
+        :func:`~ovro_lwa_portal.fits_to_zarr_xradio._filter_invalid_beam_files`.
+    target_mhz
+        Subband MHz the cascade is anchored on. Defaults to ``73`` to match
+        ``flow_cascade73MHz``.
+
+    Returns
+    -------
+    dict[str, list[Path]]
+        Same shape as *by_time* but with groups missing the reference subband
+        dropped entirely.
+    """
+    filtered: dict[str, list[Path]] = {}
+    for tkey, files in by_time.items():
+        if _has_cascade_reference_subband(files, target_mhz=target_mhz):
+            filtered[tkey] = files
+            continue
+        subbands_present = sorted({mhz for mhz in (_file_subband_mhz(fp) for fp in files) if mhz is not None})
+        logger.warning(
+            "Skipping time=%s for dewarp cascade: no %dMHz reference image found "
+            "among %d file(s) (subbands present: %s); group cannot be cascaded.",
+            tkey,
+            target_mhz,
+            len(files),
+            subbands_present if subbands_present else "<none parseable from basenames>",
+        )
+    return filtered
 
 
 def import_flow_cascade73mhz() -> Callable[..., Any]:
@@ -182,6 +262,13 @@ def run_cascade_per_time_group(
     on-disk layout when every subband shares the same directory prefix (or when unresolved
     symlinks all differ only by that token).
 
+    Time groups whose files have no ``73MHz`` subband tag in their basenames are dropped
+    via :func:`_filter_time_groups_without_cascade_reference` with a warning **before** the
+    cascade is invoked. ``flow_cascade73MHz`` is anchored at 73 MHz, so a group lacking that
+    reference cannot be cascaded. Those observation times do not appear in the staging
+    directory and therefore do not reach the downstream Zarr (consistent with how
+    invalid-beam files and resume-skipped time keys are handled).
+
     Produced ``*.fits`` (immediate children of *outroot*, else recursive) are linked
     or copied into *staging_dir* as ``{time_key}__{basename}`` so the flat directory
     can be consumed by :meth:`ovro_lwa_portal.ingest.core.FITSToZarrConverter.convert`.
@@ -260,6 +347,19 @@ def run_cascade_per_time_group(
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)
+
+    # Skip whole time groups that lack a 73 MHz reference image: ``flow_cascade73MHz``
+    # locates peers by substring-replacing ``73MHz`` in each path, so a group without
+    # that subband cannot be cascaded. Drop these here with a warning before any
+    # cascade work runs.
+    by_time = _filter_time_groups_without_cascade_reference(by_time)
+    if not by_time:
+        logger.warning(
+            "No time group in %s contains a 73 MHz reference image; "
+            "nothing to dewarp.",
+            input_dir,
+        )
+        return 0, []
 
     # Resume: skip raw time keys already covered by the downstream Zarr so an
     # interrupted dewarp-convert run can be re-invoked on the same input without
@@ -343,6 +443,11 @@ def dewarp_and_convert_append_each_time(
     ``(time, frequency)`` slot empty and the eventual Zarr write fills that cell
     with the float ``NaN`` fill value.
 
+    After the beam filter, :func:`_filter_time_groups_without_cascade_reference`
+    drops any time group whose files have no ``73MHz`` reference subband: the
+    cascade is anchored at 73 MHz, so a group lacking that band cannot be
+    cascaded. Those observation times do not appear in the resulting Zarr.
+
     When ``rebuild`` is False and ``output_dir / zarr_name`` already exists, time
     keys already present in the store are skipped via
     :func:`~ovro_lwa_portal.fits_to_zarr_xradio._filter_completed_time_keys`. An
@@ -375,11 +480,25 @@ def dewarp_and_convert_append_each_time(
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)
 
-    # Build the global LM reference from the *full* discovery set (before the
-    # resume filter) so the appended slices line up with the pixel grid that
-    # was already chosen for the times already in the store. Filtering before
-    # this call could pick a different "largest shape" on resume and silently
-    # disagree with the existing store.
+    # Skip whole time groups that lack a 73 MHz reference image: ``flow_cascade73MHz``
+    # locates peers by substring-replacing ``73MHz`` in each path. Filter here before
+    # the LM-reference scan so a half-band time step does not influence the chosen
+    # pixel grid for the rest of the run.
+    by_time = _filter_time_groups_without_cascade_reference(by_time)
+    if not by_time:
+        logger.warning(
+            "No time group in %s contains a 73 MHz reference image; "
+            "nothing to dewarp.",
+            input_dir,
+        )
+        return 0, []
+
+    # Build the global LM reference from the post-skip discovery set (after the
+    # 73 MHz / invalid-beam filters but before the resume filter) so the
+    # appended slices line up with the pixel grid that was already chosen for
+    # the times already in the store. Filtering before this call could pick a
+    # different "largest shape" on resume and silently disagree with the
+    # existing store.
     lm_ref_ds = _load_global_lm_reference_dataset(
         by_time,
         fixed_dir,
