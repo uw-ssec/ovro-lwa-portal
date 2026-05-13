@@ -608,6 +608,8 @@ def dewarp_convert(
                 write=write,
                 target_size=target_size,
                 group_metadata_source=group_metadata_source,
+                out_zarr=output_dir / zarr_name,
+                rebuild=rebuild,
             )
     except ImportError as e:
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
@@ -622,12 +624,27 @@ def dewarp_convert(
         raise typer.Exit(code=1) from e
 
     if append_after_each_time:
+        if not time_keys:
+            console.print(
+                "\n[bold green]✓[/bold green] Nothing to do: every discovered time key "
+                f"is already present in {output_dir / zarr_name}.\n"
+                "Pass [bold]--rebuild[/bold] to overwrite the existing store.\n"
+            )
+            return
         console.print(
             f"\n[bold green]✓[/bold green] Dewarped and appended Zarr for {len(time_keys)} "
             f"time step(s); staged up to {n_staged} FITS per batch.\n"
         )
         console.print(
             f"[bold green]✓[/bold green] Zarr store: {output_dir / zarr_name}\n"
+        )
+        return
+
+    if not time_keys:
+        console.print(
+            "\n[bold green]✓[/bold green] Nothing to do: every discovered time key "
+            f"is already present in {output_dir / zarr_name}.\n"
+            "Pass [bold]--rebuild[/bold] to overwrite the existing store.\n"
         )
         return
 

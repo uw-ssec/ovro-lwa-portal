@@ -502,3 +502,263 @@ def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None
     assert n == 1
     assert keys == ["20240601_120000"]
     assert recorded == [3122]
+
+
+def _seed_zarr_with_time_keys(out_zarr: Path, time_keys: list[str]) -> None:
+    """Write a minimal Zarr store whose ``time`` coord matches the given keys.
+
+    Each key uses the same ``%Y%m%d_%H%M%S`` UTC format the discovery layer
+    emits, mirroring how ``xradio`` writes the ``time`` dimension as MJD floats.
+    """
+    import xarray as xr
+    from astropy.time import Time
+
+    iso = [
+        f"{k[:4]}-{k[4:6]}-{k[6:8]}T{k[9:11]}:{k[11:13]}:{k[13:15]}" for k in time_keys
+    ]
+    mjd = np.array(
+        [float(Time(t, format="isot", scale="utc").mjd) for t in iso],
+        dtype=np.float64,
+    )
+    xr.Dataset(
+        {"x": ("time", np.zeros(len(mjd), dtype=np.float32))},
+        coords={"time": mjd},
+    ).to_zarr(str(out_zarr), mode="w")
+
+
+def test_run_cascade_per_time_group_skips_completed_time_keys(tmp_path: Path) -> None:
+    """When ``out_zarr`` already contains a time key, the cascade must not run for it."""
+    cascade_calls: list[str] = []
+
+    def fake_cascade(*, image_filenames: Sequence[str], outroot: str, **_kw: Any) -> None:
+        cascade_calls.append(Path(outroot).name)
+        out = Path(outroot)
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image_filenames[0], out / "band.fits")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_minimal_fits(
+        raw / "done.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+    )
+    _write_minimal_fits(
+        raw / "todo.fits", restfreq_hz=70e6, date_obs="2024-06-02T12:00:00.0"
+    )
+
+    out_zarr = tmp_path / "out" / "store.zarr"
+    out_zarr.parent.mkdir(parents=True, exist_ok=True)
+    _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
+
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=fake_cascade,
+        out_zarr=out_zarr,
+        rebuild=False,
+    )
+
+    assert keys == ["20240602_120000"]
+    assert n == 1
+    assert cascade_calls == ["20240602_120000"]
+
+
+def test_run_cascade_per_time_group_resume_full_is_noop(tmp_path: Path) -> None:
+    """When every discovered key is already in the store, the cascade is not invoked."""
+    def explode(**_kw: Any) -> None:
+        raise AssertionError("cascade_fn must not run when every time key is already in zarr.")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_minimal_fits(
+        raw / "only.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+    )
+
+    out_zarr = tmp_path / "out" / "store.zarr"
+    out_zarr.parent.mkdir(parents=True, exist_ok=True)
+    _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
+
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=explode,
+        out_zarr=out_zarr,
+        rebuild=False,
+    )
+
+    assert n == 0
+    assert keys == []
+
+
+def test_run_cascade_per_time_group_rebuild_ignores_resume(tmp_path: Path) -> None:
+    """``rebuild=True`` must bypass the resume filter so every time key is dewarped."""
+    cascade_calls: list[str] = []
+
+    def fake_cascade(*, image_filenames: Sequence[str], outroot: str, **_kw: Any) -> None:
+        cascade_calls.append(Path(outroot).name)
+        out = Path(outroot)
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image_filenames[0], out / "band.fits")
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _write_minimal_fits(
+        raw / "one.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0"
+    )
+
+    out_zarr = tmp_path / "out" / "store.zarr"
+    out_zarr.parent.mkdir(parents=True, exist_ok=True)
+    _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
+
+    n, keys = run_cascade_per_time_group(
+        raw,
+        tmp_path / "cascade",
+        tmp_path / "staging",
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=fake_cascade,
+        out_zarr=out_zarr,
+        rebuild=True,
+    )
+
+    assert keys == ["20240601_120000"]
+    assert n == 1
+    assert cascade_calls == ["20240601_120000"]
+
+
+def test_dewarp_and_convert_append_each_time_skips_completed_time_keys(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Per-step append mode must skip time keys already in the existing Zarr."""
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    cascade = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+    fixed = tmp_path / "fixed"
+    for d in (raw, out, cascade, staging, fixed):
+        d.mkdir()
+
+    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "b.fits", restfreq_hz=74e6, date_obs="2024-06-02T12:00:00.0")
+
+    out_zarr = out / "z.zarr"
+    _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
+
+    def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
+        return {
+            "20240601_120000": [raw / "a.fits"],
+            "20240602_120000": [raw / "b.fits"],
+        }
+
+    monkeypatch.setattr(dewarp_convert_mod, "_discover_groups", fake_discover)
+    mref = MagicMock()
+    mref.copy = MagicMock(return_value=mref)
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_load_global_lm_reference_dataset",
+        lambda *a, **k: mref,
+    )
+
+    cascade_calls: list[str] = []
+
+    def fake_run_cascade(
+        tkey: str,
+        files: Sequence[Path],
+        _cascade_parent: Path,
+        staging_dir: Path,
+        *,
+        cascade_fn: Any,
+        **_kw: Any,
+    ) -> int:
+        cascade_calls.append(tkey)
+        (staging_dir / f"{tkey}__out.fits").touch()
+        return 1
+
+    monkeypatch.setattr(dewarp_convert_mod, "run_cascade_for_time_key", fake_run_cascade)
+
+    with patch("ovro_lwa_portal.ingest.core.FITSToZarrConverter") as conv_cls:
+        inst = MagicMock()
+        conv_cls.return_value = inst
+        n_staged, keys = dewarp_and_convert_append_each_time(
+            raw,
+            out,
+            cascade,
+            staging,
+            fixed,
+            zarr_name="z.zarr",
+            chunk_lm=64,
+            rebuild=False,
+            fix_headers_on_demand=False,
+            cleanup_fixed_fits=False,
+            discovery_freq_bin_hz=23e3,
+            duplicate_resolver=None,
+            cascade_fn=lambda **kw: None,
+        )
+
+    assert keys == ["20240602_120000"]
+    assert n_staged == 1
+    assert cascade_calls == ["20240602_120000"]
+    assert inst.convert.call_count == 1
+    cfg = conv_cls.call_args_list[0][0][0]
+    assert cfg.time_keys_only == ("20240602_120000",)
+    # The store already exists, so the converter must be told to append, not overwrite.
+    assert cfg.rebuild is False
+
+
+def test_dewarp_and_convert_append_each_time_resume_full_is_noop(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """If every discovered key is already in the Zarr, no cascade / convert runs."""
+    raw = tmp_path / "raw"
+    out = tmp_path / "out"
+    cascade = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+    fixed = tmp_path / "fixed"
+    for d in (raw, out, cascade, staging, fixed):
+        d.mkdir()
+
+    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+
+    out_zarr = out / "z.zarr"
+    _seed_zarr_with_time_keys(out_zarr, ["20240601_120000"])
+
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_discover_groups",
+        lambda *a, **k: {"20240601_120000": [raw / "a.fits"]},
+    )
+    mref = MagicMock()
+    mref.copy = MagicMock(return_value=mref)
+    monkeypatch.setattr(
+        dewarp_convert_mod,
+        "_load_global_lm_reference_dataset",
+        lambda *a, **k: mref,
+    )
+
+    def explode_run_cascade(*_a: object, **_k: object) -> int:
+        raise AssertionError("run_cascade_for_time_key must not run when nothing is to do.")
+
+    monkeypatch.setattr(dewarp_convert_mod, "run_cascade_for_time_key", explode_run_cascade)
+
+    with patch("ovro_lwa_portal.ingest.core.FITSToZarrConverter") as conv_cls:
+        n_staged, keys = dewarp_and_convert_append_each_time(
+            raw,
+            out,
+            cascade,
+            staging,
+            fixed,
+            zarr_name="z.zarr",
+            chunk_lm=64,
+            rebuild=False,
+            fix_headers_on_demand=False,
+            cleanup_fixed_fits=False,
+            discovery_freq_bin_hz=23e3,
+            duplicate_resolver=None,
+            cascade_fn=lambda **kw: None,
+        )
+
+    assert keys == []
+    assert n_staged == 0
+    conv_cls.assert_not_called()

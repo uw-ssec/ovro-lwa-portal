@@ -2047,6 +2047,133 @@ def _filter_invalid_beam_files(
     return filtered
 
 
+def _completed_time_keys_in_zarr(
+    out_zarr: Path,
+    *,
+    rebuild: bool,
+) -> set[str]:
+    """Return the set of ``YYYYMMDD_HHMMSS`` time keys already present in *out_zarr*.
+
+    Used to make ``convert`` / ``dewarp-convert`` re-runs naturally resumable: callers
+    drop any time key already covered by the existing store so the expensive read /
+    dewarp / append work is skipped on the second pass. The returned key strings use
+    the same ``%Y%m%d_%H%M%S`` UTC formatting as :func:`_time_key_from_filename` and
+    :func:`_time_key_from_header`, so they can be compared directly against the keys
+    of :func:`_discover_groups`.
+
+    Parameters
+    ----------
+    out_zarr
+        Path to the candidate output Zarr store.
+    rebuild
+        When True, the caller has asked to overwrite the store; this function
+        returns an empty set so every discovered time key is processed.
+
+    Returns
+    -------
+    set[str]
+        Sorted-by-time UTC keys already written. Empty when *rebuild* is True,
+        when *out_zarr* does not exist, when it lacks a usable ``time`` coord,
+        or when the store cannot be opened (a warning is logged in that case).
+
+    Notes
+    -----
+    * ``time`` values are stored as MJD ``float64`` by ``xradio``; this helper
+      converts each finite value back to UTC via :class:`astropy.time.Time` and
+      truncates to one-second resolution. Sub-second timestamps in ``DATE-OBS``
+      collapse to the same key as the filename ``-image-`` stamp, so resume
+      decisions remain consistent across ``group_metadata_source`` values.
+    * NaN ``time`` rows (which can appear if a future append step ever writes a
+      placeholder row) are ignored rather than producing a spurious key.
+    """
+    if rebuild or not out_zarr.exists():
+        return set()
+    try:
+        existing = xr.open_zarr(str(out_zarr), consolidated=False)
+    except Exception as exc:
+        logger.warning(
+            "Could not open existing Zarr %s to check completed time keys (%s); "
+            "treating all discovered times as new.",
+            out_zarr,
+            exc,
+        )
+        return set()
+    try:
+        if "time" not in existing.coords:
+            return set()
+        time_values = np.atleast_1d(np.asarray(existing["time"].values))
+    finally:
+        existing.close()
+
+    keys: set[str] = set()
+    for raw in time_values:
+        try:
+            mjd = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(mjd):
+            continue
+        try:
+            t = Time(mjd, format="mjd", scale="utc")
+            keys.add(t.to_datetime().strftime("%Y%m%d_%H%M%S"))
+        except Exception as exc:
+            logger.debug(
+                "Could not convert existing Zarr time=%r to a time key (%s); ignoring.",
+                raw,
+                exc,
+            )
+    return keys
+
+
+def _filter_completed_time_keys(
+    by_time: Dict[str, List[Path]],
+    out_zarr: Path,
+    *,
+    rebuild: bool,
+    context: str,
+) -> Dict[str, List[Path]]:
+    """Drop time keys already present in *out_zarr* to make re-runs resumable.
+
+    A thin wrapper around :func:`_completed_time_keys_in_zarr` that also emits
+    consistent log messages so the convert and dewarp-convert call sites stay in
+    sync. The original ordering of *by_time* is preserved for the remaining keys.
+
+    Parameters
+    ----------
+    by_time
+        Discovery output already passed through :func:`_filter_invalid_beam_files`.
+    out_zarr
+        Candidate output Zarr store (need not exist yet).
+    rebuild
+        When True, the caller has asked to overwrite the store; this short-circuits
+        the filter and returns *by_time* unchanged.
+    context
+        Short label for log lines (e.g. ``"convert"``, ``"dewarp-convert"``); helps
+        operators distinguish which subcommand reported the resume.
+
+    Returns
+    -------
+    Dict[str, List[Path]]
+        Same shape as *by_time* but with already-completed time keys removed.
+    """
+    completed = _completed_time_keys_in_zarr(out_zarr, rebuild=rebuild)
+    if not completed:
+        return by_time
+    overlap = [k for k in by_time if k in completed]
+    if not overlap:
+        return by_time
+    remaining = {k: v for k, v in by_time.items() if k not in completed}
+    logger.info(
+        "[%s] Resume from %s: %d time key(s) already present, %d remaining to process.",
+        context,
+        out_zarr,
+        len(overlap),
+        len(remaining),
+    )
+    logger.debug("[%s] Skipping already-present time keys: %s", context, ", ".join(sorted(overlap)))
+    return remaining
+
+
 def _discover_groups(
     in_dir: Path,
     duplicate_resolver: Optional[Callable[[str, float, List[Path]], Path]] = None,
@@ -2791,6 +2918,17 @@ def convert_fits_dir_to_zarr(
     join fills them with the float ``NaN`` fill value instead of contaminating the
     store with placeholder zeros.
 
+    When *rebuild* is False and ``out_dir / zarr_name`` already exists, time keys
+    that are already present in the store are silently skipped via
+    :func:`_filter_completed_time_keys`. An interrupted prior run can therefore be
+    resumed by re-invoking with the same arguments; only the not-yet-written time
+    steps are read, combined, and appended. If every discovered time key is already
+    present, the function returns the existing Zarr path without writing.
+    :func:`_write_or_append_zarr` additionally dedupes by ``time`` (``keep="last"``)
+    on append, so an explicit re-run that does pass the same key through (e.g. via
+    a bespoke caller) keeps the freshly-written slice rather than producing a
+    duplicate row.
+
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
     frame taken from the lowest-frequency slice. If sampled on-sky positions in other
@@ -2860,6 +2998,20 @@ def convert_fits_dir_to_zarr(
             f"No matching FITS found in {input_dir} (none passed discovery and the "
             "BMAJ/BMIN beam-validity filter)."
         )
+
+    # Resume: when appending to an existing store, skip time keys already written so
+    # interrupted runs can be re-invoked on the same input directory without
+    # re-doing the expensive read/combine/append work or producing duplicate rows.
+    by_time = _filter_completed_time_keys(
+        by_time, out_zarr, rebuild=rebuild, context="convert"
+    )
+    if not by_time:
+        logger.info(
+            "Nothing to do: every discovered time key is already present in %s. "
+            "Pass rebuild=True to overwrite.",
+            out_zarr,
+        )
+        return out_zarr
 
     if lm_reference_ds is not None:
         lm_ref_ds = lm_reference_ds

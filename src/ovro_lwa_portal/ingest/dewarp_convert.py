@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
     _discover_groups,
+    _filter_completed_time_keys,
     _filter_invalid_beam_files,
     _load_global_lm_reference_dataset,
 )
@@ -159,6 +160,8 @@ def run_cascade_per_time_group(
     target_size: int | None = None,
     clear_staging: bool = True,
     group_metadata_source: Literal["fits", "filename"] = "fits",
+    out_zarr: Path | None = None,
+    rebuild: bool = True,
 ) -> tuple[int, list[str]]:
     """Run ``flow_cascade73MHz`` once per observation-time group and stage outputs.
 
@@ -207,13 +210,25 @@ def run_cascade_per_time_group(
     clear_staging
         If True (default), remove *staging_dir* before running. If False, caller manages
         staging (used when interleaving Zarr conversion after each time key).
+    out_zarr
+        Optional path to the downstream Zarr store. When provided together with
+        ``rebuild=False`` (and the store exists), time keys already present in the
+        Zarr are skipped so an interrupted ``dewarp-convert`` re-run only dewarps
+        the not-yet-written observation times. Defaults to ``None`` (no resume
+        check; every discovered time key is dewarped).
+    rebuild
+        Mirrors the ``dewarp-convert`` CLI ``--rebuild`` flag. When True, the
+        resume filter is bypassed even if *out_zarr* exists (since the downstream
+        convert step is about to overwrite that store). Defaults to ``True`` so
+        existing direct library callers retain their pre-resume behavior.
 
     Returns
     -------
     n_staged : int
         Number of FITS linked or copied into *staging_dir*.
     time_keys : list of str
-        Sorted time keys that were processed.
+        Sorted time keys that were processed (an empty list when every discovered
+        key was filtered out by the resume check).
 
     Raises
     ------
@@ -245,6 +260,21 @@ def run_cascade_per_time_group(
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)
+
+    # Resume: skip raw time keys already covered by the downstream Zarr so an
+    # interrupted dewarp-convert run can be re-invoked on the same input without
+    # re-doing the cascade for already-written observation times.
+    if out_zarr is not None:
+        by_time = _filter_completed_time_keys(
+            by_time, out_zarr, rebuild=rebuild, context="dewarp-convert"
+        )
+        if not by_time:
+            logger.info(
+                "Nothing to dewarp: every discovered time key is already present in %s. "
+                "Pass --rebuild to start over.",
+                out_zarr,
+            )
+            return 0, []
 
     time_keys_sorted = sorted(by_time.keys())
     n_staged = 0
@@ -312,6 +342,15 @@ def dewarp_and_convert_append_each_time(
     that emits an image without a valid synthesized beam leaves its
     ``(time, frequency)`` slot empty and the eventual Zarr write fills that cell
     with the float ``NaN`` fill value.
+
+    When ``rebuild`` is False and ``output_dir / zarr_name`` already exists, time
+    keys already present in the store are skipped via
+    :func:`~ovro_lwa_portal.fits_to_zarr_xradio._filter_completed_time_keys`. An
+    interrupted prior run can therefore be resumed by re-invoking with the same
+    arguments; only the remaining observation times are dewarped and appended.
+    The global LM reference is built **before** the resume filter from the full
+    discovery set so the appended slices keep the same pixel grid as the times
+    already in the store.
     """
     from ovro_lwa_portal.ingest.core import FITSToZarrConverter, ConversionConfig
 
@@ -336,6 +375,11 @@ def dewarp_and_convert_append_each_time(
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)
 
+    # Build the global LM reference from the *full* discovery set (before the
+    # resume filter) so the appended slices line up with the pixel grid that
+    # was already chosen for the times already in the store. Filtering before
+    # this call could pick a different "largest shape" on resume and silently
+    # disagree with the existing store.
     lm_ref_ds = _load_global_lm_reference_dataset(
         by_time,
         fixed_dir,
@@ -346,6 +390,18 @@ def dewarp_and_convert_append_each_time(
     ).copy(deep=True)
 
     out_zarr = output_dir / zarr_name
+    # Resume: skip raw time keys already covered by the existing Zarr.
+    by_time = _filter_completed_time_keys(
+        by_time, out_zarr, rebuild=rebuild, context="dewarp-convert"
+    )
+    if not by_time:
+        logger.info(
+            "Nothing to do: every discovered time key is already present in %s. "
+            "Pass --rebuild to start over.",
+            out_zarr,
+        )
+        return 0, []
+
     first_zarr_write = not (out_zarr.exists() and not rebuild)
     time_keys_sorted = sorted(by_time.keys())
     n_staged_total = 0
