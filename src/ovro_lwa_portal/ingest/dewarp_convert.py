@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
     _discover_groups,
+    _filter_invalid_beam_files,
     _load_global_lm_reference_dataset,
 )
 
@@ -237,6 +238,10 @@ def run_cascade_per_time_group(
         time_key_source="filename",
         group_metadata_source=group_metadata_source,
     )
+    # Drop raw FITS with missing/zero BMAJ/BMIN before invoking the cascade so we
+    # don't burn dewarp compute on inputs whose results would be filtered out later
+    # by the per-time-step convert call.
+    by_time = _filter_invalid_beam_files(by_time)
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)
@@ -298,6 +303,15 @@ def dewarp_and_convert_append_each_time(
     Pass ``group_metadata_source="filename"`` to align with
     :func:`run_cascade_per_time_group` when raw OVRO basenames carry ``-image-`` and
     ``_NNNMHz_`` tags so discovery avoids FITS header reads.
+
+    Raw inputs are passed through
+    :func:`ovro_lwa_portal.fits_to_zarr_xradio._filter_invalid_beam_files` before the
+    cascade runs, so files whose primary header is missing or has a non-positive
+    ``BMAJ``/``BMIN`` are dropped and never dewarped. The downstream convert step
+    applies the same filter again to dewarped staging output, so any cascade run
+    that emits an image without a valid synthesized beam leaves its
+    ``(time, frequency)`` slot empty and the eventual Zarr write fills that cell
+    with the float ``NaN`` fill value.
     """
     from ovro_lwa_portal.ingest.core import FITSToZarrConverter, ConversionConfig
 
@@ -314,6 +328,10 @@ def dewarp_and_convert_append_each_time(
         time_key_source="filename",
         group_metadata_source=group_metadata_source,
     )
+    # Drop raw FITS with missing/zero BMAJ/BMIN before invoking the cascade so we
+    # don't burn dewarp compute on inputs whose results would be filtered out later
+    # by the per-time-step convert call.
+    by_time = _filter_invalid_beam_files(by_time)
     if not by_time:
         msg = f"No groupable FITS files found in {input_dir}"
         raise FileNotFoundError(msg)

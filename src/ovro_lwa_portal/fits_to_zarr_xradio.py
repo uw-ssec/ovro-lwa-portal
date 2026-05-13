@@ -98,6 +98,17 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+class InvalidBeamError(ValueError):
+    """Raised when a FITS primary header lacks a usable synthesized beam.
+
+    The ingest pipeline refuses to invent a placeholder beam: images without a real
+    ``BMAJ``/``BMIN`` (missing, zero, or non-positive) are excluded from processing.
+    :func:`_filter_invalid_beam_files` drops them at discovery time;
+    :func:`_fix_headers` raises this error if invoked directly on such a file and
+    :func:`fix_fits_headers` catches it to skip the file with a warning.
+    """
+
+
 def _is_xradio_stokes_missing_valueerror(exc: BaseException) -> bool:
     """True when xradio failed building coords because ``CTYPE`` has no ``STOKES``."""
     if not isinstance(exc, ValueError):
@@ -867,7 +878,13 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
     Adds/ensures:
       RESTFREQ/RESTFRQ when axis 3 is spectral (not after a synthetic Stokes axis),
       SPECSYS=LSRK, TIMESYS=UTC, RADESYS=FK5, LATPOLE=90,
-      identity PC matrix for LM, nominal beam (BMAJ/BMIN=6 arcmin), BUNIT=Jy/beam.
+      identity PC matrix for LM, BUNIT=Jy/beam. ``BMAJ``/``BMIN`` from the input are
+      preserved verbatim — no placeholder beam is ever written. Inputs without a
+      real (present, finite, strictly positive) ``BMAJ``/``BMIN`` raise
+      :class:`InvalidBeamError`; the convert pipeline drops such files at discovery
+      via :func:`_filter_invalid_beam_files` so this path is only reachable when
+      callers invoke :func:`_fix_headers` (or :func:`fix_fits_headers`) directly on
+      an unfiltered set.
       For celestial ``RA``/``DEC`` axes, ``CRVAL1``/``CRVAL2`` are set to the FK5
       zenith at the UTC instant parsed from ``-image-YYYYMMDD_HHMMSS`` in the input
       filename. If that pattern is absent, ``CRVAL1``/``CRVAL2`` are left unchanged.
@@ -884,6 +901,13 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         hdu = hdul[0]
         data = hdu.data
         hdr = hdu.header.copy()
+
+        beam_reason = _invalid_beam_reason(hdr)
+        if beam_reason is not None:
+            raise InvalidBeamError(
+                f"{path_in.name}: cannot fix headers because the input lacks a usable "
+                f"synthesized beam ({beam_reason}); processing must exclude this file."
+            )
 
         bscale = float(hdr.get("BSCALE", 1.0))
         bzero = float(hdr.get("BZERO", 0.0))
@@ -1001,9 +1025,11 @@ def _fix_headers(path_in: Path, path_out: Path) -> None:
         H["PC2_1"] = 0.0
         H["PC2_2"] = 1.0
 
-        # Nominal synthesized beam (6 arcmin)
-        H["BMAJ"] = 6 / 60
-        H["BMIN"] = 6 / 60
+        # BMAJ/BMIN are preserved verbatim from the input; the early
+        # ``_invalid_beam_reason`` check above guarantees they're present and positive.
+        # No nominal/placeholder beam is ever stamped in: a file without a real
+        # synthesized beam must be excluded from processing rather than annotated
+        # with fabricated values.
         if "BPA" not in H:
             H["BPA"] = 0.0
         if "BUNIT" not in H:
@@ -1130,6 +1156,11 @@ def fix_fits_headers(
       and are returned as-is.
     * The :func:`_fix_headers` function applies BSCALE/BZERO and adds minimal
       WCS/spectral keywords required by xradio.
+    * Files whose primary header lacks a real ``BMAJ``/``BMIN`` (missing or
+      non-positive) raise :class:`InvalidBeamError` inside :func:`_fix_headers`;
+      they are logged at WARNING level, omitted from the returned list, and any
+      partially-written ``*_fixed.fits`` is removed so downstream consumers see
+      only files with a real synthesized beam.
 
     Examples
     --------
@@ -1154,10 +1185,25 @@ def fix_fits_headers(
             fixed = fixed_dir / (f.stem + "_fixed.fits")
             if skip_existing and fixed.exists():
                 logger.debug(f"Skipping existing fixed file: {fixed.name}")
+                fixed_paths.append(fixed)
             else:
                 logger.info(f"Fixing headers: {f.name} -> {fixed.name}")
-                _fix_headers(f, fixed)
-            fixed_paths.append(fixed)
+                try:
+                    _fix_headers(f, fixed)
+                except InvalidBeamError as exc:
+                    logger.warning(
+                        "Skipping %s: %s; excluded from the fixed-FITS set.",
+                        f.name,
+                        exc,
+                    )
+                    # Make sure no partial output is left behind for resume-style
+                    # invocations (``skip_existing=True``) on a later run.
+                    try:
+                        fixed.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    continue
+                fixed_paths.append(fixed)
 
     return fixed_paths
 
@@ -1895,6 +1941,110 @@ def _harmonize_celestial_coords_independent_of_frequency(
             out = out.assign(wcs_header_str=wh.isel(frequency=ri, drop=True))
 
     return out
+
+
+def _invalid_beam_reason(header: fits.Header) -> Optional[str]:
+    """Return a short reason if the FITS header has no usable synthesized beam, else ``None``.
+
+    A header is considered to have a usable beam when both ``BMAJ`` and ``BMIN`` are
+    present, finite, and strictly positive. Common bad cases for OVRO-LWA dewarped
+    products are:
+
+    * the cascade flow failed to fit the synthesized beam and left ``BMAJ``/``BMIN``
+      absent from the output FITS header;
+    * the cascade emitted placeholder zeros (``BMAJ=0`` and/or ``BMIN=0``).
+
+    These reasons are surfaced verbatim in the discovery skip warnings so log readers
+    can correlate ingest decisions with upstream imaging issues.
+    """
+    missing = [k for k in ("BMAJ", "BMIN") if k not in header]
+    if missing:
+        return f"missing {'/'.join(missing)}"
+
+    bad: List[str] = []
+    for k in ("BMAJ", "BMIN"):
+        try:
+            v = float(header[k])
+        except (TypeError, ValueError):
+            bad.append(f"{k}=<non-numeric:{header[k]!r}>")
+            continue
+        if not np.isfinite(v):
+            bad.append(f"{k}={v}")
+        elif v <= 0.0:
+            bad.append(f"{k}={v}")
+    if bad:
+        return "; ".join(bad)
+    return None
+
+
+def _filter_invalid_beam_files(
+    by_time: Dict[str, List[Path]],
+) -> Dict[str, List[Path]]:
+    """Drop FITS files whose primary header has a missing or non-positive beam.
+
+    Files surviving this filter have a real, finite, strictly positive ``BMAJ`` and
+    ``BMIN``. Skipped files are *omitted* from the returned grouping so downstream
+    combine and Zarr append leave their ``(time, frequency)`` cells unwritten; on
+    append, :func:`xarray.concat` outer-joins the frequency axis and fills missing
+    cells with the float ``NaN`` fill value. Time keys whose entire bucket fails the
+    check are dropped from the result (with a warning) so the outer convert loop
+    does not attempt to combine an empty group.
+
+    Parameters
+    ----------
+    by_time
+        Discovery output mapping observation-time key → list of FITS file paths.
+
+    Returns
+    -------
+    Dict[str, List[Path]]
+        Same shape as ``by_time`` but with invalid-beam files removed; time keys
+        whose remaining file list is empty are dropped entirely.
+    """
+    filtered: Dict[str, List[Path]] = {}
+    n_dropped_files = 0
+    for tkey, files in by_time.items():
+        kept: List[Path] = []
+        for fp in files:
+            try:
+                hdr = fits.getheader(fp, ext=0)
+            except Exception as exc:
+                logger.warning(
+                    "Skipping %s: could not read primary header to check beam (%s); "
+                    "its (time=%s, frequency=*) slot will be filled with NaN in Zarr.",
+                    fp.name,
+                    exc,
+                    tkey,
+                )
+                n_dropped_files += 1
+                continue
+            reason = _invalid_beam_reason(hdr)
+            if reason is None:
+                kept.append(fp)
+            else:
+                logger.warning(
+                    "Skipping %s: invalid synthesized beam (%s); its (time=%s, "
+                    "frequency=*) slot will be filled with NaN in Zarr.",
+                    fp.name,
+                    reason,
+                    tkey,
+                )
+                n_dropped_files += 1
+        if kept:
+            filtered[tkey] = kept
+        else:
+            logger.warning(
+                "All FITS files for time=%s dropped because none have a valid "
+                "synthesized beam; this time step will not be written.",
+                tkey,
+            )
+    if n_dropped_files:
+        logger.info(
+            "Beam-validity filter dropped %d file(s) across %d remaining time step(s).",
+            n_dropped_files,
+            len(filtered),
+        )
+    return filtered
 
 
 def _discover_groups(
@@ -2635,6 +2785,12 @@ def convert_fits_dir_to_zarr(
         and order files using only basename ``-image-`` time and ``_NNNMHz_`` tokens,
         avoiding ``fits.getheader`` during discovery and frequency sorting.
 
+    After discovery, files whose primary FITS header is missing or has a zero/negative
+    ``BMAJ``/``BMIN`` are dropped via :func:`_filter_invalid_beam_files`. Their
+    ``(time, frequency)`` cells are left unwritten so the Zarr append step's outer
+    join fills them with the float ``NaN`` fill value instead of contaminating the
+    store with placeholder zeros.
+
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
     frame taken from the lowest-frequency slice. If sampled on-sky positions in other
@@ -2689,6 +2845,7 @@ def convert_fits_dir_to_zarr(
                 input_dir,
                 ", ".join(sorted(missing)),
             )
+    by_time = _filter_invalid_beam_files(by_time)
     total_files = sum(len(v) for v in by_time.values())
     logger.info(f"Discovered {total_files} FITS across {len(by_time)} time step(s).")
     for k, v in by_time.items():
@@ -2699,7 +2856,10 @@ def convert_fits_dir_to_zarr(
         logger.info(f"  time {k}: {len(v)} file(s), frequencies (Hz): {freqs_hz}")
 
     if not by_time:
-        raise FileNotFoundError(f"No matching FITS found in {input_dir}")
+        raise FileNotFoundError(
+            f"No matching FITS found in {input_dir} (none passed discovery and the "
+            "BMAJ/BMIN beam-validity filter)."
+        )
 
     if lm_reference_ds is not None:
         lm_ref_ds = lm_reference_ds

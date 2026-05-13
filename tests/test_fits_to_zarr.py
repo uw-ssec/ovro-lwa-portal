@@ -1022,6 +1022,289 @@ def test_discover_groups_filename_fallback_compatibility(tmp_path: Path):
     assert groups == {}
 
 
+def test_invalid_beam_reason_missing_keywords():
+    """Headers without BMAJ or BMIN should be reported as missing."""
+    mod = _import_module()
+    assert mod._invalid_beam_reason(fits.Header({})) == "missing BMAJ/BMIN"
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": 0.1})) == "missing BMIN"
+    assert mod._invalid_beam_reason(fits.Header({"BMIN": 0.1})) == "missing BMAJ"
+
+
+def test_invalid_beam_reason_zero_or_negative():
+    """Zero or negative beam axes should each be flagged."""
+    mod = _import_module()
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": 0.0, "BMIN": 0.1})) == "BMAJ=0.0"
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": 0.1, "BMIN": 0.0})) == "BMIN=0.0"
+    reason_both_zero = mod._invalid_beam_reason(fits.Header({"BMAJ": 0.0, "BMIN": 0.0}))
+    assert "BMAJ=0.0" in reason_both_zero and "BMIN=0.0" in reason_both_zero
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": -1.0, "BMIN": 0.1})) == "BMAJ=-1.0"
+
+
+def test_invalid_beam_reason_non_finite_value():
+    """Non-finite stand-ins (handled defensively even though astropy rejects NaN in headers)."""
+    import numpy as _np
+
+    mod = _import_module()
+
+    class _NonFiniteHeader:
+        def __init__(self, mapping):
+            self._mapping = mapping
+
+        def __contains__(self, key):
+            return key in self._mapping
+
+        def __getitem__(self, key):
+            return self._mapping[key]
+
+    hdr = _NonFiniteHeader({"BMAJ": _np.inf, "BMIN": 0.1})
+    assert mod._invalid_beam_reason(hdr) == "BMAJ=inf"
+
+    hdr2 = _NonFiniteHeader({"BMAJ": "not_a_number", "BMIN": 0.1})
+    assert mod._invalid_beam_reason(hdr2).startswith("BMAJ=<non-numeric:")
+
+
+def test_invalid_beam_reason_valid_beam_returns_none():
+    """Finite, strictly positive BMAJ/BMIN means the file should be kept."""
+    mod = _import_module()
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": 0.1, "BMIN": 0.05})) is None
+    assert mod._invalid_beam_reason(fits.Header({"BMAJ": 1e-6, "BMIN": 1e-6})) is None
+
+
+def test_filter_invalid_beam_files_drops_zero_and_missing(tmp_path: Path, caplog):
+    """Files with missing or zero BMAJ/BMIN must be dropped with a warning."""
+    import logging
+
+    mod = _import_module()
+
+    good = tmp_path / "good.fits"
+    bad_missing = tmp_path / "bad_missing.fits"
+    bad_zero = tmp_path / "bad_zero.fits"
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"BMAJ": 0.1, "BMIN": 0.1}),
+    ).writeto(good)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({}),
+    ).writeto(bad_missing)
+    fits.PrimaryHDU(
+        data=[[1.0]],
+        header=fits.Header({"BMAJ": 0.0, "BMIN": 0.0}),
+    ).writeto(bad_zero)
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    by_time = {"20240524_050009": [good, bad_missing, bad_zero]}
+    filtered = mod._filter_invalid_beam_files(by_time)
+
+    assert filtered == {"20240524_050009": [good]}
+    assert "bad_missing.fits" in caplog.text
+    assert "bad_zero.fits" in caplog.text
+    assert "missing BMAJ/BMIN" in caplog.text
+    assert "BMAJ=0.0" in caplog.text
+
+
+def test_filter_invalid_beam_files_drops_empty_time_keys(tmp_path: Path, caplog):
+    """Time keys whose files all fail the beam check must be removed entirely."""
+    import logging
+
+    mod = _import_module()
+
+    bad_a = tmp_path / "bad_a.fits"
+    bad_b = tmp_path / "bad_b.fits"
+    good_c = tmp_path / "good_c.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"BMAJ": 0.0, "BMIN": 0.0})).writeto(bad_a)
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({})).writeto(bad_b)
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"BMAJ": 0.1, "BMIN": 0.1})).writeto(good_c)
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    by_time = {
+        "t_all_bad": [bad_a, bad_b],
+        "t_one_good": [bad_a, good_c],
+    }
+    filtered = mod._filter_invalid_beam_files(by_time)
+
+    assert "t_all_bad" not in filtered
+    assert filtered.get("t_one_good") == [good_c]
+    assert "t_all_bad" in caplog.text
+
+
+def test_filter_invalid_beam_files_logs_unreadable_files(tmp_path: Path, caplog):
+    """Header read failures should drop the file rather than abort the run."""
+    import logging
+
+    mod = _import_module()
+
+    real = tmp_path / "real.fits"
+    fits.PrimaryHDU(data=[[1.0]], header=fits.Header({"BMAJ": 0.1, "BMIN": 0.1})).writeto(real)
+    missing = tmp_path / "does_not_exist.fits"
+
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    filtered = mod._filter_invalid_beam_files({"t": [real, missing]})
+
+    assert filtered == {"t": [real]}
+    assert "does_not_exist.fits" in caplog.text
+    assert "could not read primary header" in caplog.text
+
+
+def test_fix_headers_raises_invalid_beam_error_on_missing_beam(tmp_path: Path):
+    """``_fix_headers`` must refuse to invent a placeholder beam for unfit images."""
+    import numpy as _np
+
+    mod = _import_module()
+    in_path = tmp_path / "no_beam.fits"
+    out_path = tmp_path / "no_beam_fixed.fits"
+
+    data = _np.zeros((1, 1, 4, 4), dtype=_np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 4,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "NAXIS4": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CTYPE4": "STOKES",
+            "CRVAL3": 4.1e7,
+            "CRPIX3": 1.0,
+            "CDELT3": 1.0,
+            "CRVAL4": 1.0,
+            "CRPIX4": 1.0,
+            "CDELT4": 1.0,
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    with pytest.raises(mod.InvalidBeamError, match="missing BMAJ/BMIN"):
+        mod._fix_headers(in_path, out_path)
+
+    assert not out_path.exists(), "Output FITS must not be written for invalid-beam inputs."
+
+
+def test_fix_headers_raises_invalid_beam_error_on_zero_beam(tmp_path: Path):
+    """Zero ``BMAJ``/``BMIN`` must also be rejected — no placeholder beam ever lands on disk."""
+    import numpy as _np
+
+    mod = _import_module()
+    in_path = tmp_path / "zero_beam.fits"
+    out_path = tmp_path / "zero_beam_fixed.fits"
+
+    data = _np.zeros((1, 1, 4, 4), dtype=_np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 4,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "NAXIS4": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CTYPE4": "STOKES",
+            "CRVAL3": 4.1e7,
+            "CRPIX3": 1.0,
+            "CDELT3": 1.0,
+            "CRVAL4": 1.0,
+            "CRPIX4": 1.0,
+            "CDELT4": 1.0,
+            "BMAJ": 0.0,
+            "BMIN": 0.0,
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+
+    with pytest.raises(mod.InvalidBeamError, match="BMAJ=0.0"):
+        mod._fix_headers(in_path, out_path)
+
+
+def test_fix_fits_headers_skips_invalid_beam_and_returns_only_valid(tmp_path: Path, caplog):
+    """``fix_fits_headers`` must drop invalid-beam files, log a warning, and clean partials."""
+    import logging
+
+    import numpy as _np
+
+    mod = _import_module()
+
+    def _write(path: Path, *, with_beam: bool) -> None:
+        h = fits.Header(
+            {
+                "NAXIS": 2,
+                "NAXIS1": 4,
+                "NAXIS2": 4,
+                "CTYPE1": "RA---SIN",
+                "CTYPE2": "DEC--SIN",
+                "CRVAL1": 180.0,
+                "CRVAL2": 45.0,
+                "CRPIX1": 2.5,
+                "CRPIX2": 2.5,
+                "CDELT1": -0.03,
+                "CDELT2": 0.03,
+                "CUNIT1": "deg",
+                "CUNIT2": "deg",
+            }
+        )
+        if with_beam:
+            h["BMAJ"] = 0.1
+            h["BMIN"] = 0.1
+        fits.PrimaryHDU(data=_np.zeros((4, 4), dtype=_np.float32), header=h).writeto(path)
+
+    good = tmp_path / "good_70MHz.fits"
+    bad = tmp_path / "bad_74MHz.fits"
+    _write(good, with_beam=True)
+    _write(bad, with_beam=False)
+
+    fixed_dir = tmp_path / "fixed"
+    caplog.set_level(logging.WARNING, logger="ovro_lwa_portal.fits_to_zarr_xradio")
+    fixed_paths = mod.fix_fits_headers([good, bad], fixed_dir, skip_existing=False)
+
+    assert fixed_paths == [fixed_dir / "good_70MHz_fixed.fits"]
+    assert (fixed_dir / "good_70MHz_fixed.fits").exists()
+    assert not (fixed_dir / "bad_74MHz_fixed.fits").exists()
+    assert "bad_74MHz.fits" in caplog.text
+    assert "missing BMAJ/BMIN" in caplog.text
+
+
+def test_fix_headers_preserves_real_beam_when_present(tmp_path: Path):
+    """``_fix_headers`` must keep the input's real synthesized beam, not clobber it."""
+    import numpy as _np
+
+    mod = _import_module()
+    in_path = tmp_path / "input.fits"
+    out_path = tmp_path / "output_fixed.fits"
+
+    data = _np.zeros((1, 1, 4, 4), dtype=_np.float32)
+    header = fits.Header(
+        {
+            "NAXIS": 4,
+            "NAXIS1": 4,
+            "NAXIS2": 4,
+            "NAXIS3": 1,
+            "NAXIS4": 1,
+            "CTYPE1": "RA---SIN",
+            "CTYPE2": "DEC--SIN",
+            "CTYPE3": "FREQ",
+            "CTYPE4": "STOKES",
+            "CRVAL3": 4.1e7,
+            "CRPIX3": 1.0,
+            "CDELT3": 1.0,
+            "CRVAL4": 1.0,
+            "CRPIX4": 1.0,
+            "CDELT4": 1.0,
+            "BMAJ": 0.0421,
+            "BMIN": 0.0317,
+            "BPA": 12.5,
+        }
+    )
+    fits.PrimaryHDU(data=data, header=header).writeto(in_path)
+    mod._fix_headers(in_path, out_path)
+
+    out_hdr = fits.getheader(out_path, ext=0)
+    assert out_hdr["BMAJ"] == pytest.approx(0.0421)
+    assert out_hdr["BMIN"] == pytest.approx(0.0317)
+    assert out_hdr["BPA"] == pytest.approx(12.5)
+
+
 def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
     """Header fixing should add a singleton STOKES axis for 3D FREQ-only cubes."""
     import numpy as np
@@ -1044,6 +1327,8 @@ def test_fix_headers_adds_stokes_axis_when_missing(tmp_path: Path):
             "CRPIX3": 1.0,
             "CDELT3": 1.0,
             "CUNIT3": "Hz",
+            "BMAJ": 0.1,
+            "BMIN": 0.1,
         }
     )
     fits.PrimaryHDU(data=data, header=header).writeto(in_path)
@@ -1292,6 +1577,8 @@ def test_fix_headers_relabels_singleton_axis_to_stokes_for_4d(tmp_path: Path) ->
             "EQUINOX": 2000.0,
             "LONPOLE": 180.0,
             "TELESCOP": "TEST",
+            "BMAJ": 0.1,
+            "BMIN": 0.1,
         }
     )
     fits.PrimaryHDU(data=data, header=header).writeto(in_path)
@@ -1347,6 +1634,8 @@ def test_fix_headers_strips_padded_stokes_ctype_for_xradio(tmp_path: Path) -> No
             "EQUINOX": 2000.0,
             "LONPOLE": 180.0,
             "TELESCOP": "TEST",
+            "BMAJ": 0.1,
+            "BMIN": 0.1,
         }
     )
     fits.PrimaryHDU(data=data, header=header).writeto(in_path)
@@ -1386,6 +1675,8 @@ def test_fix_headers_sets_crval_to_fk5_zenith_from_filename_image_stamp(tmp_path
             "CUNIT2": "deg",
             "DATE-OBS": "2024-12-18T03:00:01.4",
             "TIMESYS": "UTC",
+            "BMAJ": 0.1,
+            "BMIN": 0.1,
         }
     )
     fits.PrimaryHDU(data=data, header=header).writeto(in_path)
@@ -1425,6 +1716,8 @@ def test_fix_headers_leaves_crval_without_image_timestamp_in_name(tmp_path: Path
             "CDELT2": 0.03,
             "CUNIT1": "deg",
             "CUNIT2": "deg",
+            "BMAJ": 0.1,
+            "BMIN": 0.1,
         }
     )
     fits.PrimaryHDU(data=data, header=header).writeto(in_path)

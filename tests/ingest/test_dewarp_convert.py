@@ -28,6 +28,11 @@ def _write_minimal_fits(path: Path, *, restfreq_hz: float, date_obs: str) -> Non
     hdu = fits.PrimaryHDU(data=data)
     hdu.header["DATE-OBS"] = date_obs
     hdu.header["RESTFREQ"] = restfreq_hz
+    # Synthesized beam keywords let the file survive ``_filter_invalid_beam_files``;
+    # tests that specifically exercise the invalid-beam skip path build headers
+    # without these (or override with zero) on their own.
+    hdu.header["BMAJ"] = 0.1
+    hdu.header["BMIN"] = 0.1
     hdu.writeto(path, overwrite=True)
 
 
@@ -341,6 +346,12 @@ def test_dewarp_and_convert_append_each_time_calls_zarr_per_step(tmp_path: Path,
     for d in (raw, out, cascade, staging, fixed):
         d.mkdir()
 
+    # ``_filter_invalid_beam_files`` opens the primary header of each discovered file,
+    # so the paths returned by ``fake_discover`` must point at real FITS with valid
+    # BMAJ/BMIN — otherwise the filter drops them and discovery yields nothing.
+    _write_minimal_fits(raw / "a.fits", restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+    _write_minimal_fits(raw / "b.fits", restfreq_hz=74e6, date_obs="2024-06-02T12:00:00.0")
+
     def fake_discover(*_a: object, **_k: object) -> dict[str, list[Path]]:
         return {
             "20240601_120000": [raw / "a.fits"],
@@ -403,6 +414,60 @@ def test_dewarp_and_convert_append_each_time_calls_zarr_per_step(tmp_path: Path,
     assert cfg1.time_keys_only == ("20240602_120000",)
     assert cfg0.rebuild is True
     assert cfg1.rebuild is False
+
+
+def test_run_cascade_per_time_group_skips_files_with_invalid_beam(tmp_path: Path) -> None:
+    """Raw FITS with missing/zero BMAJ/BMIN must be dropped before the cascade runs."""
+
+    cascade_inputs: list[list[str]] = []
+
+    def recording_cascade(
+        image_filenames: list[str],
+        outroot: str,
+        write: bool = True,
+        **_kwargs: Any,
+    ) -> None:
+        cascade_inputs.append(list(image_filenames))
+        out = Path(outroot)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "dewarped_0.fits").touch()
+
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    cascade_parent = tmp_path / "cascade"
+    staging = tmp_path / "staging"
+
+    good = raw / "good_70MHz.fits"
+    bad_missing = raw / "bad_missing_74MHz.fits"
+    bad_zero = raw / "bad_zero_78MHz.fits"
+
+    _write_minimal_fits(good, restfreq_hz=70e6, date_obs="2024-06-01T12:00:00.0")
+    # Bad files have valid time/freq metadata but no usable beam.
+    hdu = fits.PrimaryHDU(data=np.zeros((4, 4), dtype=np.float32))
+    hdu.header["DATE-OBS"] = "2024-06-01T12:00:00.0"
+    hdu.header["RESTFREQ"] = 74e6
+    hdu.writeto(bad_missing, overwrite=True)
+
+    hdu = fits.PrimaryHDU(data=np.zeros((4, 4), dtype=np.float32))
+    hdu.header["DATE-OBS"] = "2024-06-01T12:00:00.0"
+    hdu.header["RESTFREQ"] = 78e6
+    hdu.header["BMAJ"] = 0.0
+    hdu.header["BMIN"] = 0.0
+    hdu.writeto(bad_zero, overwrite=True)
+
+    n, keys = run_cascade_per_time_group(
+        raw,
+        cascade_parent,
+        staging,
+        discovery_freq_bin_hz=23e3,
+        cascade_fn=recording_cascade,
+    )
+
+    assert n == 1
+    assert keys == ["20240601_120000"]
+    assert len(cascade_inputs) == 1
+    forwarded = {Path(p).name for p in cascade_inputs[0]}
+    assert forwarded == {"good_70MHz.fits"}
 
 
 def test_run_cascade_per_time_group_forwards_target_size(tmp_path: Path) -> None:
