@@ -130,6 +130,64 @@ def test_peek_lm_shape_errors_when_naxis_less_than_two(tmp_path: Path):
         mod._peek_lm_shape(fpath)
 
 
+def test_assign_canonical_frequency_for_stack_uses_mhz_token_over_identical_header_freq():
+    """Basename ``_NNNMHz_`` must set the stack ``frequency`` coord when xradio agrees on Hz."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    xds = xr.Dataset(
+        {"SKY": (["frequency", "l", "m"], np.zeros((1, 2, 2), dtype=np.float32))},
+        coords={
+            "frequency": np.array([73.8e6], dtype=np.float64),
+            "l": np.array([0.0, 1.0]),
+            "m": np.array([0.0, 1.0]),
+        },
+    )
+    fp = Path("20240524_041000_55MHz_averaged-I-image_fixed.fits")
+    out = mod._assign_canonical_frequency_for_stack(
+        xds, fp, group_metadata_source="fits"
+    )
+    assert float(out["frequency"].values[0]) == pytest.approx(55e6)
+
+
+def test_combine_by_coords_two_slices_no_duplicate_frequency_after_canonical_assign():
+    """Two OVRO-style names at different MHz must combine without duplicate ``frequency``."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    coords_common = {
+        "l": np.array([0.0, 1.0]),
+        "m": np.array([0.0, 1.0]),
+    }
+    dup_header_freq = np.array([73.8e6], dtype=np.float64)
+    x41 = xr.Dataset(
+        {"SKY": (["frequency", "l", "m"], np.ones((1, 2, 2), dtype=np.float32) * 41.0)},
+        coords={"frequency": dup_header_freq, **coords_common},
+    )
+    x55 = xr.Dataset(
+        {"SKY": (["frequency", "l", "m"], np.ones((1, 2, 2), dtype=np.float32) * 55.0)},
+        coords={"frequency": dup_header_freq, **coords_common},
+    )
+    p41 = Path("t__20240524_041000_41MHz_averaged-I-image.fits")
+    p55 = Path("t__20240524_041000_55MHz_averaged-I-image.fits")
+    x41 = mod._assign_canonical_frequency_for_stack(x41, p41, group_metadata_source="filename")
+    x55 = mod._assign_canonical_frequency_for_stack(x55, p55, group_metadata_source="filename")
+    merged = xr.combine_by_coords(
+        [x41, x55],
+        combine_attrs="drop",
+        data_vars="minimal",
+        coords="minimal",
+        compat="no_conflicts",
+    )
+    merged = merged.sortby("frequency")
+    assert merged.sizes["frequency"] == 2
+    np.testing.assert_allclose(
+        merged["frequency"].values, np.array([41e6, 55e6], dtype=np.float64)
+    )
+
+
 def test_regrid_to_reference_lm_mixed_shapes():
     """Smaller (m,l) grids interpolate onto the reference LM grid."""
     import numpy as np

@@ -54,6 +54,9 @@ Notes
   collapsed to a single ``(l, m)`` frame taken from the lowest-frequency slice. If sampled
   sky positions differ from that reference by more than ~one arcminute between slices, a
   warning is logged so inconsistent WCS across the band is visible.
+* Single-channel slices get a ``frequency`` coordinate from the basename ``_NNNMHz_`` token
+  when present so dewarped products that share an identical spectral keyword in the FITS
+  header still stack with unique labels (avoids pandas duplicate-index errors on ``sortby``).
 * Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
   Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
 * On append, only the pending time step is appended along the ``time`` dimension.
@@ -2014,6 +2017,9 @@ def _combine_time_step(
     freqs_seen: List[float] = []
     for fp in fixed_paths:
         xds = _load_for_combine(fp, chunk_lm=chunk_lm)
+        xds = _assign_canonical_frequency_for_stack(
+            xds, fp, group_metadata_source=group_metadata_source
+        )
         fvals = np.atleast_1d(xds.frequency.values)
         freqs_seen.extend([float(f) for f in fvals])
         xds_list.append(xds)
@@ -2066,6 +2072,16 @@ def _combine_time_step(
         xds_t = xr.concat(xds_list, dim="frequency")
 
     if "frequency" in xds_t.coords:
+        fv = np.asarray(xds_t["frequency"].values, dtype=np.float64).ravel()
+        if fv.size > 1 and len(np.unique(fv)) < len(fv):
+            names = ", ".join(p.name for p in fixed_paths)
+            msg = (
+                "Duplicate ``frequency`` coordinate values after stacking subbands for one "
+                "time step (``xarray`` cannot sort or write this). Usually dewarped FITS share "
+                "the same RESTFREQ/CRVAL3 while basenames omit distinct ``_NNNMHz_`` tags. "
+                f"Files: {names}"
+            )
+            raise RuntimeError(msg)
         xds_t = xds_t.sortby("frequency")
     if "time" in xds_t.coords:
         xds_t = xds_t.sortby("time")
