@@ -188,9 +188,54 @@ def test_combine_by_coords_two_slices_no_duplicate_frequency_after_canonical_ass
     )
 
 
+def _make_sin_wcs_header_str(
+    *, nx: int, ny: int, crval1: float, crval2: float, cdelt: float = 0.1
+) -> str:
+    """Build a minimal 2D ``RA---SIN`` / ``DEC--SIN`` FITS header string.
+
+    Used by ``_regrid_to_reference_lm`` tests because that function now recomputes
+    ``right_ascension``/``declination`` from the persisted WCS, so fixtures need
+    real celestial WCS info (CTYPE/CRVAL/CRPIX/CDELT), not placeholder strings.
+    """
+    from astropy.io import fits as _fits
+
+    h = _fits.Header()
+    h["NAXIS"] = 2
+    h["NAXIS1"] = nx
+    h["NAXIS2"] = ny
+    h["CTYPE1"] = "RA---SIN"
+    h["CTYPE2"] = "DEC--SIN"
+    h["CRVAL1"] = float(crval1)
+    h["CRVAL2"] = float(crval2)
+    h["CRPIX1"] = (nx + 1) / 2.0
+    h["CRPIX2"] = (ny + 1) / 2.0
+    h["CDELT1"] = -float(cdelt)
+    h["CDELT2"] = float(cdelt)
+    h["RADESYS"] = "FK5"
+    h["EQUINOX"] = 2000.0
+    return h.tostring(sep="\n")
+
+
+def _radec_from_header_str(
+    hdr_str: str, *, nl: int, nm: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute ``(ra, dec)`` arrays of shape ``(nl, nm)`` using a 2D celestial WCS."""
+    from astropy.io import fits as _fits
+    from astropy.wcs import WCS as _WCS
+
+    w = _WCS(_fits.Header.fromstring(hdr_str, sep="\n"))
+    yy, xx = np.indices((nm, nl), dtype=float)
+    ra2d, dec2d = w.all_pix2world(xx, yy, 0)
+    return np.transpose(ra2d), np.transpose(dec2d)
+
+
+# ``np`` is imported above only inside test bodies in this file; pull it to module scope so
+# the helpers above can use it without re-importing.
+import numpy as np  # noqa: E402
+
+
 def test_regrid_to_reference_lm_mixed_shapes():
     """Smaller (m,l) grids interpolate onto the reference LM grid."""
-    import numpy as np
     import xarray as xr
 
     fits_to_zarr_xradio = _import_module()
@@ -199,14 +244,17 @@ def test_regrid_to_reference_lm_mixed_shapes():
     m_ref = np.linspace(-1.0, 1.0, 5)
     rng = np.random.default_rng(0)
     sky_ref = rng.standard_normal((5, 6))
-    hdr_ref = "SIMPLE  =                   T\nNAXIS   =                    2"
+    # Both ref and source share the same per-time CRVAL → output RA/Dec must equal
+    # what a fresh WCS evaluation on ref's pixel grid would produce.
+    hdr_ref = _make_sin_wcs_header_str(nx=6, ny=5, crval1=180.0, crval2=45.0)
+    expected_ra, expected_dec = _radec_from_header_str(hdr_ref, nl=6, nm=5)
     xds_ref = xr.Dataset(
         data_vars={"SKY": (("m", "l"), sky_ref)},
         coords={
             "l": ("l", l_ref),
             "m": ("m", m_ref),
-            "right_ascension": (("m", "l"), np.full((5, 6), 180.0)),
-            "declination": (("m", "l"), np.full((5, 6), 45.0)),
+            "right_ascension": (("l", "m"), expected_ra),
+            "declination": (("l", "m"), expected_dec),
         },
         attrs={"fits_wcs_header": hdr_ref},
     )
@@ -215,7 +263,7 @@ def test_regrid_to_reference_lm_mixed_shapes():
     l_sm = np.linspace(-0.5, 0.5, 4)
     m_sm = np.linspace(-0.5, 0.5, 3)
     sky_sm = rng.standard_normal((3, 4))
-    hdr_sm = "SIMPLE  =                   T\nNAXIS   =                    2\nSMALL=T"
+    hdr_sm = _make_sin_wcs_header_str(nx=4, ny=3, crval1=180.0, crval2=45.0)
     xds_sm = xr.Dataset(
         data_vars={"SKY": (("m", "l"), sky_sm)},
         coords={
@@ -234,11 +282,12 @@ def test_regrid_to_reference_lm_mixed_shapes():
     assert out.sizes["l"] == 6
     np.testing.assert_allclose(out["l"].values, l_ref)
     np.testing.assert_allclose(out["m"].values, m_ref)
-    assert out.attrs["fits_wcs_header"] == hdr_ref
-    assert out["SKY"].attrs["fits_wcs_header"] == hdr_ref
-    np.testing.assert_allclose(out["right_ascension"].values, xds_ref["right_ascension"].values)
-    np.testing.assert_allclose(out["declination"].values, xds_ref["declination"].values)
-    assert bytes(out["wcs_header_str"].values.item()) == hdr_ref.encode("utf-8")
+    # The persisted WCS now reflects ref's pixel grid + source's CRVAL (here identical).
+    out_hdr_str = out.attrs["fits_wcs_header"]
+    assert out["SKY"].attrs["fits_wcs_header"] == out_hdr_str
+    np.testing.assert_allclose(out["right_ascension"].values, expected_ra)
+    np.testing.assert_allclose(out["declination"].values, expected_dec)
+    assert bytes(out["wcs_header_str"].values.item()) == out_hdr_str.encode("utf-8")
 
 
 def test_regrid_to_reference_lm_same_shape_different_index_coords():
@@ -247,7 +296,6 @@ def test_regrid_to_reference_lm_same_shape_different_index_coords():
     Otherwise :func:`xarray.combine_by_coords` outer-joins ``l``/``m`` and spatial
     dimensions blow up (e.g. ``3 × 4096`` for three subbands).
     """
-    import numpy as np
     import xarray as xr
 
     mod = _import_module()
@@ -255,7 +303,7 @@ def test_regrid_to_reference_lm_same_shape_different_index_coords():
     l_ref = np.linspace(-1.0, 1.0, n)
     m_ref = np.linspace(-1.0, 1.0, n)
     sky = np.arange(n * n, dtype=np.float64).reshape(n, n)
-    hdr = "SIMPLE  =                   T\nNAXIS   =                    2"
+    hdr = _make_sin_wcs_header_str(nx=n, ny=n, crval1=180.0, crval2=45.0)
 
     def mk_ds(l_arr: np.ndarray, m_arr: np.ndarray) -> xr.Dataset:
         return xr.Dataset(
@@ -310,7 +358,6 @@ def test_regrid_to_reference_lm_error_includes_source_label():
     """Interpolation failures should name the source file when provided."""
     from unittest.mock import patch
 
-    import numpy as np
     import xarray as xr
 
     mod = _import_module()
@@ -318,7 +365,7 @@ def test_regrid_to_reference_lm_error_includes_source_label():
     l_ref = np.linspace(-1.0, 1.0, 5)
     m_ref = np.linspace(-1.0, 1.0, 5)
     sky_ref = rng.standard_normal((5, 5))
-    hdr_ref = "SIMPLE  =                   T\nNAXIS   =                    2"
+    hdr_ref = _make_sin_wcs_header_str(nx=5, ny=5, crval1=180.0, crval2=45.0)
     xds_ref = xr.Dataset(
         data_vars={"SKY": (("m", "l"), sky_ref)},
         coords={
@@ -348,6 +395,101 @@ def test_regrid_to_reference_lm_error_includes_source_label():
         pytest.raises(RuntimeError, match="bad_file.fits"),
     ):
         mod._regrid_to_reference_lm(xds_sm, xds_ref, source_label="bad_file.fits")
+
+
+def test_regrid_to_reference_lm_uses_source_crval_for_radec():
+    """Output RA/Dec must come from source's per-time CRVAL on ref's pixel grid.
+
+    Reproduces the
+    ``Celestial coordinate grids differ by up to <large> arcsec across N frequency
+    slice(s)`` warning scenario:
+
+    * The global LM reference is built once from the earliest time step → its
+      ``CRVAL1``/``CRVAL2`` reflect the FK5 zenith at *that* instant.
+    * At later time steps, each source FITS gets re-stamped by ``_fix_headers`` with
+      *its own* obs-time zenith ``CRVAL``.
+    * Sky positions for a single time step must therefore use the source's CRVAL
+      (otherwise subbands that fell through the short-circuit and those that were
+      actually regridded disagree by the LST advance between the reference time and
+      the current time → frequency-dependent RA/Dec in the combined dataset).
+    """
+    import xarray as xr
+
+    mod = _import_module()
+    n_ref = 6
+    l_ref = np.linspace(-1.0, 1.0, n_ref)
+    m_ref = np.linspace(-1.0, 1.0, n_ref)
+    rng = np.random.default_rng(7)
+    sky_ref = rng.standard_normal((n_ref, n_ref))
+
+    ref_crval = (180.0, 45.0)
+    src_crval = (200.0, 40.0)  # later obs time → zenith shifted in RA, slight Dec drift
+
+    hdr_ref = _make_sin_wcs_header_str(
+        nx=n_ref, ny=n_ref, crval1=ref_crval[0], crval2=ref_crval[1]
+    )
+    xds_ref = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_ref)},
+        coords={
+            "l": ("l", l_ref),
+            "m": ("m", m_ref),
+            "right_ascension": (("l", "m"), np.full((n_ref, n_ref), ref_crval[0])),
+            "declination": (("l", "m"), np.full((n_ref, n_ref), ref_crval[1])),
+        },
+        attrs={"fits_wcs_header": hdr_ref},
+    ).assign(wcs_header_str=((), np.bytes_(hdr_ref.encode("utf-8"))))
+
+    n_sm = 4
+    l_sm = np.linspace(-0.5, 0.5, n_sm)
+    m_sm = np.linspace(-0.5, 0.5, n_sm)
+    sky_sm = rng.standard_normal((n_sm, n_sm))
+    hdr_sm = _make_sin_wcs_header_str(
+        nx=n_sm, ny=n_sm, crval1=src_crval[0], crval2=src_crval[1]
+    )
+    xds_sm = xr.Dataset(
+        data_vars={"SKY": (("m", "l"), sky_sm)},
+        coords={
+            "l": ("l", l_sm),
+            "m": ("m", m_sm),
+            "right_ascension": (("m", "l"), np.zeros((n_sm, n_sm))),
+            "declination": (("m", "l"), np.zeros((n_sm, n_sm))),
+        },
+        attrs={"fits_wcs_header": hdr_sm},
+    ).assign(wcs_header_str=((), np.bytes_(hdr_sm.encode("utf-8"))))
+
+    out = mod._regrid_to_reference_lm(xds_sm, xds_ref)
+
+    assert out.sizes["l"] == n_ref
+    assert out.sizes["m"] == n_ref
+
+    # The persisted header must keep ref's pixel grid (CRPIX/CDELT/CTYPE) and adopt
+    # source's celestial reference value.
+    from astropy.io import fits
+    from astropy.wcs import WCS
+
+    out_hdr = fits.Header.fromstring(out.attrs["fits_wcs_header"], sep="\n")
+    assert out_hdr["CRVAL1"] == pytest.approx(src_crval[0])
+    assert out_hdr["CRVAL2"] == pytest.approx(src_crval[1])
+    assert out_hdr["CRPIX1"] == pytest.approx((n_ref + 1) / 2.0)
+    assert out_hdr["CRPIX2"] == pytest.approx((n_ref + 1) / 2.0)
+    assert out_hdr["CTYPE1"].startswith("RA")
+    assert out_hdr["CTYPE2"].startswith("DEC")
+
+    # Output RA/Dec must equal what a fresh WCS evaluation produces on the hybrid header.
+    yy, xx = np.indices((n_ref, n_ref), dtype=float)
+    ra_ref, dec_ref = WCS(out_hdr).all_pix2world(xx, yy, 0)
+    np.testing.assert_allclose(out["right_ascension"].values, np.transpose(ra_ref))
+    np.testing.assert_allclose(out["declination"].values, np.transpose(dec_ref))
+
+    # And they must *not* equal ref's RA/Dec (which would silently mix obs times).
+    assert not np.allclose(out["right_ascension"].values, ref_crval[0])
+    assert out["right_ascension"].dims == ("l", "m")
+    assert out["declination"].dims == ("l", "m")
+
+    # Persisted strings agree across attrs and the 0-D wcs_header_str variable.
+    out_hdr_str = out.attrs["fits_wcs_header"]
+    assert out["SKY"].attrs["fits_wcs_header"] == out_hdr_str
+    assert bytes(out["wcs_header_str"].values.item()) == out_hdr_str.encode("utf-8")
 
 
 def test_load_global_lm_reference_selects_largest_shape(monkeypatch, tmp_path: Path):

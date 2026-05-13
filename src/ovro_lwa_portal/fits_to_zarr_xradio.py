@@ -50,10 +50,13 @@ Notes
 * LM grids must match across time steps after global and per-step mixed-resolution normalization;
   a mismatch raises a RuntimeError.
 * Within a single time step, mixed LM shapes are regridded onto the reference grid before combine.
+  The reference contributes only the *pixel grid* (``CRPIX``/``CDELT``/projection); per-time
+  ``CRVAL1``/``CRVAL2`` (FK5 zenith stamped by :func:`_fix_headers`) is taken from each source
+  subband so all subbands at one time step share identical ``right_ascension``/``declination``.
 * After stacking subbands along ``frequency``, ``right_ascension`` / ``declination`` are
   collapsed to a single ``(l, m)`` frame taken from the lowest-frequency slice. If sampled
   sky positions differ from that reference by more than ~one arcminute between slices, a
-  warning is logged so inconsistent WCS across the band is visible.
+  warning is logged so any residual per-subband WCS inconsistency stays visible.
 * Single-channel slices get a ``frequency`` coordinate from the basename ``_NNNMHz_`` token
   when present so dewarped products that share an identical spectral keyword in the FITS
   header still stack with unique labels (avoids pandas duplicate-index errors on ``sortby``).
@@ -1605,6 +1608,66 @@ def _lm_index_coords_match(
     )
 
 
+def _read_wcs_header_str(ds: xr.Dataset) -> Optional[str]:
+    """Return the persisted 2D celestial WCS header string from *ds*, if any.
+
+    Looks first at ``ds.attrs['fits_wcs_header']`` (set by :func:`_load_for_combine`
+    and :func:`_resample_lm_reference_to_target_size`), then falls back to the 0-D
+    ``wcs_header_str`` data variable so the lookup also works after merges that may
+    strip non-essential attrs.
+    """
+    s = ds.attrs.get("fits_wcs_header")
+    if s is None and "wcs_header_str" in ds:
+        raw = ds["wcs_header_str"].values.item()
+        s = raw.decode("utf-8") if isinstance(raw, (bytes, np.bytes_)) else str(raw)
+    if s is None:
+        return None
+    return str(s)
+
+
+def _wcs_header_from_ref_grid_and_source_crval(
+    *,
+    ref: xr.Dataset,
+    xds: xr.Dataset,
+    source_label: Optional[str],
+) -> str:
+    """Build a 2D celestial WCS header from ``ref``'s pixel grid + ``xds``'s CRVAL.
+
+    The LM reference defines only the pixel grid (CRPIX/CDELT/CTYPE/projection); the
+    per-time celestial reference (CRVAL1/CRVAL2, FK5 zenith at the source's obs time,
+    stamped by :func:`_fix_headers`) lives on each source FITS. Combining them lets
+    every subband at one time step emit identical ``right_ascension``/``declination``
+    while keeping the LM reference's role as a grid-shape template across time steps.
+
+    Raises
+    ------
+    RuntimeError
+        If either ``ref`` or ``xds`` is missing a persisted ``fits_wcs_header``.
+    """
+    ref_hdr_str = _read_wcs_header_str(ref)
+    src_hdr_str = _read_wcs_header_str(xds)
+    if ref_hdr_str is None or src_hdr_str is None:
+        who = f"{source_label}: " if source_label else ""
+        msg = (
+            f"{who}cannot derive per-time celestial WCS: missing fits_wcs_header on "
+            f"ref={ref_hdr_str is None} or source={src_hdr_str is None}"
+        )
+        raise RuntimeError(msg)
+
+    ref_hdr = fits.Header.fromstring(ref_hdr_str, sep="\n")
+    src_hdr = fits.Header.fromstring(src_hdr_str, sep="\n")
+
+    new_hdr = ref_hdr.copy()
+    for k in ("CRVAL1", "CRVAL2", "RADESYS", "EQUINOX", "DATE-OBS", "MJD-OBS"):
+        if k in src_hdr:
+            new_hdr[k] = src_hdr[k]
+    if "CRVAL2" in src_hdr:
+        # Standard SIN: LATPOLE tracks CRVAL2 (latitude of native pole = ref dec).
+        new_hdr["LATPOLE"] = float(src_hdr["CRVAL2"])
+
+    return WCS(new_hdr).celestial.to_header(relax=True).tostring(sep="\n")
+
+
 def _regrid_to_reference_lm(
     xds: xr.Dataset,
     ref: xr.Dataset,
@@ -1613,17 +1676,20 @@ def _regrid_to_reference_lm(
 ) -> xr.Dataset:
     """Interpolate ``xds`` onto ``ref``'s ``l`` / ``m`` coordinate grid.
 
-    Uses linear interpolation in ``(l, m)``. Sky coordinates and persisted FITS
-    WCS header metadata are taken from ``ref`` so the result is consistent with the
-    reference pixel grid. No-op only when ``xds`` matches ``ref`` LM shape **and**
-    the ``l`` / ``m`` coordinate vectors match within tolerance.
+    Uses linear interpolation in ``(l, m)``. The reference contributes **only the
+    pixel grid** (``CRPIX``/``CDELT``/projection); per-time celestial reference
+    (``CRVAL1``/``CRVAL2``, FK5 zenith stamped by :func:`_fix_headers`) is taken from
+    ``xds`` so all subbands at one time step end up with identical
+    ``right_ascension``/``declination``. No-op when ``xds`` already matches ``ref``'s
+    LM shape **and** ``l``/``m`` index coordinates within tolerance — in that case the
+    source's own (already per-time-correct) sky coords pass through unchanged.
 
     Parameters
     ----------
     xds
         Source dataset (e.g. from :func:`_load_for_combine`).
     ref
-        Reference dataset whose ``l`` and ``m`` define the target grid.
+        Reference dataset whose ``l`` and ``m`` define the target pixel grid.
     source_label
         Optional filename or path for error messages when regridding fails.
 
@@ -1635,7 +1701,8 @@ def _regrid_to_reference_lm(
     Raises
     ------
     RuntimeError
-        If interpolation fails (e.g. incompatible coordinates).
+        If interpolation fails (e.g. incompatible coordinates) or the per-time
+        celestial WCS cannot be derived (missing ``fits_wcs_header``).
     """
     if _lm_shape(xds) == _lm_shape(ref) and _lm_index_coords_match(ref, xds):
         return xds
@@ -1657,31 +1724,43 @@ def _regrid_to_reference_lm(
         msg = f"{who}LM regridding onto reference grid failed: {exc}"
         raise RuntimeError(msg) from exc
 
-    # Sky coords and WCS metadata match the reference physical grid.
+    # Recompute sky coords on ref's pixel grid using the source's per-time CRVAL so
+    # every subband at one time step shares identical RA/Dec regardless of which path
+    # (regrid vs. no-op short-circuit) handled it.
+    hdr_str = _wcs_header_from_ref_grid_and_source_crval(
+        ref=ref, xds=xds, source_label=source_label
+    )
+    target_wcs = WCS(fits.Header.fromstring(hdr_str, sep="\n"))
+    ny = int(regridded.sizes["m"])
+    nx = int(regridded.sizes["l"])
+    yy, xx = np.indices((ny, nx), dtype=float)
+    ra2d, dec2d = target_wcs.all_pix2world(xx, yy, 0)
+    ra_lm = np.transpose(ra2d)
+    dec_lm = np.transpose(dec2d)
+
     regridded = regridded.assign_coords(
-        right_ascension=ref["right_ascension"].load()
-        if hasattr(ref["right_ascension"].data, "compute")
-        else ref["right_ascension"],
-        declination=ref["declination"].load()
-        if hasattr(ref["declination"].data, "compute")
-        else ref["declination"],
+        right_ascension=(("l", "m"), ra_lm),
+        declination=(("l", "m"), dec_lm),
+    )
+    regridded["right_ascension"].attrs.update(
+        {"units": "deg", "frame": "fk5", "equinox": "J2000"}
+    )
+    regridded["declination"].attrs.update(
+        {"units": "deg", "frame": "fk5", "equinox": "J2000"}
     )
 
-    hdr_str = ref.attrs.get("fits_wcs_header")
-    if hdr_str is None and "wcs_header_str" in ref:
-        raw = ref["wcs_header_str"].values.item()
-        hdr_str = raw.decode("utf-8") if isinstance(raw, (bytes, np.bytes_)) else str(raw)
-
     regridded.attrs.pop("history", None)
-    if hdr_str is not None:
-        regridded.attrs["fits_wcs_header"] = hdr_str
-        regridded["right_ascension"].attrs["fits_wcs_header"] = hdr_str
-        regridded["declination"].attrs["fits_wcs_header"] = hdr_str
-        for dv in regridded.data_vars:
-            regridded[dv].attrs["fits_wcs_header"] = hdr_str
+    regridded.attrs["fits_wcs_header"] = hdr_str
+    regridded["right_ascension"].attrs["fits_wcs_header"] = hdr_str
+    regridded["declination"].attrs["fits_wcs_header"] = hdr_str
+    for dv in regridded.data_vars:
+        if dv == "wcs_header_str":
+            continue
+        regridded[dv].attrs["fits_wcs_header"] = hdr_str
 
-    if "wcs_header_str" in ref:
-        regridded["wcs_header_str"] = ref["wcs_header_str"].copy()
+    regridded["wcs_header_str"] = xr.DataArray(
+        np.bytes_(hdr_str.encode("utf-8")), dims=()
+    )
 
     for v in regridded.data_vars:
         regridded[v].encoding = {}
