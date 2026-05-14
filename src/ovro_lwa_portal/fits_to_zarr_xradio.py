@@ -86,7 +86,6 @@ from astropy.io import fits
 from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
-from xradio.image import write_image
 
 __all__ = [
     "convert_fits_dir_to_zarr",
@@ -2770,8 +2769,9 @@ def _write_or_append_zarr(
         write_image(
             to_write,
             str(out_zarr),
-            out_format="zarr",
-            overwrite=True,
+            mode="r+",
+            region={"time": slice(dup_idx, dup_idx + 1)},
+            consolidated=False,
         )
         zarr.consolidate_metadata(str(out_zarr))
         return
@@ -2924,10 +2924,10 @@ def convert_fits_dir_to_zarr(
     resumed by re-invoking with the same arguments; only the not-yet-written time
     steps are read, combined, and appended. If every discovered time key is already
     present, the function returns the existing Zarr path without writing.
-    :func:`_write_or_append_zarr` additionally dedupes by ``time`` (``keep="last"``)
-    on append, so an explicit re-run that does pass the same key through (e.g. via
-    a bespoke caller) keeps the freshly-written slice rather than producing a
-    duplicate row.
+    :func:`_write_or_append_zarr` overwrites an existing ``time`` row in-place when
+    the same MJD timestamp is written again (``keep='last'`` semantics), so an
+    explicit re-run that bypasses the resume filter can repair a time step without
+    growing the ``time`` dimension twice.
 
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
@@ -2999,6 +2999,8 @@ def convert_fits_dir_to_zarr(
             "BMAJ/BMIN beam-validity filter)."
         )
 
+    by_time_for_global_freq = dict(by_time)
+
     # Resume: when appending to an existing store, skip time keys already written so
     # interrupted runs can be re-invoked on the same input directory without
     # re-doing the expensive read/combine/append work or producing duplicate rows.
@@ -3013,8 +3015,29 @@ def convert_fits_dir_to_zarr(
         )
         return out_zarr
 
+    if out_zarr.exists() and not rebuild:
+        freq_coord_hz = _frequency_coord_hz_from_zarr(out_zarr)
+        logger.info(
+            "Using frequency axis from existing Zarr (%d channel(s)).",
+            int(freq_coord_hz.size),
+        )
+    else:
+        freq_coord_hz = _global_frequency_coord_hz(
+            by_time_for_global_freq,
+            group_metadata_source=group_metadata_source,
+        )
+        logger.info(
+            "Built global frequency axis: %d channel(s), %.3f–%.3f MHz",
+            int(freq_coord_hz.size),
+            float(np.min(freq_coord_hz)) / 1e6,
+            float(np.max(freq_coord_hz)) / 1e6,
+        )
+
     if lm_reference_ds is not None:
         lm_ref_ds = lm_reference_ds
+    elif out_zarr.exists() and not rebuild:
+        lm_ref_ds = _lm_reference_from_existing_zarr(out_zarr)
+        logger.info("LM (l, m) reference grid loaded from existing Zarr for resume.")
     else:
         lm_ref_ds = _load_global_lm_reference_dataset(
             by_time,
