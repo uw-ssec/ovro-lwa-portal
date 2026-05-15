@@ -80,6 +80,7 @@ from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
 import numpy as np
 import xarray as xr
+import zarr
 import astropy.units as u
 from astropy.coordinates import AltAz, EarthLocation, FK5, SkyCoord
 from astropy.io import fits
@@ -195,6 +196,8 @@ _DISCOVERY_FREQ_BIN_HZ: float = 23_000.0
 # more than this on-sky separation (sampled on the LM grid). Used after ``combine`` so
 # per-channel WCS drift across a wideband time step is visible before collapsing coords.
 _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC: float = 60.0
+_CELESTIAL_DRIFT_SAMPLE_MAX_POINTS: int = 65536
+_CELESTIAL_DRIFT_SAMPLE_SEED: int = 0
 
 # Default OVRO-LWA / OVRO geodetic site when FITS lacks ``OBSGEO-*`` (matches
 # ``EarthLocation.of_site("ovro")`` in Astropy data; avoids network at import).
@@ -318,6 +321,7 @@ def _extract_group_metadata(
         tk_fn = _time_key_from_filename(fp)
         if tk_fn is not None:
             time_key = tk_fn
+            notes.append("time-from-filename")
         elif header is not None and time_key is None:
             time_key = _time_key_from_header(header)
 
@@ -539,6 +543,82 @@ def _normalize_time_key(value: object) -> Optional[str]:
         return None
 
 
+def _existing_time_keys_from_zarr(out_zarr: Path) -> set[str]:
+    """Read and normalize timestep keys from an existing Zarr store."""
+    try:
+        xds = xr.open_zarr(str(out_zarr), consolidated=False)
+    except Exception as exc:
+        try:
+            zg = zarr.open_group(str(out_zarr), mode="r")
+            time_arr = zg["time"][:]
+            fallback_keys: set[str] = set()
+            for raw_value in np.atleast_1d(time_arr):
+                key = _normalize_time_key(raw_value)
+                if key is None:
+                    msg = (
+                        f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
+                        "cannot resume safely."
+                    )
+                    raise RuntimeError(msg)
+                fallback_keys.add(key)
+            return fallback_keys
+        except Exception:
+            msg = f"Could not open existing Zarr store {out_zarr}: {exc}"
+            raise RuntimeError(msg) from exc
+
+    try:
+        if "time" not in xds.coords:
+            msg = f"Existing Zarr store {out_zarr} has no 'time' coordinate; cannot resume safely."
+            raise RuntimeError(msg)
+
+        keys: set[str] = set()
+        for raw_value in np.atleast_1d(xds["time"].values):
+            key = _normalize_time_key(raw_value)
+            if key is None:
+                msg = (
+                    f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
+                    "cannot resume safely."
+                )
+                raise RuntimeError(msg)
+            keys.add(key)
+        return keys
+    finally:
+        xds.close()
+
+
+def _reindex_time_step_to_expected_frequencies(
+    xds_t: xr.Dataset,
+    expected_frequencies_hz: List[float],
+) -> xr.Dataset:
+    """Ensure each time-step has the full expected frequency axis.
+
+    Missing subbands are introduced as NaN values in data variables.
+    """
+    if "frequency" not in xds_t.coords or not expected_frequencies_hz:
+        return xds_t
+
+    expected = np.asarray(expected_frequencies_hz, dtype=float)
+    observed = np.asarray(np.atleast_1d(xds_t["frequency"].values), dtype=float)
+    if observed.size == 0:
+        return xds_t.reindex({"frequency": expected}, fill_value=np.nan)
+
+    mapped = observed.copy()
+    max_jitter_hz = _DISCOVERY_FREQ_BIN_HZ / 2.0
+    for i, freq in enumerate(observed):
+        nearest_idx = int(np.argmin(np.abs(expected - freq)))
+        if abs(float(expected[nearest_idx] - freq)) <= max_jitter_hz:
+            mapped[i] = expected[nearest_idx]
+
+    xds_norm = xds_t.assign_coords(frequency=("frequency", mapped))
+
+    _, first_indices = np.unique(mapped, return_index=True)
+    if len(first_indices) != len(mapped):
+        xds_norm = xds_norm.isel(frequency=np.sort(first_indices))
+
+    xds_norm = xds_norm.sortby("frequency")
+    return xds_norm.reindex({"frequency": expected}, fill_value=np.nan)
+
+
 def _validate_time_axis_consistency_zarr(out_zarr: Path) -> None:
     """Ensure all Zarr arrays with a ``time`` dimension share one length."""
     try:
@@ -567,6 +647,17 @@ def _validate_time_axis_consistency_zarr(out_zarr: Path) -> None:
         "This usually indicates an interrupted append. Repair the store or rebuild before resuming."
     )
     raise RuntimeError(msg)
+
+
+def _zarr_store_exists(out_zarr: Path) -> bool:
+    """Return True when *out_zarr* is a readable Zarr group (not just an empty directory)."""
+    if not out_zarr.exists():
+        return False
+    try:
+        zarr.open_group(str(out_zarr), mode="r")
+    except Exception:
+        return False
+    return True
 
 
 def _time_axis_length_buckets(out_zarr: Path) -> Dict[int, List[str]]:
@@ -1752,25 +1843,27 @@ def _sky_sep_max_vs_ref_arcsec(
     dec: NDArray[np.floating],
     *,
     ref_idx: int,
-    max_points: int = 65536,
+    max_points: int = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
 ) -> float:
     """Worst-case on-sky separation (arcsec) of any non-ref channel from ``ref_idx``.
 
     Parameters
     ----------
     ra, dec
-        Arrays shaped ``(n_freq, n_l, n_m)`` in degrees.
+        Arrays shaped ``(n_freq, n_m, n_l)`` in degrees.
     ref_idx
         Reference frequency index.
     max_points
-        Maximum number of ``(l, m)`` pixels sampled per comparison (subsampled if larger).
+        Maximum number of (m, l) pixels sampled per comparison (subsampled if larger).
     """
-    nf, nl, nm = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
+    if ra.ndim != 3 or dec.ndim != 3:
+        raise ValueError("ra/dec must be 3D arrays shaped (n_freq, n_m, n_l)")
+    nf, nm, nl = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
     if nf <= 1:
         return 0.0
     ri = int(np.clip(ref_idx, 0, nf - 1))
-    total = nl * nm
-    rng = np.random.default_rng(0)
+    total = nm * nl
+    rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
     if total > max_points:
         flat_idx = rng.choice(total, size=max_points, replace=False)
     else:
@@ -1799,9 +1892,9 @@ def _harmonize_celestial_coords_independent_of_frequency(
     ref_freq_idx: int = 0,
     warn_max_sep_arcsec: float = _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC,
 ) -> xr.Dataset:
-    """Collapse per-frequency RA/Dec coords to a single ``(l, m)`` celestial grid.
+    """Collapse per-frequency RA/Dec coords to a single (m, l) celestial grid.
 
-    Stacked wideband cubes can carry ``(frequency, l, m)`` right ascension and
+    Stacked wideband cubes can carry ``(frequency, m, l)`` right ascension and
     declination. Downstream code expects one celestial frame for the LM grid; this
     keeps the reference slice (default: lowest ``frequency`` index after sorting)
     and emits a warning if sampled pixels differ from that reference beyond
@@ -1817,10 +1910,24 @@ def _harmonize_celestial_coords_independent_of_frequency(
     nf = int(xds.sizes["frequency"])
     ri = int(np.clip(ref_freq_idx, 0, nf - 1))
 
-    ra_ord = ra_c.transpose("frequency", "l", "m")
-    dec_ord = dec_c.transpose("frequency", "l", "m")
-    ra_np = np.asarray(ra_ord.data, dtype=np.float64)
-    dec_np = np.asarray(dec_ord.data, dtype=np.float64)
+    ra_ord = ra_c.transpose("frequency", "m", "l")
+    dec_ord = dec_c.transpose("frequency", "m", "l")
+    if hasattr(ra_ord.data, "compute") or hasattr(dec_ord.data, "compute"):
+        max_points = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS
+        stacked_dims = ("m", "l")
+        total = int(ra_ord.sizes["m"]) * int(ra_ord.sizes["l"])
+        rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
+        if total > max_points:
+            flat_idx = rng.choice(total, size=max_points, replace=False)
+        else:
+            flat_idx = np.arange(total, dtype=np.intp)
+        ra_sample = ra_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        dec_sample = dec_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
+        ra_np = np.asarray(ra_sample.data, dtype=np.float64)[:, np.newaxis, :]
+        dec_np = np.asarray(dec_sample.data, dtype=np.float64)[:, np.newaxis, :]
+    else:
+        ra_np = np.asarray(ra_ord.data, dtype=np.float64)
+        dec_np = np.asarray(dec_ord.data, dtype=np.float64)
 
     max_sep = _sky_sep_max_vs_ref_arcsec(ra_np, dec_np, ref_idx=ri)
     if max_sep > warn_max_sep_arcsec:
@@ -2776,6 +2883,7 @@ def convert_fits_dir_to_zarr(
     fixed_dir: str | Path = "fixed_fits",
     chunk_lm: int = 1024,
     rebuild: bool = False,
+    resume: bool = False,
     fix_headers_on_demand: bool = True,
     cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
@@ -2926,21 +3034,30 @@ def convert_fits_dir_to_zarr(
 
     by_time_for_global_freq = dict(by_time)
 
-    # Resume: when appending to an existing store, skip time keys already written so
-    # interrupted runs can be re-invoked on the same input directory without
-    # re-doing the expensive read/combine/append work or producing duplicate rows.
-    by_time = _filter_completed_time_keys(
-        by_time, out_zarr, rebuild=rebuild, context="convert"
-    )
-    if not by_time:
-        logger.info(
-            "Nothing to do: every discovered time key is already present in %s. "
-            "Pass rebuild=True to overwrite.",
-            out_zarr,
+    # Resume: skip time keys already present in the output store.
+    if resume and out_zarr.exists() and not rebuild:
+        existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
+        by_time = {k: v for k, v in by_time.items() if k not in existing_time_keys}
+        if not by_time:
+            logger.info(
+                "Nothing to do: every discovered time key is already present in %s. "
+                "Pass rebuild=True to overwrite.",
+                out_zarr,
+            )
+            return out_zarr
+    elif not rebuild:
+        by_time = _filter_completed_time_keys(
+            by_time, out_zarr, rebuild=rebuild, context="convert"
         )
-        return out_zarr
+        if not by_time:
+            logger.info(
+                "Nothing to do: every discovered time key is already present in %s. "
+                "Pass rebuild=True to overwrite.",
+                out_zarr,
+            )
+            return out_zarr
 
-    if out_zarr.exists() and not rebuild:
+    if _zarr_store_exists(out_zarr) and not rebuild:
         freq_coord_hz = _frequency_coord_hz_from_zarr(out_zarr)
         logger.info(
             "Using frequency axis from existing Zarr (%d channel(s)).",
@@ -2960,7 +3077,7 @@ def convert_fits_dir_to_zarr(
 
     if lm_reference_ds is not None:
         lm_ref_ds = lm_reference_ds
-    elif out_zarr.exists() and not rebuild:
+    elif _zarr_store_exists(out_zarr) and not rebuild:
         lm_ref_ds = _lm_reference_from_existing_zarr(out_zarr)
         logger.info("LM (l, m) reference grid loaded from existing Zarr for resume.")
     else:
@@ -2991,7 +3108,7 @@ def convert_fits_dir_to_zarr(
             group_metadata_source=group_metadata_source,
         )
         xds_t = _align_time_step_to_frequency_grid(xds_t, freq_coord_hz)
-        logger.info(f"  combined dims: {dict(xds_t.dims)}")
+        logger.info(f"  combined dims: {dict(xds_t.sizes)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)

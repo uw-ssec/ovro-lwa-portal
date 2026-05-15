@@ -15,6 +15,7 @@ from astropy.io import fits
 
 from tests.conftest import skip_github_ci_without_image_plane_correction
 
+import ovro_lwa_portal.ingest.dewarp_convert as dewarp_convert_mod
 from ovro_lwa_portal.ingest.dewarp_convert import (
     collect_cascade_fits,
     dewarp_and_convert_append_each_time,

@@ -267,6 +267,9 @@ class RadportAccessor:
         if single_key in self._lst_cache:
             return float(np.asarray(self._lst_cache[single_key], dtype=np.float64).ravel()[0])
 
+        from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
+
         orig = iers_conf.auto_download
         try:
             iers_conf.auto_download = False
