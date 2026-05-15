@@ -1221,6 +1221,7 @@ def _sky_sep_max_vs_ref_arcsec(
         flat_idx = rng.choice(total, size=max_points, replace=False)
     else:
         flat_idx = np.arange(total, dtype=np.intp)
+<<<<<<< HEAD
     mis, lis = np.unravel_index(flat_idx, (nm, nl))
     ref_ra = ra[ri][mis, lis]
     ref_dec = dec[ri][mis, lis]
@@ -1230,6 +1231,18 @@ def _sky_sep_max_vs_ref_arcsec(
             continue
         ra_i = ra[fi][mis, lis]
         dec_i = dec[fi][mis, lis]
+||||||| c766338
+=======
+    idx_m, idx_l = np.unravel_index(flat_idx, (nm, nl))
+    ref_ra = ra[ri][idx_m, idx_l]
+    ref_dec = dec[ri][idx_m, idx_l]
+    worst = 0.0
+    for fi in range(nf):
+        if fi == ri:
+            continue
+        ra_i = ra[fi][idx_m, idx_l]
+        dec_i = dec[fi][idx_m, idx_l]
+>>>>>>> 32d638a8d16398de7ed583b22349b04b1d6a5048
         ok = np.isfinite(ref_ra) & np.isfinite(ref_dec) & np.isfinite(ra_i) & np.isfinite(dec_i)
         if not np.any(ok):
             continue

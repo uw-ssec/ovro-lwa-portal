@@ -72,11 +72,26 @@ class TestCLI:
 
     def test_dewarp_convert_help(self) -> None:
         """dewarp-convert --help documents cascade + Zarr pipeline."""
+<<<<<<< HEAD
         result = runner.invoke(app, ["dewarp-convert", "--help"])
         assert result.exit_code == 0
         assert "flow_cascade73MHz" in result.stdout
         assert "image_plane_correction" in result.stdout
         assert "--cascade-parent" in result.stdout
+||||||| c766338
+=======
+        result = runner.invoke(
+            app,
+            ["dewarp-convert", "--help"],
+            color=False,
+            terminal_width=120,
+        )
+        assert result.exit_code == 0
+        plain = click.unstyle(result.stdout)
+        assert "flow_cascade73MHz" in plain
+        assert "image_plane_correction" in plain
+        assert "--cascade-parent" in plain
+>>>>>>> 32d638a8d16398de7ed583b22349b04b1d6a5048
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""

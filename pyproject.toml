@@ -36,7 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pre-commit",
-    "pytest>=6",
+    "pytest>=7",
     "pytest-cov",
     "pytest-xdist",
     "pytest-mock",
@@ -97,7 +97,10 @@ local_scheme = "no-local-version"
 exclude = ["/tests"]
 
 [tool.pytest.ini_options]
-minversion = "6.0"
+# Prefer the in-repo package under src/ so tests do not pick up a stale
+# site-packages install when running from a git checkout (requires pytest>=7).
+minversion = "7.0"
+pythonpath = ["src"]
 addopts = ["-vvv", "-ra", "--showlocals", "--strict-markers", "--strict-config"]
 xfail_strict = false
 filterwarnings = ["error"]
@@ -107,6 +110,7 @@ markers = [
     "network: tests requiring network access (deselect with '-m \"not network\"')",
     "osn: tests requiring OSN credentials (deselect with '-m \"not osn\"')",
     "slow: performance tests on production-scale data (deselect with '-m \"not slow\"')",
+    "dewarp: dewarp / cascade workflow (optional image_plane_correction; may be skipped on CI)",
 ]
 
 [tool.mypy]
@@ -188,7 +192,16 @@ rtd-publish = { cmd = "python -m mkdocs build --clean --site-dir $READTHEDOCS_OU
 default = { features = ["pre-commit", "gh-cli", "visualization"], solve-group = "default" }
 onboard = { features = ["pre-commit", "gh-cli", "onboard", "visualization"], solve-group = "default" }
 ci = ["ci"]
+<<<<<<< HEAD
 dewarp = { features = ["dewarp"], solve-group = "default" }
+||||||| c766338
+=======
+# Optional dewarp env is not declared here: the `dewarp` feature uses a sibling path
+# (`../image-plane-correction`) and would break `pixi lock` / CI without that checkout.
+# To use it locally, add the line below under [tool.pixi.environments] and run `pixi lock`
+# with the sibling repo present, then `pixi install -e dewarp` (see CONTRIBUTING.md).
+# dewarp = { features = ["dewarp"], solve-group = "dewarp" }
+>>>>>>> 32d638a8d16398de7ed583b22349b04b1d6a5048
 
 # GitHub CLI feature for interacting with GitHub from the command line
 [tool.pixi.feature.gh-cli.dependencies]
@@ -197,7 +210,7 @@ gh = ">=2.0.0"
 # Pre-commit feature for code quality and consistency
 [tool.pixi.feature.pre-commit.dependencies]
 pre-commit = ">=4.3.0"
-pytest = ">=6"
+pytest = ">=7"
 pytest-cov = ">=3.0.0"
 nodejs = ">=20"
 
