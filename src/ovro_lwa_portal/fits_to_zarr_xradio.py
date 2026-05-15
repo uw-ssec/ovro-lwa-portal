@@ -2782,7 +2782,10 @@ def _align_time_dimension_for_zarr_write(
     mismatched dimension names. When *schema* is given (append to an existing
     store), variables are expanded to match on-disk dims. On the first write,
     frequency-only aux vars are promoted to ``(time, frequency)`` when ``time`` is
-    a coordinate so later appends stay compatible.
+    a coordinate so later appends stay compatible. Scalar metadata such as
+    ``wcs_header_str`` are promoted to ``(time,)`` so incremental appends do not
+    leave stale ``encoding['chunks']`` on a length-1 slice that disagrees with the
+    store.
     """
     time_coord = _time_coord_as_dimension(ds)
     if time_coord is None:
@@ -2797,14 +2800,39 @@ def _align_time_dimension_for_zarr_write(
         for name, da in ds.data_vars.items():
             if "frequency" in da.dims and "time" not in da.dims:
                 target_dims_by_name[name] = ("time", *tuple(da.dims))
+            elif da.dims == ():
+                target_dims_by_name[name] = ("time",)
 
     out = ds
     for name, target_dims in target_dims_by_name.items():
+        da = out[name]
+        if target_dims == ("time",) and "frequency" in da.dims:
+            da = da.isel(frequency=0, drop=True)
         expanded = _expand_leading_time_dim(
-            out[name], time_coord=time_coord, target_dims=target_dims
+            da, time_coord=time_coord, target_dims=target_dims
         )
-        if expanded is not out[name]:
+        if expanded is not da:
             out = out.assign({name: expanded})
+    return out
+
+
+def _prepare_time_only_vars_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
+    """Rechunk time-only metadata (e.g. ``wcs_header_str``) for safe Zarr append.
+
+    After many ``append_dim='time'`` writes, a store can carry
+    ``encoding['chunks']=(n_time,)`` while each new slice only spans one index.
+    Materializing and rechunks to ``time=1`` avoids Dask/Zarr overlap errors.
+    """
+    out = xds
+    for name in list(out.data_vars):
+        da = out[name]
+        if da.dims != ("time",):
+            continue
+        prepared = da.load()
+        if hasattr(prepared.data, "rechunk"):
+            prepared = prepared.chunk({"time": 1})
+        prepared.encoding = {}
+        out = out.assign({name: prepared})
     return out
 
 
@@ -2838,6 +2866,7 @@ def _write_or_append_zarr(
             mode="r+",
             region={"time": slice(dup_idx, dup_idx + 1)},
             consolidated=False,
+            align_chunks=True,
         )
         zarr.consolidate_metadata(str(out_zarr))
         return
