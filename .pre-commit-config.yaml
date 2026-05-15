@@ -37,6 +37,7 @@ repos:
       - id: codespell
         # Notebooks are JSON (often with embedded outputs); spell-check source instead.
         exclude: \.ipynb$
+        args: [--ignore-words=.codespell-ignore]
 
   - repo: local
     hooks:
