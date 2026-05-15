@@ -28,6 +28,7 @@ from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
     _DISCOVERY_FREQ_BIN_HZ,
+    _discover_groups,
     fix_fits_headers,
     repair_zarr_store,
     validate_zarr_store,

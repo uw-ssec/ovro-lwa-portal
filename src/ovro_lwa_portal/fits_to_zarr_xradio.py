@@ -71,6 +71,7 @@ from __future__ import annotations
 import os
 import logging
 import re
+import shutil
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -86,7 +87,13 @@ from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
 
-__all__ = ["InvalidBeamError", "convert_fits_dir_to_zarr", "fix_fits_headers"]
+__all__ = [
+    "InvalidBeamError",
+    "convert_fits_dir_to_zarr",
+    "fix_fits_headers",
+    "repair_zarr_store",
+    "validate_zarr_store",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +481,230 @@ def _lm_reference_from_existing_zarr(out_zarr: Path) -> xr.Dataset:
     if hdr is not None:
         out.attrs["fits_wcs_header"] = hdr
     return out
+
+
+def _normalize_time_key(value: object) -> Optional[str]:
+    """Normalize mixed time representations to ``YYYYMMDD_HHMMSS`` in UTC.
+
+    This helper is used to compare discovery keys against time values loaded
+    from an existing Zarr store.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        if not np.isfinite(value):
+            return None
+        try:
+            return Time(float(value), format="mjd", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            return None
+
+    if isinstance(value, (bytes, np.bytes_)):
+        text_value = value.decode("utf-8").strip()
+    elif isinstance(value, str):
+        text_value = value.strip()
+    elif isinstance(value, np.datetime64):
+        if np.isnat(value):
+            return None
+        dt64_s = value.astype("datetime64[s]")
+        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
+        try:
+            return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            return None
+    else:
+        text_value = str(value).strip()
+
+    if not text_value:
+        return None
+
+    if re.match(r"^\d{8}_\d{6}$", text_value):
+        return text_value
+
+    for fmt in ("isot", "fits"):
+        try:
+            return Time(text_value, format=fmt, scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+        except Exception:
+            continue
+
+    try:
+        dt64 = np.datetime64(text_value)
+        if np.isnat(dt64):
+            return None
+        dt64_s = dt64.astype("datetime64[s]")
+        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
+        return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
+    except Exception:
+        return None
+
+
+def _validate_time_axis_consistency_zarr(out_zarr: Path) -> None:
+    """Ensure all Zarr arrays with a ``time`` dimension share one length."""
+    try:
+        zg = zarr.open_group(str(out_zarr), mode="r")
+    except Exception:
+        return
+    buckets: Dict[int, List[str]] = {}
+    for name in zg.array_keys():
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        time_len = int(arr.shape[time_axis])
+        buckets.setdefault(time_len, []).append(name)
+
+    if len(buckets) <= 1:
+        return
+
+    details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
+    msg = (
+        f"Existing Zarr store {out_zarr} has inconsistent time-axis lengths across arrays ({details}). "
+        "This usually indicates an interrupted append. Repair the store or rebuild before resuming."
+    )
+    raise RuntimeError(msg)
+
+
+def _time_axis_length_buckets(out_zarr: Path) -> Dict[int, List[str]]:
+    """Return mapping of time-axis length -> array names."""
+    zg = zarr.open_group(str(out_zarr), mode="r")
+    buckets: Dict[int, List[str]] = {}
+    for name in sorted(zg.array_keys()):
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        time_len = int(arr.shape[time_axis])
+        buckets.setdefault(time_len, []).append(name)
+    return buckets
+
+
+def validate_zarr_store(out_zarr: str | Path) -> Dict[str, object]:
+    """Validate time-axis consistency for a Zarr store."""
+    out_zarr = Path(out_zarr)
+    if not out_zarr.exists():
+        msg = f"Zarr store does not exist: {out_zarr}"
+        raise FileNotFoundError(msg)
+
+    buckets = _time_axis_length_buckets(out_zarr)
+    consistent = len(buckets) <= 1
+    report: Dict[str, object] = {
+        "store": str(out_zarr),
+        "consistent": consistent,
+        "time_length_buckets": {k: sorted(v) for k, v in sorted(buckets.items())},
+    }
+    if not consistent:
+        details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
+        report["message"] = (
+            f"Inconsistent time-axis lengths across arrays ({details}). "
+            "This usually indicates an interrupted append."
+        )
+    return report
+
+
+def repair_zarr_store(
+    out_zarr: str | Path,
+    *,
+    fits_dir: str | Path | None = None,
+    backup_suffix: str = ".backup-before-repair",
+) -> Dict[str, object]:
+    """Repair inconsistent time-axis lengths and optionally refresh WCS headers."""
+    out_zarr = Path(out_zarr)
+    if not out_zarr.exists():
+        msg = f"Zarr store does not exist: {out_zarr}"
+        raise FileNotFoundError(msg)
+
+    backup_path = out_zarr.with_name(out_zarr.name + backup_suffix)
+    if backup_path.exists():
+        msg = f"Backup path already exists: {backup_path}"
+        raise FileExistsError(msg)
+
+    pre = validate_zarr_store(out_zarr)
+    buckets = pre["time_length_buckets"]
+    if not buckets:
+        msg = f"No arrays with a time axis found in {out_zarr}"
+        raise RuntimeError(msg)
+    repaired_len = min(int(k) for k in buckets.keys())
+
+    shutil.copytree(out_zarr, backup_path)
+    zg = zarr.open_group(str(out_zarr), mode="a")
+
+    truncated: List[str] = []
+    for name in sorted(zg.array_keys()):
+        arr = zg[name]
+        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
+        if dims_attr is None:
+            continue
+        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
+        if "time" not in dims:
+            continue
+        time_axis = dims.index("time")
+        if int(arr.shape[time_axis]) <= repaired_len:
+            continue
+
+        slicer = [slice(None)] * arr.ndim
+        slicer[time_axis] = slice(0, repaired_len)
+        data = arr[tuple(slicer)]
+        attrs = dict(arr.attrs)
+        chunks = arr.chunks
+        dtype = arr.dtype
+        del zg[name]
+        new_arr = zg.create_dataset(
+            name,
+            data=data.astype(dtype, copy=False),
+            chunks=chunks if len(chunks) == data.ndim else True,
+            overwrite=True,
+        )
+        new_arr.attrs.update(attrs)
+        truncated.append(name)
+
+    rewritten_wcs_rows = 0
+    if fits_dir is not None and "wcs_header_str" in zg and "time" in zg:
+        fits_dir = Path(fits_dir)
+        if fits_dir.exists():
+            by_time = _discover_groups(fits_dir)
+            z_time = np.atleast_1d(zg["time"][:])
+            z_time_keys = [_normalize_time_key(v) for v in z_time[:repaired_len]]
+            wcs_arr = zg["wcs_header_str"]
+            n_freq = int(wcs_arr.shape[1]) if wcs_arr.ndim >= 2 else 0
+            for ti, tkey in enumerate(z_time_keys):
+                if tkey is None:
+                    continue
+                files = by_time.get(tkey, [])
+                if not files:
+                    continue
+                files = sorted(files, key=_frequency_sort_tuple)
+                row = wcs_arr[ti, :].copy()
+                for fi, fp in enumerate(files[:n_freq]):
+                    try:
+                        with fits.open(str(fp), memmap=True) as hdul:
+                            hdr = hdul[0].header
+                        s = WCS(hdr).celestial.to_header().tostring(sep="\n")
+                        row[fi] = np.bytes_(s.encode("utf-8"))
+                    except Exception:
+                        continue
+                wcs_arr[ti, :] = row
+                rewritten_wcs_rows += 1
+
+    zarr.consolidate_metadata(str(out_zarr))
+    post = validate_zarr_store(out_zarr)
+    return {
+        "store": str(out_zarr),
+        "backup": str(backup_path),
+        "repaired_len": repaired_len,
+        "truncated_arrays": truncated,
+        "rewritten_wcs_rows": rewritten_wcs_rows,
+        "pre": pre,
+        "post": post,
+    }
 
 
 def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
