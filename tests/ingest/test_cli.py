@@ -96,6 +96,14 @@ class TestCLI:
         assert "--append-after-each-time" in result.stdout
         assert "--cleanup-dewarp-staging" not in result.stdout
 
+    def test_audit_metadata_help(self) -> None:
+        """audit-metadata --help documents subband header checks."""
+        result = runner.invoke(app, ["audit-metadata", "--help"])
+        assert result.exit_code == 0
+        assert "subband" in result.stdout.lower()
+        assert "--probe-combine" in result.stdout
+        assert "--staging-dir" in result.stdout
+
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""
         result = runner.invoke(app, ["convert"])

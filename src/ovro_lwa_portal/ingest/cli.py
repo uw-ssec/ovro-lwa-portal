@@ -37,6 +37,7 @@ from ovro_lwa_portal.ingest.dewarp_convert import (
     dewarp_and_convert_append_each_time,
     run_cascade_per_time_group,
 )
+from ovro_lwa_portal.ingest.metadata_audit import audit_directory, print_audit_reports
 
 __all__ = ["main", "app"]
 
@@ -681,6 +682,162 @@ def dewarp_convert(
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     _execute_fits_to_zarr_conversion(config, log_level=log_level)
+
+
+@app.command("audit-metadata")
+def audit_metadata(
+    input_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Directory containing per-subband FITS (raw or dewarped staging layout)",
+    ),
+    time_key: Optional[list[str]] = typer.Option(
+        None,
+        "--time-key",
+        "-t",
+        help="Observation time key YYYYMMDD_HHMMSS (repeatable). Default: list keys only.",
+    ),
+    all_times: bool = typer.Option(
+        False,
+        "--all",
+        help="Audit every discovered time group (can be slow for large directories)",
+    ),
+    staging_dir: Optional[Path] = typer.Option(
+        None,
+        "--staging-dir",
+        help="Also audit ``{time_key}__*.fits`` dewarped staging files under this directory",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    fixed_dir: Optional[Path] = typer.Option(
+        None,
+        "--fixed-dir",
+        help="Directory for ``*_fixed.fits`` when using --probe-combine",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    probe_combine: bool = typer.Option(
+        False,
+        "--probe-combine",
+        help="Run one in-memory combine per group and report velocity/time dimensions",
+    ),
+    warn_time_delta_s: float = typer.Option(
+        1.0,
+        "--warn-time-delta-s",
+        help="Warn when filename vs header time offset exceeds this many seconds",
+        min=0.0,
+    ),
+    discovery_freq_bin_hz: float = typer.Option(
+        _DISCOVERY_FREQ_BIN_HZ,
+        "--discovery-freq-bin-hz",
+        help="Frequency bin width (Hz) used when discovering time groups",
+        min=1e-6,
+    ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help='Discovery mode: "fits" (headers + filename fallbacks) or "filename"',
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit with code 1 if any group has subband metadata issues",
+    ),
+    log_level: LogLevel = typer.Option(
+        LogLevel.WARNING,
+        "--log-level",
+        "-l",
+        help="Logging verbosity level",
+        case_sensitive=False,
+    ),
+) -> None:
+    """Audit FITS header metadata consistency across subbands per observation time.
+
+    Checks that time keywords (``DATE-OBS``, ``MJD-OBS``, etc.) match across subbands,
+    reports filename vs header time-key offsets, and summarizes spectral and image
+    shape metadata. Use before long ``dewarp-convert`` runs to catch grouping issues.
+
+    \b
+    Examples:
+        # List discovered time keys
+        ovro-ingest audit-metadata /data/fits
+
+        # Audit one observation (raw + optional staging)
+        ovro-ingest audit-metadata /lustre/claw/symlinks5 -t 20250106_051855 \\
+            --staging-dir /fast/claw/dewarped_fits_staging --probe-combine \\
+            --fixed-dir /fast/claw
+
+        # Audit all groups (verbose)
+        ovro-ingest audit-metadata /data/fits --all --strict
+    """
+    _configure_logging(log_level)
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
+
+    input_dir = Path(input_dir)
+    by_time = _discover_groups(
+        input_dir,
+        freq_bin_hz=discovery_freq_bin_hz,
+        group_metadata_source=group_metadata_source,
+    )
+    by_time_keys = sorted(by_time.keys())
+
+    if not by_time_keys:
+        console.print(f"[bold red]✗[/bold red] No FITS files found in {input_dir}", style="red")
+        raise typer.Exit(code=1)
+
+    if time_key is None and not all_times:
+        console.print(f"\n[bold cyan]Discovered {len(by_time_keys)} time group(s) in {input_dir}[/bold cyan]")
+        for k in by_time_keys:
+            console.print(f"  {k}")
+        console.print(
+            "\nRe-run with [bold]--time-key YYYYMMDD_HHMMSS[/bold] or [bold]--all[/bold] to audit.\n"
+        )
+        return
+
+    keys = by_time_keys if all_times else list(time_key or [])
+    if not keys:
+        console.print("[bold red]✗[/bold red] No time keys selected.", style="red")
+        raise typer.Exit(code=1)
+
+    console.print("\n[bold cyan]OVRO-LWA metadata audit[/bold cyan]")
+    console.print(f"  Input directory:  {input_dir}")
+    if staging_dir is not None:
+        console.print(f"  Staging directory: {staging_dir}")
+    console.print(f"  Time groups:      {len(keys)}")
+    console.print(f"  Probe combine:    {'yes' if probe_combine else 'no'}\n")
+
+    try:
+        reports = audit_directory(
+            input_dir,
+            keys,
+            staging_dir=staging_dir,
+            group_metadata_source=group_metadata_source,
+            discovery_freq_bin_hz=discovery_freq_bin_hz,
+            probe_combine=probe_combine,
+            fixed_dir=fixed_dir,
+            warn_filename_header_delta_s=warn_time_delta_s,
+        )
+    except (FileNotFoundError, KeyError) as exc:
+        console.print(f"[bold red]✗[/bold red] {exc}", style="red")
+        raise typer.Exit(code=1) from exc
+
+    print_audit_reports(reports, console=console)
+
+    n_issues = sum(1 for r in reports if r.has_issues)
+    if n_issues:
+        console.print(
+            f"\n[yellow]{n_issues} report(s) with subband metadata issues.[/yellow]\n"
+        )
+        if strict:
+            raise typer.Exit(code=1)
+    else:
+        console.print("\n[bold green]✓[/bold green] No subband metadata issues detected.\n")
 
 
 @app.command()

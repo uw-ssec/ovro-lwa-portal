@@ -2742,6 +2742,72 @@ def _align_incoming_with_zarr_schema(
     return aligned
 
 
+def _time_coord_as_dimension(ds: xr.Dataset) -> xr.DataArray | None:
+    """Return a length-1 ``time`` coordinate array when ``time`` is present on *ds*."""
+    if "time" not in ds.coords:
+        return None
+    t = ds.coords["time"]
+    if "time" in t.dims:
+        return t
+    return xr.DataArray(np.atleast_1d(np.asarray(t.values)), dims=("time",))
+
+
+def _expand_leading_time_dim(
+    da: xr.DataArray,
+    *,
+    time_coord: xr.DataArray,
+    target_dims: tuple[str, ...],
+) -> xr.DataArray:
+    """Add a leading ``time`` dimension when *target_dims* expects one and *da* lacks it."""
+    if "time" in da.dims or not target_dims or target_dims[0] != "time":
+        return da
+    if da.dims != target_dims[1:]:
+        return da
+    if "time" in time_coord.dims:
+        return da.expand_dims(time=time_coord)
+    return da.expand_dims(time=np.atleast_1d(np.asarray(time_coord.values)))
+
+
+def _align_time_dimension_for_zarr_write(
+    ds: xr.Dataset,
+    *,
+    schema: xr.Dataset | None = None,
+) -> xr.Dataset:
+    """Align per-time auxiliary variables with the Zarr store's ``time`` axis.
+
+    xradio's ``velocity`` (and similar metadata) is often frequency-only
+    ``(frequency,)`` even when image data carry a ``time`` coordinate. Earlier
+    time steps in the same store may have been written with a leading ``time``
+    dimension on those variables; ``to_zarr(..., append_dim='time')`` then rejects
+    mismatched dimension names. When *schema* is given (append to an existing
+    store), variables are expanded to match on-disk dims. On the first write,
+    frequency-only aux vars are promoted to ``(time, frequency)`` when ``time`` is
+    a coordinate so later appends stay compatible.
+    """
+    time_coord = _time_coord_as_dimension(ds)
+    if time_coord is None:
+        return ds
+
+    target_dims_by_name: dict[str, tuple[str, ...]] = {}
+    if schema is not None:
+        for name in ds.data_vars:
+            if name in schema.data_vars:
+                target_dims_by_name[name] = tuple(schema[name].dims)
+    else:
+        for name, da in ds.data_vars.items():
+            if "frequency" in da.dims and "time" not in da.dims:
+                target_dims_by_name[name] = ("time", *tuple(da.dims))
+
+    out = ds
+    for name, target_dims in target_dims_by_name.items():
+        expanded = _expand_leading_time_dim(
+            out[name], time_coord=time_coord, target_dims=target_dims
+        )
+        if expanded is not out[name]:
+            out = out.assign({name: expanded})
+    return out
+
+
 def _write_or_append_zarr(
     xds_t: xr.Dataset,
     out_zarr: Path,
