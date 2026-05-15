@@ -16,6 +16,9 @@ from ovro_lwa_portal.ingest.core import ConversionConfig
 
 runner = CliRunner()
 
+# GitHub Actions sets FORCE_COLOR=3; disable color for stable help/substring checks.
+_CI_PLAIN_ENV = {"NO_COLOR": "1", "FORCE_COLOR": "0"}
+
 
 class TestCLI:
     """Tests for CLI commands."""
@@ -40,7 +43,13 @@ class TestCLI:
 
     def test_convert_help(self) -> None:
         """Test convert command help."""
-        result = runner.invoke(app, ["convert", "--help"])
+        result = runner.invoke(
+            app,
+            ["convert", "--help"],
+            color=False,
+            terminal_width=120,
+            env=_CI_PLAIN_ENV,
+        )
         plain_output = click.unstyle(result.stdout)
         assert result.exit_code == 0
         assert "Convert OVRO-LWA FITS files to a single Zarr store" in plain_output
@@ -49,15 +58,29 @@ class TestCLI:
 
     def test_validate_help(self) -> None:
         """Test validate command help."""
-        result = runner.invoke(app, ["validate", "--help"])
+        result = runner.invoke(
+            app,
+            ["validate", "--help"],
+            color=False,
+            terminal_width=120,
+            env=_CI_PLAIN_ENV,
+        )
         assert result.exit_code == 0
-        assert "Validate time-axis consistency" in result.stdout
+        plain = click.unstyle(result.stdout)
+        assert "Validate time-axis consistency" in plain
 
     def test_repair_help(self) -> None:
         """Test repair command help."""
-        result = runner.invoke(app, ["repair", "--help"])
+        result = runner.invoke(
+            app,
+            ["repair", "--help"],
+            color=False,
+            terminal_width=120,
+            env=_CI_PLAIN_ENV,
+        )
         assert result.exit_code == 0
-        assert "Repair interrupted-append time-axis inconsistencies" in result.stdout
+        plain = click.unstyle(result.stdout)
+        assert "Repair interrupted-append time-axis inconsistencies" in plain
 
     def test_validate_consistent_store(self, tmp_path) -> None:
         """Validate command should pass for consistent test Zarr."""
@@ -97,6 +120,7 @@ class TestCLI:
             ["audit-metadata", "--help"],
             color=False,
             terminal_width=120,
+            env=_CI_PLAIN_ENV,
         )
         assert result.exit_code == 0
         plain = click.unstyle(result.stdout)

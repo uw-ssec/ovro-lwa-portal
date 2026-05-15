@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import click
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -13,6 +14,7 @@ from ovro_lwa_portal.ingest.cli import app
 from ovro_lwa_portal.ingest.metadata_audit import audit_time_group_files
 
 runner = CliRunner()
+_CI_PLAIN_ENV = {"NO_COLOR": "1", "FORCE_COLOR": "0"}
 
 
 def _write_subband(
@@ -86,10 +88,16 @@ def test_cli_audit_metadata_lists_time_keys(tmp_path: Path) -> None:
     image_time = "20250106_051855"
     _write_subband(tmp_path, date_obs="2025-01-06T04:49:04.5", mhz=73, image_time=image_time)
 
-    result = runner.invoke(app, ["audit-metadata", str(tmp_path)])
+    result = runner.invoke(
+        app,
+        ["audit-metadata", str(tmp_path)],
+        color=False,
+        env=_CI_PLAIN_ENV,
+    )
     assert result.exit_code == 0
-    assert image_time in result.stdout
-    assert "--time-key" in result.stdout
+    plain = click.unstyle(result.stdout)
+    assert image_time in plain
+    assert "time-key" in plain
 
 
 def test_cli_audit_metadata_single_group(tmp_path: Path) -> None:
@@ -108,7 +116,15 @@ def test_cli_audit_metadata_single_group(tmp_path: Path) -> None:
 
 
 def test_cli_audit_metadata_help() -> None:
-    result = runner.invoke(app, ["audit-metadata", "--help"])
+    """audit-metadata --help documents staging and combine probe flags."""
+    result = runner.invoke(
+        app,
+        ["audit-metadata", "--help"],
+        color=False,
+        terminal_width=120,
+        env=_CI_PLAIN_ENV,
+    )
     assert result.exit_code == 0
-    assert "probe-combine" in result.stdout
-    assert "staging-dir" in result.stdout
+    plain = click.unstyle(result.stdout)
+    assert "probe-combine" in plain
+    assert "staging-dir" in plain
