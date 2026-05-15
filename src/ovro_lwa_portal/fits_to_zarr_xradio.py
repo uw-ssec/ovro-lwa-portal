@@ -62,7 +62,8 @@ Notes
   header still stack with unique labels (avoids pandas duplicate-index errors on ``sortby``).
 * Before Zarr write, ``l``/``m`` are rechunked to uniform sizes so the store does not hit
   Dask/Zarr constraints on irregular spatial chunk boundaries after ``combine``/``concat``.
-* On append, only the pending time step is appended along the ``time`` dimension.
+* On append, new time steps are written with ``xarray.Dataset.to_zarr(..., append_dim="time")``
+  so the store can grow far larger than RAM without re-reading or re-writing prior times.
 """
 
 from __future__ import annotations
@@ -70,16 +71,14 @@ from __future__ import annotations
 import os
 import logging
 import re
-import shutil
+import tempfile
 import time
-from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple
 
 import numpy as np
 import xarray as xr
-import zarr
 import astropy.units as u
 from astropy.coordinates import AltAz, EarthLocation, FK5, SkyCoord
 from astropy.io import fits
@@ -87,12 +86,7 @@ from astropy.time import Time
 from astropy.wcs import WCS
 from numpy.typing import NDArray
 
-__all__ = [
-    "convert_fits_dir_to_zarr",
-    "fix_fits_headers",
-    "validate_zarr_store",
-    "repair_zarr_store",
-]
+__all__ = ["InvalidBeamError", "convert_fits_dir_to_zarr", "fix_fits_headers"]
 
 logger = logging.getLogger(__name__)
 
@@ -194,8 +188,6 @@ _DISCOVERY_FREQ_BIN_HZ: float = 23_000.0
 # more than this on-sky separation (sampled on the LM grid). Used after ``combine`` so
 # per-channel WCS drift across a wideband time step is visible before collapsing coords.
 _CELESTIAL_FRAME_WARN_MAX_SKY_SEP_ARCSEC: float = 60.0
-_CELESTIAL_DRIFT_SAMPLE_MAX_POINTS: int = 65536
-_CELESTIAL_DRIFT_SAMPLE_SEED: int = 0
 
 # Default OVRO-LWA / OVRO geodetic site when FITS lacks ``OBSGEO-*`` (matches
 # ``EarthLocation.of_site("ovro")`` in Astropy data; avoids network at import).
@@ -204,52 +196,14 @@ _OVRO_LWA_DEFAULT_LAT_DEG = 37.23338698
 _OVRO_LWA_DEFAULT_HEIGHT_M = 1188.6
 
 # Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
-# Keep this bounded so long-running conversions do not accumulate unlimited RA/Dec grids.
-_SKY_COORD_CACHE_MAX_ENTRIES = 64
-_SKY_COORD_CACHE: "OrderedDict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]]" = OrderedDict()
-
-
-def _sky_coord_cache_get(
-    key: Tuple[int, int, str],
-) -> Optional[Tuple[NDArray[np.floating], NDArray[np.floating], str]]:
-    """Lookup in LRU sky-coordinate cache and refresh recency on hit."""
-    cached = _SKY_COORD_CACHE.get(key)
-    if cached is not None:
-        _SKY_COORD_CACHE.move_to_end(key)
-    return cached
-
-
-def _sky_coord_cache_set(
-    key: Tuple[int, int, str],
-    value: Tuple[NDArray[np.floating], NDArray[np.floating], str],
-) -> None:
-    """Insert into LRU sky-coordinate cache and evict oldest entry when full."""
-    _SKY_COORD_CACHE[key] = value
-    _SKY_COORD_CACHE.move_to_end(key)
-    if len(_SKY_COORD_CACHE) > _SKY_COORD_CACHE_MAX_ENTRIES:
-        _SKY_COORD_CACHE.popitem(last=False)
-
-
-# Cache expensive sky-coordinate transforms keyed by celestial WCS header + LM shape.
 # Many OVRO-LWA subbands at one time share the same LM grid, so recomputing
 # all_pix2world for every file dominates runtime.
 _SKY_COORD_CACHE: Dict[Tuple[int, int, str], Tuple[NDArray[np.floating], NDArray[np.floating], str]] = {}
 
 
-MHZ_RE = re.compile(r"_(\d+)MHz_")
-_IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
-
-
-def _time_key_from_name(p: Path) -> Optional[str]:
-    """Extract a normalized ``YYYYMMDD_HHMMSS`` key from basename when possible."""
-    m = PAT.match(p.name)
-    if m:
-        return f"{m.group('date')}_{m.group('hms')}"
-    m_img = _IMAGE_TIME_RE.search(p.name)
-    if not m_img:
-        return None
-    return f"{m_img.group(1)}_{m_img.group(2)}"
-
+# Subband MHz in OVRO-style basenames, e.g. ``..._41MHz_...``, ``...__18MHz-I-...``
+# (dewarp staging uses ``{time_key}__{original_name}``; product tags use a hyphen after MHz).
+MHZ_RE = re.compile(r"_(\d+)MHz(?:_|-|\.|$)")
 
 # OVRO-LWA ``...-image-YYYYMMDD_HHMMSS...`` segment (UTC wall-clock for the map).
 _IMAGE_TIME_RE = re.compile(r"-image-(\d{8})_(\d{6})")
@@ -297,315 +251,6 @@ def _time_key_from_header(header: fits.Header) -> Optional[str]:
     return None
 
 
-def _normalize_time_key(value: object) -> Optional[str]:
-    """Normalize mixed time representations to ``YYYYMMDD_HHMMSS`` in UTC.
-
-    This helper is used to compare discovery keys against time values loaded
-    from an existing Zarr store.
-    """
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float, np.integer, np.floating)):
-        if not np.isfinite(value):
-            return None
-        # Many existing OVRO-LWA Zarr stores encode time as MJD floats.
-        try:
-            return Time(float(value), format="mjd", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
-        except Exception:
-            return None
-
-    if isinstance(value, (bytes, np.bytes_)):
-        text_value = value.decode("utf-8").strip()
-    elif isinstance(value, str):
-        text_value = value.strip()
-    elif isinstance(value, np.datetime64):
-        if np.isnat(value):
-            return None
-        dt64_s = value.astype("datetime64[s]")
-        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
-        try:
-            return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
-        except Exception:
-            return None
-    else:
-        text_value = str(value).strip()
-
-    if not text_value:
-        return None
-
-    if re.match(r"^\d{8}_\d{6}$", text_value):
-        return text_value
-
-    for fmt in ("isot", "fits"):
-        try:
-            return Time(text_value, format=fmt, scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
-        except Exception:
-            continue
-
-    try:
-        dt64 = np.datetime64(text_value)
-        if np.isnat(dt64):
-            return None
-        dt64_s = dt64.astype("datetime64[s]")
-        iso = np.datetime_as_string(dt64_s, unit="s", timezone="UTC")
-        return Time(iso, format="isot", scale="utc").to_datetime().strftime("%Y%m%d_%H%M%S")
-    except Exception:
-        return None
-
-
-def _existing_time_keys_from_zarr(out_zarr: Path) -> set[str]:
-    """Read and normalize timestep keys from an existing Zarr store."""
-    try:
-        xds = xr.open_zarr(str(out_zarr), consolidated=False)
-    except Exception as exc:
-        try:
-            zg = zarr.open_group(str(out_zarr), mode="r")
-            time_arr = zg["time"][:]
-            fallback_keys: set[str] = set()
-            for raw_value in np.atleast_1d(time_arr):
-                key = _normalize_time_key(raw_value)
-                if key is None:
-                    msg = (
-                        f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
-                        "cannot resume safely."
-                    )
-                    raise RuntimeError(msg)
-                fallback_keys.add(key)
-            return fallback_keys
-        except Exception:
-            msg = f"Could not open existing Zarr store {out_zarr}: {exc}"
-            raise RuntimeError(msg) from exc
-
-    try:
-        if "time" not in xds.coords:
-            msg = f"Existing Zarr store {out_zarr} has no 'time' coordinate; cannot resume safely."
-            raise RuntimeError(msg)
-
-        keys: set[str] = set()
-        for raw_value in np.atleast_1d(xds["time"].values):
-            key = _normalize_time_key(raw_value)
-            if key is None:
-                msg = (
-                    f"Could not normalize time value {raw_value!r} in existing Zarr store {out_zarr}; "
-                    "cannot resume safely."
-                )
-                raise RuntimeError(msg)
-            keys.add(key)
-        return keys
-    finally:
-        xds.close()
-
-
-def _txn_dir_for_store(out_zarr: Path) -> Path:
-    """Return sidecar transaction directory for one output Zarr store."""
-    return out_zarr.parent / f".{out_zarr.name}.append_txn"
-
-
-def _committed_time_keys_from_txn(out_zarr: Path) -> set[str]:
-    """Read committed time keys from sidecar transaction markers."""
-    txn_dir = _txn_dir_for_store(out_zarr)
-    if not txn_dir.exists():
-        return set()
-    committed: set[str] = set()
-    for marker in txn_dir.glob("*.committed"):
-        committed.add(marker.stem)
-    return committed
-
-
-def _mark_time_in_progress(out_zarr: Path, time_key: str) -> None:
-    """Create an in-progress transaction marker for one time key."""
-    txn_dir = _txn_dir_for_store(out_zarr)
-    txn_dir.mkdir(parents=True, exist_ok=True)
-    (txn_dir / f"{time_key}.inprogress").write_text("in_progress\n", encoding="utf-8")
-
-
-def _mark_time_committed(out_zarr: Path, time_key: str) -> None:
-    """Mark a time key as committed and clear its in-progress marker."""
-    txn_dir = _txn_dir_for_store(out_zarr)
-    txn_dir.mkdir(parents=True, exist_ok=True)
-    in_progress = txn_dir / f"{time_key}.inprogress"
-    committed = txn_dir / f"{time_key}.committed"
-    if in_progress.exists():
-        in_progress.unlink()
-    committed.write_text("committed\n", encoding="utf-8")
-
-
-def _validate_time_axis_consistency_zarr(out_zarr: Path) -> None:
-    """Ensure all Zarr arrays with a ``time`` dimension share one length."""
-    try:
-        zg = zarr.open_group(str(out_zarr), mode="r")
-    except Exception:
-        # Path exists but is not yet a readable Zarr group (e.g., test scaffold dir).
-        return
-    buckets: Dict[int, List[str]] = {}
-    for name in zg.array_keys():
-        arr = zg[name]
-        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
-        if dims_attr is None:
-            continue
-        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
-        if "time" not in dims:
-            continue
-        time_axis = dims.index("time")
-        time_len = int(arr.shape[time_axis])
-        buckets.setdefault(time_len, []).append(name)
-
-    if len(buckets) <= 1:
-        return
-
-    details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
-    msg = (
-        f"Existing Zarr store {out_zarr} has inconsistent time-axis lengths across arrays ({details}). "
-        "This usually indicates an interrupted append. Repair the store or rebuild before resuming."
-    )
-    raise RuntimeError(msg)
-
-
-def _time_axis_length_buckets(out_zarr: Path) -> Dict[int, List[str]]:
-    """Return mapping of time-axis length -> array names."""
-    zg = zarr.open_group(str(out_zarr), mode="r")
-    buckets: Dict[int, List[str]] = {}
-    for name in sorted(zg.array_keys()):
-        arr = zg[name]
-        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
-        if dims_attr is None:
-            continue
-        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
-        if "time" not in dims:
-            continue
-        time_axis = dims.index("time")
-        time_len = int(arr.shape[time_axis])
-        buckets.setdefault(time_len, []).append(name)
-    return buckets
-
-
-def validate_zarr_store(out_zarr: str | Path) -> Dict[str, object]:
-    """Validate time-axis consistency for a Zarr store.
-
-    Returns a report dictionary with per-length buckets and consistency flag.
-    """
-    out_zarr = Path(out_zarr)
-    if not out_zarr.exists():
-        msg = f"Zarr store does not exist: {out_zarr}"
-        raise FileNotFoundError(msg)
-
-    buckets = _time_axis_length_buckets(out_zarr)
-    consistent = len(buckets) <= 1
-    report: Dict[str, object] = {
-        "store": str(out_zarr),
-        "consistent": consistent,
-        "time_length_buckets": {k: sorted(v) for k, v in sorted(buckets.items())},
-    }
-    if not consistent:
-        details = "; ".join(f"time={k}: {sorted(v)}" for k, v in sorted(buckets.items()))
-        report["message"] = (
-            f"Inconsistent time-axis lengths across arrays ({details}). "
-            "This usually indicates an interrupted append."
-        )
-    return report
-
-
-def repair_zarr_store(
-    out_zarr: str | Path,
-    *,
-    fits_dir: str | Path | None = None,
-    backup_suffix: str = ".backup-before-repair",
-) -> Dict[str, object]:
-    """Repair inconsistent time-axis lengths and optionally refresh WCS headers.
-
-    The store is backed up before modification.
-    """
-    out_zarr = Path(out_zarr)
-    if not out_zarr.exists():
-        msg = f"Zarr store does not exist: {out_zarr}"
-        raise FileNotFoundError(msg)
-
-    backup_path = out_zarr.with_name(out_zarr.name + backup_suffix)
-    if backup_path.exists():
-        msg = f"Backup path already exists: {backup_path}"
-        raise FileExistsError(msg)
-
-    pre = validate_zarr_store(out_zarr)
-    buckets = pre["time_length_buckets"]
-    if not buckets:
-        msg = f"No arrays with a time axis found in {out_zarr}"
-        raise RuntimeError(msg)
-    repaired_len = min(int(k) for k in buckets.keys())
-
-    shutil.copytree(out_zarr, backup_path)
-    zg = zarr.open_group(str(out_zarr), mode="a")
-
-    truncated: List[str] = []
-    for name in sorted(zg.array_keys()):
-        arr = zg[name]
-        dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
-        if dims_attr is None:
-            continue
-        dims = [dims_attr] if isinstance(dims_attr, str) else [str(d) for d in dims_attr]
-        if "time" not in dims:
-            continue
-        time_axis = dims.index("time")
-        if int(arr.shape[time_axis]) <= repaired_len:
-            continue
-
-        slicer = [slice(None)] * arr.ndim
-        slicer[time_axis] = slice(0, repaired_len)
-        data = arr[tuple(slicer)]
-        attrs = dict(arr.attrs)
-        chunks = arr.chunks
-        dtype = arr.dtype
-        del zg[name]
-        new_arr = zg.create_dataset(
-            name,
-            data=data.astype(dtype, copy=False),
-            chunks=chunks if len(chunks) == data.ndim else True,
-            overwrite=True,
-        )
-        new_arr.attrs.update(attrs)
-        truncated.append(name)
-
-    rewritten_wcs_rows = 0
-    if fits_dir is not None and "wcs_header_str" in zg and "time" in zg:
-        fits_dir = Path(fits_dir)
-        if fits_dir.exists():
-            by_time = _discover_groups(fits_dir)
-            z_time = np.atleast_1d(zg["time"][:])
-            z_time_keys = [_normalize_time_key(v) for v in z_time[:repaired_len]]
-            wcs_arr = zg["wcs_header_str"]
-            n_freq = int(wcs_arr.shape[1]) if wcs_arr.ndim >= 2 else 0
-            for ti, tkey in enumerate(z_time_keys):
-                if tkey is None:
-                    continue
-                files = by_time.get(tkey, [])
-                if not files:
-                    continue
-                files = sorted(files, key=_frequency_sort_tuple)
-                row = wcs_arr[ti, :].copy()
-                for fi, fp in enumerate(files[:n_freq]):
-                    try:
-                        with fits.open(str(fp), memmap=True) as hdul:
-                            hdr = hdul[0].header
-                        s = WCS(hdr).celestial.to_header().tostring(sep="\n")
-                        row[fi] = np.bytes_(s.encode("utf-8"))
-                    except Exception:
-                        continue
-                wcs_arr[ti, :] = row
-                rewritten_wcs_rows += 1
-
-    zarr.consolidate_metadata(str(out_zarr))
-    post = validate_zarr_store(out_zarr)
-    return {
-        "store": str(out_zarr),
-        "backup": str(backup_path),
-        "repaired_len": repaired_len,
-        "truncated_arrays": truncated,
-        "rewritten_wcs_rows": rewritten_wcs_rows,
-        "pre": pre,
-        "post": post,
-    }
-
-
 def _frequency_hz_from_header(header: fits.Header) -> Optional[float]:
     """Extract frequency in Hz from FITS headers.
 
@@ -631,20 +276,21 @@ def _extract_group_metadata(
     *,
     time_key_source: Literal["header", "filename"] = "filename",
 ) -> Tuple[Optional[str], Optional[float], List[str]]:
-    """Extract grouping metadata from headers with optional filename time preference.
+    """Extract grouping metadata from FITS headers and optionally the basename.
 
     Returns
     -------
     Tuple[Optional[str], Optional[float], List[str]]
-        Tuple of ``(time_key, frequency_hz, fallback_notes)`` where fallback_notes
-        records when filename-based fallback was used.
+        Tuple of ``(time_key, frequency_hz, fallback_notes)``.
 
-    When *time_key_source* is ``"filename"``, a parseable basename (legacy averaged pattern
-    or ``-image-YYYYMMDD_HHMMSS``) wins over header times so multi-band pipeline products
-    group together when ``DATE-OBS`` differs across symlink targets.
+        ``frequency_hz`` is read from headers when possible with a filename fallback
+        for frequency only.
 
-    ``frequency_hz`` is read from headers when possible with a filename fallback for
-    frequency only.
+        When *time_key_source* is ``"filename"`` (default), the basename pattern
+        ``-image-YYYYMMDD_HHMMSS`` is used when present (see :func:`_time_key_from_filename`);
+        otherwise ``time_key`` comes from ``DATE-OBS`` (see :func:`_time_key_from_header`).
+
+        When *time_key_source* is ``"header"``, ``time_key`` comes from ``DATE-OBS`` only.
     """
     time_key: Optional[str] = None
     frequency_hz: Optional[float] = None
@@ -666,17 +312,6 @@ def _extract_group_metadata(
         if tk_fn is not None:
             time_key = tk_fn
         elif header is not None and time_key is None:
-            time_key = _time_key_from_header(header)
-
-    if time_key_source == "filename":
-        tk_name = _time_key_from_name(fp)
-        if tk_name is not None:
-            time_key = tk_name
-            notes.append("time-from-filename")
-        elif header is not None:
-            time_key = _time_key_from_header(header)
-    else:
-        if header is not None:
             time_key = _time_key_from_header(header)
 
     if frequency_hz is None:
@@ -725,57 +360,125 @@ def _discovery_frequency_sort_tuple(
     return (float(frequency_hz), fp.name)
 
 
-def _expected_frequencies_from_groups(by_time: Dict[str, List[Path]]) -> List[float]:
-    """Build a stable expected frequency axis from discovered input groups.
+def _canonical_stack_frequency_hz(
+    fp: Path,
+    *,
+    group_metadata_source: Literal["fits", "filename"],
+    time_key_source: Literal["header", "filename"] = "filename",
+) -> Optional[float]:
+    """Hz label to use when stacking single-channel slices along ``frequency``.
 
-    Frequencies are binned with the discovery bin width so small header jitter
-    does not inflate the expected axis.
+    Dewarped FITS often carry an identical spectral reference keyword in every
+    product while the OVRO basename still encodes the true subband via
+    ``_NNNMHz_``. :func:`xarray.combine_by_coords` and :meth:`xarray.Dataset.sortby`
+    require unique ``frequency`` coordinates, so we prefer the MHz token when
+    present, then fall back to the same discovery metadata used for ordering.
     """
-    representative_by_bin: Dict[int, float] = {}
-    for time_key in sorted(by_time.keys()):
-        for fp in sorted(by_time[time_key], key=_frequency_sort_tuple):
-            _, frequency_hz, _ = _extract_group_metadata(fp)
-            if frequency_hz is None:
-                continue
-            freq_key = int(round(float(frequency_hz) / _DISCOVERY_FREQ_BIN_HZ))
-            representative_by_bin.setdefault(freq_key, float(frequency_hz))
-    return [representative_by_bin[k] for k in sorted(representative_by_bin.keys())]
+    mhz = _mhz_from_name(fp)
+    if mhz != 10**9:
+        return float(mhz * 1_000_000)
+    if group_metadata_source == "filename":
+        _, hz, _ = _extract_group_metadata_filename_only(fp)
+    else:
+        _, hz, _ = _extract_group_metadata(fp, time_key_source=time_key_source)
+    return hz
 
 
-def _reindex_time_step_to_expected_frequencies(
-    xds_t: xr.Dataset,
-    expected_frequencies_hz: List[float],
+def _assign_canonical_frequency_for_stack(
+    xds: xr.Dataset,
+    fp: Path,
+    *,
+    group_metadata_source: Literal["fits", "filename"],
+    time_key_source: Literal["header", "filename"] = "filename",
 ) -> xr.Dataset:
-    """Ensure each time-step has the full expected frequency axis.
+    """Replace a length-1 ``frequency`` index with :func:`_canonical_stack_frequency_hz` when known."""
+    if "frequency" not in xds.dims or int(xds.sizes.get("frequency", 0)) != 1:
+        return xds
+    hz = _canonical_stack_frequency_hz(
+        fp,
+        group_metadata_source=group_metadata_source,
+        time_key_source=time_key_source,
+    )
+    if hz is None:
+        return xds
+    return xds.assign_coords(
+        frequency=xr.DataArray(np.asarray([hz], dtype=np.float64), dims=("frequency",))
+    )
 
-    Missing subbands are introduced as NaN values in data variables.
-    """
-    if "frequency" not in xds_t.coords or not expected_frequencies_hz:
-        return xds_t
 
-    expected = np.asarray(expected_frequencies_hz, dtype=float)
-    observed = np.asarray(np.atleast_1d(xds_t["frequency"].values), dtype=float)
-    if observed.size == 0:
-        return xds_t.reindex({"frequency": expected}, fill_value=np.nan)
+def _global_frequency_coord_hz(
+    by_time: Dict[str, List[Path]],
+    *,
+    group_metadata_source: Literal["fits", "filename"],
+) -> np.ndarray:
+    """Union of canonical per-file Hz labels across all time groups (sorted ascending)."""
+    hz_vals: set[float] = set()
+    for files in by_time.values():
+        for fp in files:
+            hz = _canonical_stack_frequency_hz(
+                fp,
+                group_metadata_source=group_metadata_source,
+                time_key_source="filename",
+            )
+            if hz is not None:
+                hz_vals.add(float(hz))
+    if not hz_vals:
+        msg = (
+            "Cannot determine a global frequency axis: no canonical Hz metadata on input FITS. "
+            "Ensure `_NNNMHz_` basename tags or FITS spectral headers are present."
+        )
+        raise RuntimeError(msg)
+    return np.array(sorted(hz_vals), dtype=np.float64)
 
-    # Snap observed frequencies to the nearest expected bin representative to
-    # tolerate small Hz-level jitter while keeping one stable frequency axis.
-    mapped = observed.copy()
-    max_jitter_hz = _DISCOVERY_FREQ_BIN_HZ / 2.0
-    for i, freq in enumerate(observed):
-        nearest_idx = int(np.argmin(np.abs(expected - freq)))
-        if abs(float(expected[nearest_idx] - freq)) <= max_jitter_hz:
-            mapped[i] = expected[nearest_idx]
 
-    xds_norm = xds_t.assign_coords(frequency=("frequency", mapped))
+def _frequency_coord_hz_from_zarr(out_zarr: Path) -> np.ndarray:
+    """Read the store's ``frequency`` coordinate (must match appended time steps)."""
+    with xr.open_zarr(str(out_zarr), consolidated=False) as ds:
+        if "frequency" not in ds.coords:
+            raise RuntimeError(
+                f"Existing Zarr {out_zarr} has no frequency coordinate; cannot append incrementally."
+            )
+        return np.asarray(ds["frequency"].values, dtype=np.float64).copy()
 
-    # If snapping produced duplicate labels, keep first occurrence per frequency.
-    _, first_indices = np.unique(mapped, return_index=True)
-    if len(first_indices) != len(mapped):
-        xds_norm = xds_norm.isel(frequency=np.sort(first_indices))
 
-    xds_norm = xds_norm.sortby("frequency")
-    return xds_norm.reindex({"frequency": expected}, fill_value=np.nan)
+def _align_time_step_to_frequency_grid(ds: xr.Dataset, freq_hz: np.ndarray) -> xr.Dataset:
+    """Reindex one time step onto the fixed full-store ``frequency`` axis (NaN for missing subbands)."""
+    if "frequency" not in ds.dims:
+        return ds
+    template = xr.DataArray(
+        np.asarray(freq_hz, dtype=np.float64),
+        dims=("frequency",),
+        name="frequency",
+    )
+    return ds.reindex(frequency=template, fill_value=np.nan)
+
+
+def _lm_reference_from_existing_zarr(out_zarr: Path) -> xr.Dataset:
+    """Minimal LM + WCS reference from an on-disk Zarr (resume / append without re-scanning FITS)."""
+    with xr.open_zarr(str(out_zarr), consolidated=False) as ex:
+        if "l" not in ex.coords or "m" not in ex.coords:
+            raise RuntimeError(f"Existing Zarr {out_zarr} is missing l/m coordinates; cannot resume.")
+        hdr = _read_wcs_header_str(ex)
+        if hdr is None:
+            probe = ex
+            for dim in ("time", "frequency"):
+                if dim in probe.dims:
+                    probe = probe.isel({dim: 0})
+            for v in probe.data_vars:
+                hdr = _read_wcs_header_str(probe[[v]])
+                if hdr is not None:
+                    break
+        l_coord = np.asarray(ex["l"].values, dtype=np.float64)
+        m_coord = np.asarray(ex["m"].values, dtype=np.float64)
+    out = xr.Dataset(coords={"l": ("l", l_coord), "m": ("m", m_coord)})
+    if hdr is not None:
+        out.attrs["fits_wcs_header"] = hdr
+    return out
+
+
+def _frequency_sort_tuple(fp: Path) -> Tuple[float, str]:
+    """Sort key for deterministic frequency ordering with fallback."""
+    return _discovery_frequency_sort_tuple(fp, group_metadata_source="fits")
 
 
 def _earth_location_from_header(hdr: fits.Header) -> EarthLocation:
@@ -1263,11 +966,11 @@ def _load_for_combine(fp: Path, *, chunk_lm: int = 1024) -> xr.Dataset:
     cel_hdr = w2d.to_header()
     hdr_str = cel_hdr.tostring(sep="\n")
     cache_key = (ny, nx, hdr_str)
-    cached = _sky_coord_cache_get(cache_key)
+    cached = _SKY_COORD_CACHE.get(cache_key)
     if cached is None:
         yy, xx = np.indices((ny, nx), dtype=float)
-        ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, pixel centers
-        _sky_coord_cache_set(cache_key, (ra2d, dec2d, hdr_str))
+        ra2d, dec2d = w2d.all_pix2world(xx, yy, 0)  # degrees, shape (nm, nl) = (NAXIS2, NAXIS1)
+        _SKY_COORD_CACHE[cache_key] = (ra2d, dec2d, hdr_str)
     else:
         ra2d, dec2d, hdr_str = cached
 
@@ -1818,7 +1521,7 @@ def _sky_sep_max_vs_ref_arcsec(
     dec: NDArray[np.floating],
     *,
     ref_idx: int,
-    max_points: int = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS,
+    max_points: int = 65536,
 ) -> float:
     """Worst-case on-sky separation (arcsec) of any non-ref channel from ``ref_idx``.
 
@@ -1831,27 +1534,25 @@ def _sky_sep_max_vs_ref_arcsec(
     max_points
         Maximum number of ``(l, m)`` pixels sampled per comparison (subsampled if larger).
     """
-    if ra.ndim != 3 or dec.ndim != 3:
-        raise ValueError("ra/dec must be 3D arrays shaped (n_freq, n_m, n_l)")
-    nf, nm, nl = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
+    nf, nl, nm = int(ra.shape[0]), int(ra.shape[1]), int(ra.shape[2])
     if nf <= 1:
         return 0.0
     ri = int(np.clip(ref_idx, 0, nf - 1))
-    total = nm * nl
-    rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
+    total = nl * nm
+    rng = np.random.default_rng(0)
     if total > max_points:
         flat_idx = rng.choice(total, size=max_points, replace=False)
     else:
         flat_idx = np.arange(total, dtype=np.intp)
-    idx_m, idx_l = np.unravel_index(flat_idx, (nm, nl))
-    ref_ra = ra[ri][idx_m, idx_l]
-    ref_dec = dec[ri][idx_m, idx_l]
+    li, mi = np.unravel_index(flat_idx, (nl, nm))
+    ref_ra = ra[ri][li, mi]
+    ref_dec = dec[ri][li, mi]
     worst = 0.0
     for fi in range(nf):
         if fi == ri:
             continue
-        ra_i = ra[fi][idx_m, idx_l]
-        dec_i = dec[fi][idx_m, idx_l]
+        ra_i = ra[fi][li, mi]
+        dec_i = dec[fi][li, mi]
         ok = np.isfinite(ref_ra) & np.isfinite(ref_dec) & np.isfinite(ra_i) & np.isfinite(dec_i)
         if not np.any(ok):
             continue
@@ -1885,26 +1586,10 @@ def _harmonize_celestial_coords_independent_of_frequency(
     nf = int(xds.sizes["frequency"])
     ri = int(np.clip(ref_freq_idx, 0, nf - 1))
 
-    ra_ord = ra_c.transpose("frequency", "m", "l")
-    dec_ord = dec_c.transpose("frequency", "m", "l")
-    if hasattr(ra_ord.data, "compute") or hasattr(dec_ord.data, "compute"):
-        # Sample before materialization so dask-backed coords do not compute full
-        # (frequency, m, l) cubes just for drift estimation.
-        max_points = _CELESTIAL_DRIFT_SAMPLE_MAX_POINTS
-        stacked_dims = ("m", "l")
-        total = int(ra_ord.sizes["m"]) * int(ra_ord.sizes["l"])
-        rng = np.random.default_rng(_CELESTIAL_DRIFT_SAMPLE_SEED)
-        if total > max_points:
-            flat_idx = rng.choice(total, size=max_points, replace=False)
-        else:
-            flat_idx = np.arange(total, dtype=np.intp)
-        ra_sample = ra_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
-        dec_sample = dec_ord.stack(pixel=stacked_dims).isel(pixel=flat_idx)
-        ra_np = np.asarray(ra_sample.data, dtype=np.float64)[:, np.newaxis, :]
-        dec_np = np.asarray(dec_sample.data, dtype=np.float64)[:, np.newaxis, :]
-    else:
-        ra_np = np.asarray(ra_ord.data, dtype=np.float64)
-        dec_np = np.asarray(dec_ord.data, dtype=np.float64)
+    ra_ord = ra_c.transpose("frequency", "l", "m")
+    dec_ord = dec_c.transpose("frequency", "l", "m")
+    ra_np = np.asarray(ra_ord.data, dtype=np.float64)
+    dec_np = np.asarray(dec_ord.data, dtype=np.float64)
 
     max_sep = _sky_sep_max_vs_ref_arcsec(ra_np, dec_np, ref_idx=ri)
     if max_sep > warn_max_sep_arcsec:
@@ -2246,15 +1931,7 @@ def _discover_groups(
     time_key_source: Literal["header", "filename"] = "filename",
     group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> Dict[str, List[Path]]:
-    """Group input FITS by observation time and frequency.
-
-    Time keys come from FITS headers by default; use *time_key_source* to opt into
-    filename-based time grouping. Frequency grouping always uses headers first with a
-    filename MHz fallback when needed. Files are associated with a **coarse** frequency key
-    (default 23~kHz bins) so small
-    in the Zarr for the same physical subband. For multiple paths in the same
-    (time, bin) without a ``duplicate_resolver``, the first file is kept and the rest
-    are skipped (with a warning). Distinct subbands remain separate (e.g. 41~MHz vs 55~MHz).
+    """Group input FITS by observation time and frequency (filename time stamp, header fallback).
 
     Files are associated with a **coarse** frequency key (default 23~kHz bins) so small
     header differences in Hz (RESTFREQ, etc.) do not create extra ``frequency`` planes
@@ -2274,9 +1951,15 @@ def _discover_groups(
         ``int(round(frequency_hz / freq_bin_hz))``. Frequencies in the same bin are treated
         as one subband for grouping (up to ~``freq_bin_hz`` separation at bin edges).
     time_key_source
-        ``"header"`` (default): time from ``DATE-OBS`` / :func:`_time_key_from_header` only.
-        ``"filename"``: prefer basename time when parseable, else header (see
-        :func:`_extract_group_metadata`).
+        Used only when ``group_metadata_source`` is ``"fits"``. ``"filename"`` (default):
+        prefer the basename ``-image-YYYYMMDD_HHMMSS`` instant when present; otherwise use
+        ``DATE-OBS``. ``"header"``: group by ``DATE-OBS`` time key only.
+    group_metadata_source
+        ``"fits"`` (default): read FITS headers (and filename fallbacks) via
+        :func:`_extract_group_metadata`. ``"filename"``: derive time and frequency for
+        grouping **only** from the basename (no FITS I/O); requires ``-image-`` time and
+        ``_NNNMHz_`` / ``_NNNMHz-`` tokens when you need frequency-based bins. ``time_key_source``
+        is ignored in ``"filename"`` mode.
 
     Returns
     -------
@@ -2295,11 +1978,12 @@ def _discover_groups(
         else:
             time_key, frequency_hz, notes = _extract_group_metadata(f, time_key_source=time_key_source)
         if time_key is None:
-            t_hint = (
-                "-image-YYYYMMDD_HHMMSS in basename, legacy averaged name, or DATE-OBS"
-                if time_key_source == "filename"
-                else "DATE-OBS in FITS header"
-            )
+            if group_metadata_source == "filename":
+                t_hint = "-image-YYYYMMDD_HHMMSS in basename (filename-only grouping; no header fallback)"
+            elif time_key_source == "filename":
+                t_hint = "-image-YYYYMMDD_HHMMSS in basename or DATE-OBS"
+            else:
+                t_hint = "DATE-OBS"
             logger.warning(f"Skipping {f.name}: missing usable observation time ({t_hint}).")
             continue
         if frequency_hz is None:
@@ -2594,83 +2278,6 @@ def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
     return xds
 
 
-def _rechunk_nonuniform_aux_vars_for_zarr(xds: xr.Dataset) -> xr.Dataset:
-    """Rechunk metadata-sized data vars so Dask chunks satisfy Zarr's uniformity rule.
-
-    ``xr.concat`` / ``combine_by_coords`` can leave variables that only span
-    ``frequency`` (or similar) with *irregular* Dask chunks (e.g. ``(2, 1, 1)``
-    along one dimension). ``xarray``'s Zarr writer requires all non-final
-    chunks to share the same size along each dimension; otherwise it raises
-    (``wcs_header_str`` is a known case).
-
-    Parameters
-    ----------
-    xds
-        Dataset possibly containing small dask-backed aux variables.
-
-    Returns
-    -------
-    xarray.Dataset
-        Dataset with offending variables rechunks to one chunk per dimension.
-    """
-    out = xds
-    for name in list(out.data_vars):
-        v = out[name]
-        da_ = v.data
-        if not hasattr(da_, "chunks") or not da_.chunks:
-            continue
-        bad = False
-        for dim_chunks in da_.chunks:
-            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
-                bad = True
-                break
-        if bad:
-            chunk_arg = {d: -1 for d in v.dims}
-            out = out.assign(**{name: v.chunk(chunk_arg)})
-    return out
-
-
-def _rechunk_nonuniform_coords_for_zarr(xds: xr.Dataset) -> xr.Dataset:
-    """Rechunk coordinate arrays that have non-uniform Dask chunks.
-
-    Coordinates like ``right_ascension``/``declination`` can gain a leading
-    ``time`` dimension during append. If that axis chunks as ``(2, 1, 1)``,
-    xarray's Zarr writer rejects it as non-uniform. Rechunk only the offending
-    dimensions (e.g. ``time``) and keep already-uniform spatial chunks unchanged.
-    """
-    out = xds
-    for name in list(out.coords):
-        c = out[name]
-        da_ = c.data
-        if not hasattr(da_, "chunks") or not da_.chunks:
-            continue
-        bad_dims: list[str] = []
-        for dim_name, dim_chunks in zip(c.dims, da_.chunks, strict=True):
-            if len(dim_chunks) > 1 and len(set(dim_chunks[:-1])) > 1:
-                bad_dims.append(dim_name)
-        if bad_dims:
-            chunk_arg = {d: -1 for d in bad_dims}
-            out = out.assign_coords({name: c.chunk(chunk_arg)})
-    return out
-
-
-def _strip_encodings_for_zarr_write(xds: xr.Dataset) -> xr.Dataset:
-    """Clear encodings on coordinates and data variables before Zarr write.
-
-    After ``Dataset.chunk`` and ``concat``, xarray may attach ``encoding['chunks']``
-    to coordinates (e.g. ``right_ascension``, ``declination``). If those encodings
-    do not align with the current Dask chunk boundaries, ``to_zarr`` raises
-    *Specified Zarr chunks … would overlap multiple Dask chunks*. Stripping
-    encodings matches the pattern already used for data variables after
-    :func:`_combine_time_step` and lets the writer derive chunks from the arrays.
-    """
-    for name in xds.coords:
-        xds[name].encoding = {}
-    for name in xds.data_vars:
-        xds[name].encoding = {}
-    return xds
-
-
 def _rechunk_lm_for_zarr(xds: xr.Dataset, chunk_lm: int) -> xr.Dataset:
     """Rechunk ``l`` and ``m`` so Dask-backed arrays use uniform spatial chunk sizes.
 
@@ -2732,79 +2339,11 @@ def _assert_same_lm(
         )
 
 
-def _zarr_array_dims_and_lengths(
-    var_name: str,
-    *,
-    zgroup: zarr.Group | None = None,
-    store_path: Path | None = None,
-) -> Tuple[Tuple[str, ...], Dict[str, int]]:
-    """Return dimension order and axis lengths for one Zarr array using xarray conventions.
-
-    Reads ``_ARRAY_DIMENSIONS`` from array metadata (xarray/zarr convention).
-    """
-    zg = zgroup if zgroup is not None else zarr.open_group(str(store_path), mode="r")
-    node = zg[var_name]
-    if not hasattr(node, "shape"):
-        msg = f"Zarr node {var_name!r} in {store_path} is not an array; cannot read schema."
-        raise RuntimeError(msg)
-    arr = node
-    dims_attr = arr.attrs.get("_ARRAY_DIMENSIONS")
-    if dims_attr is None:
-        msg = (
-            f"Zarr array {var_name!r} has no _ARRAY_DIMENSIONS metadata; "
-            "cannot align append schema without opening the store as xarray."
-        )
-        raise RuntimeError(msg)
-    if isinstance(dims_attr, str):
-        dims = (dims_attr,)
-    else:
-        dims = tuple(str(d) for d in dims_attr)
-    shape = tuple(int(s) for s in arr.shape)
-    if len(dims) != len(shape):
-        msg = f"Zarr array {var_name!r} dims {dims} do not match shape {shape}."
-        raise RuntimeError(msg)
-    return dims, dict(zip(dims, shape, strict=True))
-
-
-def _align_incoming_with_zarr_schema(
-    incoming: xr.Dataset,
-    existing_path: Path,
-) -> xr.Dataset:
-    """Broadcast shared variables to match on-disk Zarr dimension order (no full Dataset open).
-
-    Used when ``xr.open_zarr`` fails due to inconsistent lengths across arrays in the store.
-    """
-    aligned = incoming
-    zg = zarr.open_group(str(existing_path), mode="r")
-    existing_names = {k for k in zg.array_keys()}
-    incoming_names = set(aligned.variables.keys())
-    shared = sorted(existing_names & incoming_names)
-    for name in shared:
-        e_dims, e_lengths = _zarr_array_dims_and_lengths(name, zgroup=zg)
-        i_dims = tuple(aligned[name].dims)
-        if e_dims == i_dims:
-            continue
-        if set(i_dims).issubset(set(e_dims)):
-            missing_dims = [d for d in e_dims if d not in i_dims]
-            expand_kwargs = {}
-            for d in missing_dims:
-                if d in aligned.sizes:
-                    expand_kwargs[d] = int(aligned.sizes[d])
-                elif d in e_lengths:
-                    expand_kwargs[d] = int(e_lengths[d])
-                else:
-                    msg = (
-                        f"Cannot infer size for missing dimension {d!r} when aligning {name!r} "
-                        f"to on-disk dims {e_dims}."
-                    )
-                    raise RuntimeError(msg)
-            expanded = aligned[name].expand_dims(expand_kwargs)
-            if name in aligned.coords:
-                aligned = aligned.assign_coords({name: expanded})
-            else:
-                aligned = aligned.assign(**{name: expanded})
-            aligned[name] = aligned[name].transpose(*e_dims)
-    return aligned
+def _ensure_append_friendly_time_chunks(xds: xr.Dataset) -> xr.Dataset:
+    """Use one Zarr chunk per time index so ``append_dim='time'`` and region overwrites align."""
+    if "time" not in xds.dims:
+        return xds
+    return xds.chunk({"time": 1})
 
 
 def _time_coord_as_dimension(ds: xr.Dataset) -> xr.DataArray | None:
@@ -2908,96 +2447,95 @@ def _write_or_append_zarr(
     *,
     chunk_lm: int,
 ) -> None:
-    """Write first time-step, then append incrementally on ``time``.
+    """Write or append one time step to a Zarr store without re-writing existing times.
 
-    Parameters
-    ----------
-    xds_t : xr.Dataset
-        Dataset to write or append.
-    out_zarr : Path
-        Path to output Zarr store.
-    first_write : bool
-        If True, write a new Zarr store; if False, append this dataset
-        along the ``time`` dimension.
-    chunk_lm
-        Spatial chunk size passed to :func:`_rechunk_lm_for_zarr` so appended
-        stores match uniform Zarr chunking requirements.
+    First write replaces any existing store at *out_zarr* when *first_write* is True.
+    Append uses ``to_zarr(..., mode='a', append_dim='time')``. If the new step's
+    ``time`` already exists in the store (e.g. resume repair), that row is
+    overwritten via a region write (``keep='last'`` semantics).
     """
-    if first_write or (not out_zarr.exists()):
-        to_write = _rechunk_lm_for_zarr(xds_t, chunk_lm)
-        write_image(
-            to_write,
+    from shutil import rmtree
+
+    if first_write or not out_zarr.exists():
+        to_write = _align_time_dimension_for_zarr_write(xds_t)
+    else:
+        with xr.open_zarr(str(out_zarr), consolidated=False) as existing:
+            to_write = _align_time_dimension_for_zarr_write(xds_t, schema=existing)
+
+    to_write = _rechunk_lm_for_zarr(to_write, chunk_lm)
+    to_write = _ensure_append_friendly_time_chunks(to_write)
+    to_write = _prepare_time_only_vars_for_zarr_write(to_write)
+    if "time" in to_write.coords:
+        to_write = to_write.sortby("time")
+    if "frequency" in to_write.coords:
+        to_write = to_write.sortby("frequency")
+
+    if first_write or not out_zarr.exists():
+        if out_zarr.exists():
+            rmtree(out_zarr)
+        to_write.to_zarr(str(out_zarr), mode="w", consolidated=False)
+        return
+
+    with xr.open_zarr(str(out_zarr), consolidated=False) as existing:
+        if "time" not in existing.coords:
+            raise RuntimeError(
+                f"Cannot append: existing Zarr {out_zarr} has no time coordinate."
+            )
+        old_times = np.atleast_1d(np.asarray(existing["time"].values, dtype=np.float64))
+    new_times = np.atleast_1d(np.asarray(to_write["time"].values, dtype=np.float64))
+    if new_times.size != 1:
+        raise RuntimeError(
+            f"Incremental append expects exactly one time index; got {new_times.size}."
+        )
+    new_t = float(new_times[0])
+    dup_idx: int | None = None
+    for i, old in enumerate(old_times):
+        if not (np.isfinite(old) and np.isfinite(new_t)):
+            continue
+        if np.isclose(old, new_t, rtol=1e-12, atol=1e-9):
+            dup_idx = i
+
+    if dup_idx is not None:
+        logger.info(
+            "Overwriting existing time row %d (MJD %.8f) in %s; n_time will not grow.",
+            dup_idx,
+            new_t,
+            out_zarr,
+        )
+        # ``to_zarr(..., region=...)`` rejects index coordinates that lack ``time``
+        # (e.g. ``l``, ``m``, ``frequency``). Build a minimal dataset from only
+        # arrays that span ``time`` (materialized) so the repair path matches the
+        # on-disk layout without re-exporting static coords.
+        data_map: dict[str, tuple[tuple[str, ...], np.ndarray]] = {}
+        for name, da in to_write.data_vars.items():
+            if "time" not in da.dims:
+                continue
+            arr = da.load()
+            data_map[name] = (tuple(arr.dims), np.asarray(arr.data))
+        time_vals = np.asarray(to_write["time"].load().values)
+        dup_write = xr.Dataset(data_map, coords={"time": ("time", time_vals)})
+        dup_write = _ensure_append_friendly_time_chunks(dup_write)
+        dup_write.to_zarr(
             str(out_zarr),
             mode="r+",
             region={"time": slice(dup_idx, dup_idx + 1)},
             consolidated=False,
             align_chunks=True,
         )
-        zarr.consolidate_metadata(str(out_zarr))
         return
 
-    def _align_with_existing_schema(incoming: xr.Dataset, existing_path: Path) -> xr.Dataset:
-        """Broadcast append variables to match existing Zarr variable dimensions.
-
-        Some existing stores contain metadata variables (e.g., velocity, wcs_header_str)
-        with dimensions including ``time`` due to historical concat/write behavior.
-        Incremental append must preserve variable dimension names exactly.
-        """
-        try:
-            existing_schema = xr.open_zarr(str(existing_path), consolidated=False)
-        except Exception as exc:
-            return _align_incoming_with_zarr_schema(incoming, existing_path)
-        try:
-            aligned = incoming
-            existing_var_names = set(existing_schema.variables.keys())
-            incoming_var_names = set(aligned.variables.keys())
-            shared = sorted(existing_var_names & incoming_var_names)
-            for name in shared:
-                e_dims = tuple(existing_schema[name].dims)
-                i_dims = tuple(aligned[name].dims)
-                if e_dims == i_dims:
-                    continue
-                # If existing dims are a superset of incoming dims, broadcast missing dims.
-                if set(i_dims).issubset(set(e_dims)):
-                    missing_dims = [d for d in e_dims if d not in i_dims]
-                    expand_kwargs = {
-                        d: int(aligned.sizes[d]) if d in aligned.sizes else int(existing_schema.sizes[d])
-                        for d in missing_dims
-                    }
-                    expanded = aligned[name].expand_dims(expand_kwargs)
-                    if name in aligned.coords:
-                        aligned = aligned.assign_coords({name: expanded})
-                    else:
-                        aligned = aligned.assign(**{name: expanded})
-                    aligned[name] = aligned[name].transpose(*e_dims)
-            return aligned
-        finally:
-            existing_schema.close()
-
-    to_append = _rechunk_lm_for_zarr(xds_t, chunk_lm)
-    to_append = _align_with_existing_schema(to_append, out_zarr)
-    if "frequency" in to_append.coords:
-        to_append = to_append.sortby("frequency")
-    if "time" in to_append.coords:
-        to_append = to_append.sortby("time")
-    if "wcs_header_str" in to_append.data_vars:
-        # Keep metadata variable chunking compatible with existing Zarr chunk shape.
-        # The target store typically has frequency as a single chunk (e.g. 15), and
-        # split chunks like (14, 1) can overlap that target chunk during append.
-        chunk_args: Dict[str, int] = {}
-        if "time" in to_append["wcs_header_str"].dims:
-            chunk_args["time"] = 1
-        if "frequency" in to_append["wcs_header_str"].dims:
-            chunk_args["frequency"] = -1
-        if chunk_args:
-            to_append = to_append.assign(
-                wcs_header_str=to_append["wcs_header_str"].chunk(chunk_args)
-            )
-
-    # True incremental append: write only new time samples.
-    to_append.to_zarr(str(out_zarr), mode="a", append_dim="time")
-    zarr.consolidate_metadata(str(out_zarr))
-
+    logger.info(
+        "Appending new time row at MJD %.8f to %s (n_time will increase by 1).",
+        new_t,
+        out_zarr,
+    )
+    to_write.to_zarr(
+        str(out_zarr),
+        mode="a",
+        append_dim="time",
+        consolidated=False,
+        align_chunks=True,
+    )
 
 
 def convert_fits_dir_to_zarr(
@@ -3007,7 +2545,6 @@ def convert_fits_dir_to_zarr(
     fixed_dir: str | Path = "fixed_fits",
     chunk_lm: int = 1024,
     rebuild: bool = False,
-    resume: bool = False,
     fix_headers_on_demand: bool = True,
     cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
@@ -3034,9 +2571,6 @@ def convert_fits_dir_to_zarr(
         Optional LM chunk size for the in-memory xarray datasets (0 disables).
     rebuild
         If True, overwrite any existing Zarr; otherwise append to it.
-    resume
-        If True and an existing output Zarr is present, skip input time steps
-        that already exist in the Zarr ``time`` coordinate.
     fix_headers_on_demand
         If True, fix FITS headers on-demand during conversion if they don't exist.
         If False, assume headers are already fixed using :func:`fix_fits_headers`.
@@ -3212,35 +2746,8 @@ def convert_fits_dir_to_zarr(
     # Decide whether we write a fresh store or append to an existing one
     first_write = not (out_zarr.exists() and not rebuild)
 
-    all_time_keys = sorted(by_time.keys())
-    expected_frequencies_hz = _expected_frequencies_from_groups(by_time)
-    pending_time_keys = all_time_keys
-    if resume and out_zarr.exists() and not rebuild:
-        committed_time_keys = _committed_time_keys_from_txn(out_zarr)
-        if committed_time_keys:
-            existing_time_keys = committed_time_keys
-            logger.info(
-                "Resume mode: using %d committed time marker(s) from %s",
-                len(existing_time_keys),
-                _txn_dir_for_store(out_zarr),
-            )
-        else:
-            existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
-        pending_time_keys = [k for k in all_time_keys if k not in existing_time_keys]
-        skipped = len(all_time_keys) - len(pending_time_keys)
-        logger.info(
-            "Resume mode: %d/%d time step(s) already present in output Zarr; %d pending.",
-            skipped,
-            len(all_time_keys),
-            len(pending_time_keys),
-        )
-
-    if not pending_time_keys:
-        logger.info("No pending time steps to process; output already up to date: %s", out_zarr)
-        return out_zarr
-
-    total_time_steps = len(pending_time_keys)
-    for idx, tkey in enumerate(pending_time_keys):
+    total_time_steps = len(by_time)
+    for idx, tkey in enumerate(sorted(by_time.keys())):
         files = by_time[tkey]
 
         logger.info(f"[read/combine] time {tkey}")
@@ -3252,8 +2759,8 @@ def convert_fits_dir_to_zarr(
             lm_reference_ds=lm_ref_ds,
             group_metadata_source=group_metadata_source,
         )
-        xds_t = _reindex_time_step_to_expected_frequencies(xds_t, expected_frequencies_hz)
-        logger.info(f"  combined dims: {dict(xds_t.sizes)}")
+        xds_t = _align_time_step_to_frequency_grid(xds_t, freq_coord_hz)
+        logger.info(f"  combined dims: {dict(xds_t.dims)}")
         logger.info(f"  combined freqs (Hz): {freqs[:8]}{' ...' if len(freqs) > 8 else ''}")
 
         lm_current = (xds_t["l"].values, xds_t["m"].values)
@@ -3261,20 +2768,8 @@ def convert_fits_dir_to_zarr(
         logger.info("  l/m grid matches global reference")
 
         logger.info(f"[{'write new' if first_write else 'append'}] {out_zarr}")
-        if out_zarr.exists() and not first_write:
-            _validate_time_axis_consistency_zarr(out_zarr)
-        _mark_time_in_progress(out_zarr, tkey)
-        try:
-            _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
-            _mark_time_committed(out_zarr, tkey)
-            first_write = False
-        except KeyboardInterrupt:
-            if out_zarr.exists():
-                try:
-                    zarr.consolidate_metadata(str(out_zarr))
-                except Exception:
-                    pass
-            raise
+        _write_or_append_zarr(xds_t, out_zarr, first_write=first_write, chunk_lm=chunk_lm)
+        first_write = False
         if cleanup_fixed_fits and fix_headers_on_demand and created_fixed_paths:
             removed = 0
             for fixed_path in created_fixed_paths:
