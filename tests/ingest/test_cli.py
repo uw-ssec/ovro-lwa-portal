@@ -92,11 +92,17 @@ class TestCLI:
 
     def test_audit_metadata_help(self) -> None:
         """audit-metadata --help documents subband header checks."""
-        result = runner.invoke(app, ["audit-metadata", "--help"])
+        result = runner.invoke(
+            app,
+            ["audit-metadata", "--help"],
+            color=False,
+            terminal_width=120,
+        )
         assert result.exit_code == 0
-        assert "subband" in result.stdout.lower()
-        assert "--probe-combine" in result.stdout
-        assert "--staging-dir" in result.stdout
+        plain = click.unstyle(result.stdout)
+        assert "subband" in plain.lower()
+        assert "probe-combine" in plain
+        assert "staging-dir" in plain
 
     def test_convert_missing_args(self) -> None:
         """Test convert command with missing arguments."""
