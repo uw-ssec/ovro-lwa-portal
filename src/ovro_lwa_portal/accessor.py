@@ -36,10 +36,10 @@ if TYPE_CHECKING:
 _EAGER_LOAD_THRESHOLD = 10 * 1024 * 1024  # bytes
 
 # :meth:`_compute_pixel_track_batched_radec_grid` loads RA/Dec in
-# ``(time_chunk, m, l)`` blocks.  Limits:
-#   * ``_MAX_PIXEL_TRACK_PLANE_ELEMENTS`` — max ``m * l`` for one time slice; if
+# ``(time_chunk, l, m)`` blocks.  Limits:
+#   * ``_MAX_PIXEL_TRACK_PLANE_ELEMENTS`` — max ``l * m`` for one time slice; if
 #     larger, fall back to per-time :meth:`_compute_pixel_at_time`.
-#   * ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` — max ``time_chunk * m * l`` per Dask
+#   * ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` — max ``time_chunk * l * m`` per Dask
 #     ``compute`` (per field); two fields are computed together per chunk.
 _MAX_PIXEL_TRACK_PLANE_ELEMENTS = 72_000_000
 _MAX_PIXEL_TRACK_CHUNK_ELEMENTS = 40_000_000
@@ -244,8 +244,6 @@ class RadportAccessor:
         Uses the same caching and IERS policy as :meth:`_compute_pixel_at_time`.
         """
         from astropy.coordinates import EarthLocation
-        from astropy.time import Time
-        from astropy.utils.iers import conf as iers_conf
 
         if observatory is None:
             from astropy import units as u
@@ -268,6 +266,9 @@ class RadportAccessor:
         single_key = (np.float64(mjd).tobytes(), lon_deg)
         if single_key in self._lst_cache:
             return float(np.asarray(self._lst_cache[single_key], dtype=np.float64).ravel()[0])
+
+        from astropy.time import Time
+        from astropy.utils.iers import conf as iers_conf
 
         orig = iers_conf.auto_download
         try:
@@ -347,8 +348,8 @@ class RadportAccessor:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
         """Batched (time, m, l) nearest-pixel search; ``None`` to fall back to per-time loop.
 
-        Loads RA/Dec in ``(time_chunk, m, l)`` blocks.  Each chunk has at most
-        ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` samples per field; a single ``(m, l)``
+        Loads RA/Dec in ``(time_chunk, l, m)`` blocks.  Each chunk has at most
+        ``_MAX_PIXEL_TRACK_CHUNK_ELEMENTS`` samples per field; a single ``(l, m)``
         plane may be at most ``_MAX_PIXEL_TRACK_PLANE_ELEMENTS`` samples (else
         ``None``).  See module constants for defaults.
         """
@@ -403,15 +404,15 @@ class RadportAccessor:
             return None
 
         try:
-            ra_bt = ra_b.transpose("time", "m", "l")
-            dec_bt = dec_b.transpose("time", "m", "l")
+            ra_bt = ra_b.transpose("time", "l", "m")
+            dec_bt = dec_b.transpose("time", "l", "m")
         except (KeyError, ValueError):
             return None
 
         nt_sz = int(ra_bt.sizes["time"])
-        nm_sz = int(ra_bt.sizes["m"])
         nl_sz = int(ra_bt.sizes["l"])
-        spatial = nm_sz * nl_sz
+        nm_sz = int(ra_bt.sizes["m"])
+        spatial = nl_sz * nm_sz
         if spatial == 0 or spatial > _MAX_PIXEL_TRACK_PLANE_ELEMENTS:
             return None
         if nt_sz != n_times:
@@ -447,7 +448,7 @@ class RadportAccessor:
             nchunk = int(ra_blk.shape[0])
             if nchunk != t1 - t0:
                 return None
-            if int(ra_blk.shape[1]) != nm_sz or int(ra_blk.shape[2]) != nl_sz:
+            if int(ra_blk.shape[1]) != nl_sz or int(ra_blk.shape[2]) != nm_sz:
                 return None
 
             horiz_chunk = horiz_ok[t0:t1]
@@ -461,11 +462,11 @@ class RadportAccessor:
             )
             dist2[~horiz_chunk, :, :] = np.inf
 
-            nm_b, nl_b = int(ra_blk.shape[1]), int(ra_blk.shape[2])
-            flat = np.argmin(dist2.reshape(nchunk, nm_b * nl_b), axis=1)
-            mi = (flat // nl_b).astype(np.intp)
-            li = (flat % nl_b).astype(np.intp)
-            row_min = dist2.reshape(nchunk, nm_b * nl_b)[np.arange(nchunk), flat]
+            nl_b, nm_b = int(ra_blk.shape[1]), int(ra_blk.shape[2])
+            flat = np.argmin(dist2.reshape(nchunk, nl_b * nm_b), axis=1)
+            li = (flat // nm_b).astype(np.intp)
+            mi = (flat % nm_b).astype(np.intp)
+            row_min = dist2.reshape(nchunk, nl_b * nm_b)[np.arange(nchunk), flat]
             in_bounds = (li >= 0) & (li < n_l) & (mi >= 0) & (mi < n_m)
             vis_blk = horiz_chunk & np.isfinite(row_min) & in_bounds
 
@@ -494,8 +495,9 @@ class RadportAccessor:
         For each dataset time index, uses :meth:`coords_to_pixel` (via
         :meth:`_compute_pixel_at_time`) so pixel selection matches all other
         extraction APIs, except when per-time ``right_ascension`` /
-        ``declination`` grids allow a time-chunked batched ``(time, m, l)``
-        argmin (same horizon and distance rules as :meth:`_compute_pixel_at_time`).
+        ``declination`` grids allow a time-chunked batched argmin on a
+        ``(time, l, m)`` grid (same horizon and distance rules as
+        :meth:`_compute_pixel_at_time`).
         Before the loop, LST for all times is computed once (see
         :meth:`_ensure_lst_deg_vector_cached`) so the analytical branch does not
         repeat Astropy work per index.
@@ -3829,7 +3831,7 @@ class RadportAccessor:
             time=time_idx, frequency=fi, polarization=pol
         )
 
-        # Ensure proper dimension order (m, l) for imshow
+        # imshow uses array rows/cols; put declination-like m on the first axis
         if set(da.dims) == {"m", "l"}:
             da = da.transpose("m", "l")
 

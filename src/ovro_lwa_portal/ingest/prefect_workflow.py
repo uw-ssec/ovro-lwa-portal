@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 if TYPE_CHECKING:
     from ovro_lwa_portal.ingest.core import ConversionConfig
@@ -159,6 +159,7 @@ if PREFECT_AVAILABLE:
         rebuild: bool = False,
         duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         verbose: bool = False,
+        group_metadata_source: Literal["fits", "filename"] = "fits",
     ) -> Path:
         """Prefect flow for FITS to Zarr conversion.
 
@@ -187,6 +188,8 @@ if PREFECT_AVAILABLE:
             ``ovro_lwa_portal.ingest.core``).
         verbose : bool, optional
             Enable verbose logging. Defaults to False.
+        group_metadata_source : {"fits", "filename"}, optional
+            Forwarded to :class:`~ovro_lwa_portal.ingest.core.ConversionConfig`.
 
         Returns
         -------
@@ -217,6 +220,7 @@ if PREFECT_AVAILABLE:
             rebuild=rebuild,
             duplicate_resolver=duplicate_resolver,
             verbose=verbose,
+            group_metadata_source=group_metadata_source,
         )
 
         # Execute tasks in sequence
@@ -242,6 +246,7 @@ def run_conversion_flow(
     rebuild: bool = False,
     duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
     verbose: bool = False,
+    group_metadata_source: Literal["fits", "filename"] = "fits",
 ) -> Path:
     """Run the FITS to Zarr conversion using Prefect orchestration.
 
@@ -298,4 +303,5 @@ def run_conversion_flow(
         rebuild=rebuild,
         duplicate_resolver=duplicate_resolver,
         verbose=verbose,
+        group_metadata_source=group_metadata_source,
     )

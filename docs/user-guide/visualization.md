@@ -77,18 +77,25 @@ ds.radport.plot_diff(diff_freq, time_idx=0)
 Track intensity over time:
 
 ```python
-# Single pixel
-lc = ds.radport.light_curve(l_idx=512, m_idx=512)
-ds.radport.plot_light_curve(lc, label='Source A')
+# Single pixel: resolve indices to l, m, then plot (kwargs go to ``plt.plot``)
+l_idx, m_idx = 512, 512
+l_val = float(ds.coords["l"].values[l_idx])
+m_val = float(ds.coords["m"].values[m_idx])
+fig = ds.radport.plot_light_curve(l=l_val, m=m_val, label="Source A")
 
-# Multiple sources
+# Multiple sources on one Axes: plot_light_curve always creates its own Figure,
+# so call light_curve and use Matplotlib for overlays
 import matplotlib.pyplot as plt
+
 fig, ax = plt.subplots(figsize=(10, 6))
+for l_i, m_i, label in [(512, 512, "Source A"), (600, 600, "Source B")]:
+    l_v = float(ds.coords["l"].values[l_i])
+    m_v = float(ds.coords["m"].values[m_i])
+    lc = ds.radport.light_curve(l=l_v, m=m_v)
+    ax.plot(lc.coords["time"], lc.values, marker="o", linestyle="-", label=label)
 
-for l, m, label in [(512, 512, 'Source A'), (600, 600, 'Source B')]:
-    lc = ds.radport.light_curve(l_idx=l, m_idx=m)
-    ds.radport.plot_light_curve(lc, label=label, ax=ax)
-
+ax.set_xlabel("Time (MJD)")
+ax.set_ylabel("SKY Intensity (Jy/beam)")
 ax.legend()
 plt.show()
 ```
