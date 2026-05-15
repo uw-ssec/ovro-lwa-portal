@@ -2124,6 +2124,42 @@ def _completed_time_keys_in_zarr(
     return keys
 
 
+def _header_time_key_for_files(files: Sequence[Path]) -> Optional[str]:
+    """Return the ``DATE-OBS`` time key for the first file in a discovery group."""
+    if not files:
+        return None
+    try:
+        header = fits.getheader(files[0], ext=0)
+    except OSError as exc:
+        logger.debug(
+            "Could not read header from %s for resume header-key lookup (%s).",
+            files[0],
+            exc,
+        )
+        return None
+    return _time_key_from_header(header)
+
+
+def _discovery_time_key_completed_in_zarr(
+    discovery_key: str,
+    files: Sequence[Path],
+    completed: set[str],
+) -> bool:
+    """Return whether a discovered time key is already represented in *completed*.
+
+    Discovery often groups by the filename ``-image-YYYYMMDD_HHMMSS`` stamp while
+    ``xradio`` writes the Zarr ``time`` coordinate from ``DATE-OBS`` in the FITS
+    header. Those strings differ by a systematic offset on OVRO-LWA products, so a
+    straight set intersection would treat every row as new and re-dewarp already
+    written observations. When the header key for the group is already in the store,
+    treat the filename discovery key as complete as well.
+    """
+    if discovery_key in completed:
+        return True
+    header_key = _header_time_key_for_files(files)
+    return bool(header_key and header_key in completed)
+
+
 def _filter_completed_time_keys(
     by_time: Dict[str, List[Path]],
     out_zarr: Path,
@@ -2136,6 +2172,11 @@ def _filter_completed_time_keys(
     A thin wrapper around :func:`_completed_time_keys_in_zarr` that also emits
     consistent log messages so the convert and dewarp-convert call sites stay in
     sync. The original ordering of *by_time* is preserved for the remaining keys.
+
+    When discovery keys come from filenames but the Zarr ``time`` coordinate was
+    written from FITS ``DATE-OBS`` (the usual ``xradio`` path), a group is also
+    treated as complete when :func:`_header_time_key_for_files` matches a key
+    already in the store.
 
     Parameters
     ----------
@@ -2158,18 +2199,42 @@ def _filter_completed_time_keys(
     completed = _completed_time_keys_in_zarr(out_zarr, rebuild=rebuild)
     if not completed:
         return by_time
-    overlap = [k for k in by_time if k in completed]
-    if not overlap:
+    skipped_exact: list[str] = []
+    skipped_header_alias: list[str] = []
+    remaining: Dict[str, List[Path]] = {}
+    for discovery_key, files in by_time.items():
+        if not _discovery_time_key_completed_in_zarr(discovery_key, files, completed):
+            remaining[discovery_key] = files
+            continue
+        if discovery_key in completed:
+            skipped_exact.append(discovery_key)
+        else:
+            skipped_header_alias.append(discovery_key)
+    skipped_total = len(skipped_exact) + len(skipped_header_alias)
+    if not skipped_total:
         return by_time
-    remaining = {k: v for k, v in by_time.items() if k not in completed}
     logger.info(
-        "[%s] Resume from %s: %d time key(s) already present, %d remaining to process.",
+        "[%s] Resume from %s: %d time key(s) already present (%d by discovery key, "
+        "%d by FITS header time), %d remaining to process.",
         context,
         out_zarr,
-        len(overlap),
+        skipped_total,
+        len(skipped_exact),
+        len(skipped_header_alias),
         len(remaining),
     )
-    logger.debug("[%s] Skipping already-present time keys: %s", context, ", ".join(sorted(overlap)))
+    if skipped_exact:
+        logger.debug(
+            "[%s] Skipping discovery keys already in Zarr: %s",
+            context,
+            ", ".join(sorted(skipped_exact)),
+        )
+    if skipped_header_alias:
+        logger.debug(
+            "[%s] Skipping discovery keys whose DATE-OBS is already in Zarr: %s",
+            context,
+            ", ".join(sorted(skipped_header_alias)),
+        )
     return remaining
 
 
