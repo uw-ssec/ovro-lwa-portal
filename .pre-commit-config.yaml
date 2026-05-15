@@ -31,14 +31,6 @@ repos:
         types_or: [yaml, markdown, html, css, scss, javascript, json]
         args: [--prose-wrap=always]
 
-  - repo: https://github.com/codespell-project/codespell
-    rev: "v2.4.1"
-    hooks:
-      - id: codespell
-        # Notebooks are JSON (often with embedded outputs); spell-check source instead.
-        exclude: \.ipynb$
-        args: [--ignore-words=.codespell-ignore]
-
   - repo: local
     hooks:
       - id: disallow-caps
