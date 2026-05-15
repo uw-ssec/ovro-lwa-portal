@@ -192,16 +192,11 @@ rtd-publish = { cmd = "python -m mkdocs build --clean --site-dir $READTHEDOCS_OU
 default = { features = ["pre-commit", "gh-cli", "visualization"], solve-group = "default" }
 onboard = { features = ["pre-commit", "gh-cli", "onboard", "visualization"], solve-group = "default" }
 ci = ["ci"]
-<<<<<<< HEAD
-dewarp = { features = ["dewarp"], solve-group = "default" }
-||||||| c766338
-=======
-# Optional dewarp env is not declared here: the `dewarp` feature uses a sibling path
+# Optional dewarp env is not declared here: the `dewarp` feature uses a local sibling path
 # (`../image-plane-correction`) and would break `pixi lock` / CI without that checkout.
 # To use it locally, add the line below under [tool.pixi.environments] and run `pixi lock`
 # with the sibling repo present, then `pixi install -e dewarp` (see CONTRIBUTING.md).
 # dewarp = { features = ["dewarp"], solve-group = "dewarp" }
->>>>>>> 32d638a8d16398de7ed583b22349b04b1d6a5048
 
 # GitHub CLI feature for interacting with GitHub from the command line
 [tool.pixi.feature.gh-cli.dependencies]
@@ -234,7 +229,9 @@ python-dotenv = ">=1.2.1,<2"
 jupyterlab = ">=4.0"
 s3fs = ">=2024.6.0"
 
-# Dewarp / cascade (`image_plane_correction.flow`); local checkout (sibling of this repo by default).
+# Dewarp / cascade (`image_plane_correction.flow`). Optional: requires a local editable
+# checkout at `../image-plane-correction` (sibling of this repo). Not used by default
+# or CI—enable via the `dewarp` Pixi environment (see CONTRIBUTING.md).
 [tool.pixi.feature.dewarp.pypi-dependencies]
 image-plane-correction = { path = "../image-plane-correction", editable = true }
 

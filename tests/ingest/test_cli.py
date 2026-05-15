@@ -73,14 +73,6 @@ class TestCLI:
 
     def test_dewarp_convert_help(self) -> None:
         """dewarp-convert --help documents cascade + Zarr pipeline."""
-<<<<<<< HEAD
-        result = runner.invoke(app, ["dewarp-convert", "--help"])
-        assert result.exit_code == 0
-        assert "flow_cascade73MHz" in result.stdout
-        assert "image_plane_correction" in result.stdout
-        assert "--cascade-parent" in result.stdout
-||||||| c766338
-=======
         result = runner.invoke(
             app,
             ["dewarp-convert", "--help"],
@@ -92,18 +84,9 @@ class TestCLI:
         assert "flow_cascade73MHz" in plain
         assert "image_plane_correction" in plain
         assert "--cascade-parent" in plain
->>>>>>> 32d638a8d16398de7ed583b22349b04b1d6a5048
-
-    def test_dewarp_convert_help(self) -> None:
-        """dewarp-convert --help documents cascade + Zarr pipeline."""
-        result = runner.invoke(app, ["dewarp-convert", "--help"])
-        assert result.exit_code == 0
-        assert "flow_cascade73MHz" in result.stdout
-        assert "image_plane_correction" in result.stdout
-        assert "--cascade-parent" in result.stdout
-        assert "--target-size" in result.stdout
-        assert "--append-after-each-time" in result.stdout
-        assert "--cleanup-dewarp-staging" not in result.stdout
+        assert "--target-size" in plain
+        assert "--append-after-each-time" in plain
+        assert "--cleanup-dewarp-staging" not in plain
 
     def test_audit_metadata_help(self) -> None:
         """audit-metadata --help documents subband header checks."""
