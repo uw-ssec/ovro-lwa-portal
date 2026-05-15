@@ -13,7 +13,7 @@ import warnings
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, Literal, Optional
 
 import typer
 from rich.console import Console
@@ -28,22 +28,36 @@ from rich.prompt import Prompt
 
 from ovro_lwa_portal.fits_to_zarr_xradio import (
     _DISCOVERY_FREQ_BIN_HZ,
+    _discover_groups,
     fix_fits_headers,
     repair_zarr_store,
     validate_zarr_store,
 )
 from ovro_lwa_portal.ingest.core import ConversionConfig, FITSToZarrConverter
-from ovro_lwa_portal.ingest.dewarp_convert import run_cascade_per_time_group
+from ovro_lwa_portal.ingest.dewarp_convert import (
+    dewarp_and_convert_append_each_time,
+    run_cascade_per_time_group,
+)
+from ovro_lwa_portal.ingest.metadata_audit import audit_directory, print_audit_reports
 
 __all__ = ["main", "app"]
+
+
+def _cli_group_metadata_source(value: str) -> Literal["fits", "filename"]:
+    if value not in ("fits", "filename"):
+        raise typer.BadParameter(
+            f'expected "fits" or "filename", got {value!r}',
+            param_hint="--discovery-metadata-source",
+        )
+    return value  # type: ignore[return-value]
 
 
 @contextmanager
 def suppress_stderr() -> Iterator[None]:
     """Context manager to temporarily suppress stderr output.
 
-    This is useful for suppressing C++ library warnings from casacore
-    that cannot be controlled via Python logging.
+    Some native dependencies still write to stderr outside Python logging;
+    this keeps non-debug CLI runs quiet during conversion.
     """
     # Save the original stderr file descriptor
     stderr_fd = sys.stderr.fileno()
@@ -269,6 +283,16 @@ def convert(
         ),
         min=1e-6,
     ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help=(
+            'How to infer observation time and subband when grouping: "fits" reads FITS '
+            'headers (with filename fallbacks; default). "filename" uses only basename '
+            "``-image-YYYYMMDD_HHMMSS`` and ``_NNNMHz_`` tags, avoiding FITS header reads "
+            "during discovery and frequency ordering."
+        ),
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -309,6 +333,8 @@ def convert(
 
     verbose = log_level == LogLevel.DEBUG
 
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
+
     # Build configuration
     config = ConversionConfig(
         input_dir=input_dir,
@@ -323,6 +349,7 @@ def convert(
         duplicate_resolver=None,
         discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
+        group_metadata_source=group_metadata_source,
     )
 
     # Display configuration
@@ -336,6 +363,7 @@ def convert(
     console.print(f"  Resume mode:      {'ON' if resume else 'OFF'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
+    console.print(f"  Discovery meta:   {group_metadata_source}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     _execute_fits_to_zarr_conversion(config, log_level=log_level)
@@ -400,6 +428,15 @@ def dewarp_convert(
             "after each time-step is written (reduces peak disk usage)"
         ),
     ),
+    append_after_each_time: bool = typer.Option(
+        False,
+        "--append-after-each-time",
+        help=(
+            "Dewarp each observation time, append that time slice to Zarr, then remove that "
+            "time's staged FITS and cascade output directory before continuing (lowers peak "
+            "dewarp staging disk use)"
+        ),
+    ),
     discovery_freq_bin_hz: float = typer.Option(
         _DISCOVERY_FREQ_BIN_HZ,
         "--discovery-freq-bin-hz",
@@ -408,6 +445,16 @@ def dewarp_convert(
             "grouping FITS (default: library default, 23 kHz)"
         ),
         min=1e-6,
+    ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help=(
+            'How to infer observation time and subband when grouping raw FITS: "fits" reads '
+            'FITS headers (with filename fallbacks; default). "filename" uses only basename '
+            "``-image-YYYYMMDD_HHMMSS`` and ``_NNNMHz_`` tags, avoiding FITS header reads "
+            "during discovery and frequency ordering."
+        ),
     ),
     cascade_parent: Optional[Path] = typer.Option(
         None,
@@ -460,6 +507,15 @@ def dewarp_convert(
             "(keep True for file-based handoff)"
         ),
     ),
+    target_size: Optional[int] = typer.Option(
+        None,
+        "--target-size",
+        help=(
+            "Output raster size in pixels (square side length), forwarded to "
+            "image_plane_correction.flow.flow_cascade73MHz / calcflow; omit for library default"
+        ),
+        min=1,
+    ),
     log_level: LogLevel = typer.Option(
         LogLevel.INFO,
         "--log-level",
@@ -475,16 +531,25 @@ def dewarp_convert(
     ``image_plane_correction.flow.flow_cascade73MHz`` with a per-time ``outroot``
     under ``--cascade-parent``.
     Resulting ``*.fits`` are staged into ``--staging-dir``, then the usual
-    ``ovro-ingest convert`` pipeline runs on that staging directory.
+    ``ovro-ingest convert`` pipeline runs on that staging directory (unless
+    ``--append-after-each-time`` is set; then Zarr is updated after each time group,
+    and that time's staged FITS plus per-time cascade directory are removed before
+    continuing).
 
     Requires the ``image_plane_correction`` package (submodule ``flow``).
 
     \b
     Example:
         ovro-ingest dewarp-convert /data/raw_fits /data/output --rebuild
+
+    \b
+    Incremental Zarr (lower peak staging disk; staging cleaned after each time):
+        ovro-ingest dewarp-convert /data/raw /data/out --append-after-each-time \\
+            --cleanup-fixed-fits
     """
     _configure_logging(log_level)
     verbose = log_level == LogLevel.DEBUG
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     cascade_root = cascade_parent or (output_dir / "cascade73MHz")
@@ -496,21 +561,58 @@ def dewarp_convert(
     console.print(f"  Cascade parent:      {cascade_root}")
     console.print(f"  Staging (→ Zarr):    {staging}")
     console.print(f"  Zarr store name:     {zarr_name}")
+    if target_size is not None:
+        console.print(f"  Target size (px):  {target_size}")
+    if append_after_each_time:
+        console.print("  Append after each time: YES (staging + per-time cascade cleaned after each append)")
+    console.print(f"  Discovery meta:      {group_metadata_source}")
     console.print(f"  Log level:           {log_level.value.upper()}\n")
 
+    fixed_resolved = fixed_dir or (output_dir / "fixed_fits")
+
     try:
-        n_staged, time_keys = run_cascade_per_time_group(
-            input_dir,
-            cascade_root,
-            staging,
-            discovery_freq_bin_hz=discovery_freq_bin_hz,
-            duplicate_resolver=None,
-            cleaned=cleaned,
-            qa=qa,
-            use_best_pb_model=use_best_pb_model,
-            bright_source_flux_qa=bright_source_flux_qa,
-            write=write,
-        )
+        if append_after_each_time:
+            n_staged, time_keys = dewarp_and_convert_append_each_time(
+                input_dir,
+                output_dir,
+                cascade_root,
+                staging,
+                fixed_resolved,
+                zarr_name=zarr_name,
+                chunk_lm=chunk_lm,
+                rebuild=rebuild,
+                fix_headers_on_demand=not skip_header_fixing,
+                cleanup_fixed_fits=cleanup_fixed_fits,
+                discovery_freq_bin_hz=discovery_freq_bin_hz,
+                duplicate_resolver=None,
+                cleaned=cleaned,
+                qa=qa,
+                use_best_pb_model=use_best_pb_model,
+                bright_source_flux_qa=bright_source_flux_qa,
+                write=write,
+                target_size=target_size,
+                cascade_fn=None,
+                verbose=verbose,
+                progress_callback=None,
+                group_metadata_source=group_metadata_source,
+            )
+        else:
+            n_staged, time_keys = run_cascade_per_time_group(
+                input_dir,
+                cascade_root,
+                staging,
+                discovery_freq_bin_hz=discovery_freq_bin_hz,
+                duplicate_resolver=None,
+                cleaned=cleaned,
+                qa=qa,
+                use_best_pb_model=use_best_pb_model,
+                bright_source_flux_qa=bright_source_flux_qa,
+                write=write,
+                target_size=target_size,
+                group_metadata_source=group_metadata_source,
+                out_zarr=output_dir / zarr_name,
+                rebuild=rebuild,
+            )
     except ImportError as e:
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
         raise typer.Exit(code=1) from e
@@ -518,10 +620,35 @@ def dewarp_convert(
         console.print(f"\n[bold red]✗[/bold red] {e}", style="red")
         raise typer.Exit(code=1) from e
     except RuntimeError as e:
-        console.print(f"\n[bold red]✗[/bold red] Dewarp failed: {e}", style="red")
+        console.print(f"\n[bold red]✗[/bold red] Dewarp or Zarr step failed: {e}", style="red")
         if verbose:
             console.print_exception()
         raise typer.Exit(code=1) from e
+
+    if append_after_each_time:
+        if not time_keys:
+            console.print(
+                "\n[bold green]✓[/bold green] Nothing to do: every discovered time key "
+                f"is already present in {output_dir / zarr_name}.\n"
+                "Pass [bold]--rebuild[/bold] to overwrite the existing store.\n"
+            )
+            return
+        console.print(
+            f"\n[bold green]✓[/bold green] Dewarped and appended Zarr for {len(time_keys)} "
+            f"time step(s); staged up to {n_staged} FITS per batch.\n"
+        )
+        console.print(
+            f"[bold green]✓[/bold green] Zarr store: {output_dir / zarr_name}\n"
+        )
+        return
+
+    if not time_keys:
+        console.print(
+            "\n[bold green]✓[/bold green] Nothing to do: every discovered time key "
+            f"is already present in {output_dir / zarr_name}.\n"
+            "Pass [bold]--rebuild[/bold] to overwrite the existing store.\n"
+        )
+        return
 
     console.print(
         f"[bold green]✓[/bold green] Staged {n_staged} FITS file(s) "
@@ -540,6 +667,7 @@ def dewarp_convert(
         duplicate_resolver=None,
         discovery_freq_bin_hz=discovery_freq_bin_hz,
         verbose=verbose,
+        group_metadata_source=group_metadata_source,
     )
 
     console.print("[bold cyan]OVRO-LWA FITS → Zarr Conversion[/bold cyan]")
@@ -551,9 +679,166 @@ def dewarp_convert(
     console.print(f"  Mode:             {'REBUILD' if rebuild else 'APPEND'}")
     console.print(f"  Fix headers:      {'ON-DEMAND' if not skip_header_fixing else 'SKIP (pre-fixed)'}")
     console.print(f"  Cleanup fixed:    {'YES' if cleanup_fixed_fits else 'NO'}")
+    console.print(f"  Discovery meta:   {group_metadata_source}")
     console.print(f"  Log level:        {log_level.value.upper()}\n")
 
     _execute_fits_to_zarr_conversion(config, log_level=log_level)
+
+
+@app.command("audit-metadata")
+def audit_metadata(
+    input_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Directory containing per-subband FITS (raw or dewarped staging layout)",
+    ),
+    time_key: Optional[list[str]] = typer.Option(
+        None,
+        "--time-key",
+        "-t",
+        help="Observation time key YYYYMMDD_HHMMSS (repeatable). Default: list keys only.",
+    ),
+    all_times: bool = typer.Option(
+        False,
+        "--all",
+        help="Audit every discovered time group (can be slow for large directories)",
+    ),
+    staging_dir: Optional[Path] = typer.Option(
+        None,
+        "--staging-dir",
+        help="Also audit ``{time_key}__*.fits`` dewarped staging files under this directory",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    fixed_dir: Optional[Path] = typer.Option(
+        None,
+        "--fixed-dir",
+        help="Directory for ``*_fixed.fits`` when using --probe-combine",
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    probe_combine: bool = typer.Option(
+        False,
+        "--probe-combine",
+        help="Run one in-memory combine per group and report velocity/time dimensions",
+    ),
+    warn_time_delta_s: float = typer.Option(
+        1.0,
+        "--warn-time-delta-s",
+        help="Warn when filename vs header time offset exceeds this many seconds",
+        min=0.0,
+    ),
+    discovery_freq_bin_hz: float = typer.Option(
+        _DISCOVERY_FREQ_BIN_HZ,
+        "--discovery-freq-bin-hz",
+        help="Frequency bin width (Hz) used when discovering time groups",
+        min=1e-6,
+    ),
+    discovery_metadata_source: str = typer.Option(
+        "fits",
+        "--discovery-metadata-source",
+        help='Discovery mode: "fits" (headers + filename fallbacks) or "filename"',
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Exit with code 1 if any group has subband metadata issues",
+    ),
+    log_level: LogLevel = typer.Option(
+        LogLevel.WARNING,
+        "--log-level",
+        "-l",
+        help="Logging verbosity level",
+        case_sensitive=False,
+    ),
+) -> None:
+    """Audit FITS header metadata consistency across subbands per observation time.
+
+    Checks that time keywords (``DATE-OBS``, ``MJD-OBS``, etc.) match across subbands,
+    reports filename vs header time-key offsets, and summarizes spectral and image
+    shape metadata. Use before long ``dewarp-convert`` runs to catch grouping issues.
+
+    \b
+    Examples:
+        # List discovered time keys
+        ovro-ingest audit-metadata /data/fits
+
+        # Audit one observation (raw + optional staging)
+        ovro-ingest audit-metadata /lustre/claw/symlinks5 -t 20250106_051855 \\
+            --staging-dir /fast/claw/dewarped_fits_staging --probe-combine \\
+            --fixed-dir /fast/claw
+
+        # Audit all groups (verbose)
+        ovro-ingest audit-metadata /data/fits --all --strict
+    """
+    _configure_logging(log_level)
+    group_metadata_source = _cli_group_metadata_source(discovery_metadata_source)
+
+    input_dir = Path(input_dir)
+    by_time = _discover_groups(
+        input_dir,
+        freq_bin_hz=discovery_freq_bin_hz,
+        group_metadata_source=group_metadata_source,
+    )
+    by_time_keys = sorted(by_time.keys())
+
+    if not by_time_keys:
+        console.print(f"[bold red]✗[/bold red] No FITS files found in {input_dir}", style="red")
+        raise typer.Exit(code=1)
+
+    if time_key is None and not all_times:
+        console.print(f"\n[bold cyan]Discovered {len(by_time_keys)} time group(s) in {input_dir}[/bold cyan]")
+        for k in by_time_keys:
+            console.print(f"  {k}")
+        console.print(
+            "\nRe-run with [bold]--time-key YYYYMMDD_HHMMSS[/bold] or [bold]--all[/bold] to audit.\n"
+        )
+        return
+
+    keys = by_time_keys if all_times else list(time_key or [])
+    if not keys:
+        console.print("[bold red]✗[/bold red] No time keys selected.", style="red")
+        raise typer.Exit(code=1)
+
+    console.print("\n[bold cyan]OVRO-LWA metadata audit[/bold cyan]")
+    console.print(f"  Input directory:  {input_dir}")
+    if staging_dir is not None:
+        console.print(f"  Staging directory: {staging_dir}")
+    console.print(f"  Time groups:      {len(keys)}")
+    console.print(f"  Probe combine:    {'yes' if probe_combine else 'no'}\n")
+
+    try:
+        reports = audit_directory(
+            input_dir,
+            keys,
+            staging_dir=staging_dir,
+            group_metadata_source=group_metadata_source,
+            discovery_freq_bin_hz=discovery_freq_bin_hz,
+            probe_combine=probe_combine,
+            fixed_dir=fixed_dir,
+            warn_filename_header_delta_s=warn_time_delta_s,
+        )
+    except (FileNotFoundError, KeyError) as exc:
+        console.print(f"[bold red]✗[/bold red] {exc}", style="red")
+        raise typer.Exit(code=1) from exc
+
+    print_audit_reports(reports, console=console)
+
+    n_issues = sum(1 for r in reports if r.has_issues)
+    if n_issues:
+        console.print(
+            f"\n[yellow]{n_issues} report(s) with subband metadata issues.[/yellow]\n"
+        )
+        if strict:
+            raise typer.Exit(code=1)
+    else:
+        console.print("\n[bold green]✓[/bold green] No subband metadata issues detected.\n")
 
 
 @app.command()
@@ -659,7 +944,7 @@ def fix_headers(
                     description=f"Fixing {f.name}..."
                 )
 
-                # Fix this single file (suppress CASA stderr warnings unless in debug mode)
+                # Fix this single file (suppress native stderr unless in debug mode)
                 if log_level != LogLevel.DEBUG:
                     with suppress_stderr():
                         result = fix_fits_headers([f], fixed_dir, skip_existing=skip_existing)

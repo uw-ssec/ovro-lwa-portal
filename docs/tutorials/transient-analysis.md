@@ -153,7 +153,10 @@ for ax, (l_idx, m_idx) in zip(axes, peaks[:3]):
     m_val = float(ds.coords["m"].values[m_idx])
 
     lc = ds.radport.light_curve(l=l_val, m=m_val)
-    ds.radport.plot_light_curve(lc, ax=ax)
+    ax.plot(lc.coords["time"], lc.values, marker="o", linestyle="-")
+    ax.set_xlabel("Time (MJD)")
+    ax.set_ylabel("SKY Intensity (Jy/beam)")
+    ax.grid(True, alpha=0.3)
     ax.set_title(f"Source at l={l_val:.3f}, m={m_val:.3f}")
 
 plt.tight_layout()

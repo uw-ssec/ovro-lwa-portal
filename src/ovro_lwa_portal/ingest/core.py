@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Literal, Protocol, Sequence
 
 import portalocker
 
@@ -75,6 +75,17 @@ class ConversionConfig:
         Defaults to the library default (23~kHz).
     verbose : bool, optional
         Enable verbose logging. Defaults to False.
+    time_keys_only : sequence of str | None, optional
+        If set, only these observation time keys are converted (after discovery).
+        Use with ``lm_reference_ds`` for incremental dewarp→Zarr workflows.
+    lm_reference_ds : xarray.Dataset | None, optional
+        Precomputed global LM reference. When set, conversion skips the reference
+        scan over ``input_dir`` and uses this grid for each time step.
+    group_metadata_source : {"fits", "filename"}, optional
+        How to discover observation time / subband for grouping and frequency ordering.
+        ``"fits"`` (default) reads FITS headers (with filename fallbacks).
+        ``"filename"`` uses only basename ``-image-`` and ``_NNNMHz_`` tokens (no header
+        reads during discovery). Match the value used when building ``lm_reference_ds``.
     """
 
     def __init__(
@@ -91,6 +102,9 @@ class ConversionConfig:
         duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
         verbose: bool = False,
+        time_keys_only: Sequence[str] | None = None,
+        lm_reference_ds: Any | None = None,
+        group_metadata_source: Literal["fits", "filename"] = "fits",
     ) -> None:
         self.input_dir = input_dir
         self.output_dir = output_dir
@@ -104,6 +118,9 @@ class ConversionConfig:
         self.duplicate_resolver = duplicate_resolver
         self.discovery_freq_bin_hz = discovery_freq_bin_hz
         self.verbose = verbose
+        self.time_keys_only = tuple(time_keys_only) if time_keys_only is not None else None
+        self.lm_reference_ds = lm_reference_ds
+        self.group_metadata_source = group_metadata_source
 
     @property
     def zarr_path(self) -> Path:
@@ -253,6 +270,9 @@ class FITSToZarrConverter:
                     progress_callback=self.progress_callback,
                     duplicate_resolver=self.config.duplicate_resolver,
                     discovery_freq_bin_hz=self.config.discovery_freq_bin_hz,
+                    time_keys_only=self.config.time_keys_only,
+                    lm_reference_ds=self.config.lm_reference_ds,
+                    group_metadata_source=self.config.group_metadata_source,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")

@@ -123,9 +123,9 @@ l_idx, m_idx = ds.radport.coords_to_pixel(ra=83.633, dec=22.014, time_idx=0)
 l_val = float(ds.coords["l"].values[l_idx])
 m_val = float(ds.coords["m"].values[m_idx])
 
-# Extract and plot the light curve
+# Extract the light curve as a DataArray, or plot with the accessor (same l, m)
 lc = ds.radport.light_curve(l=l_val, m=m_val)
-fig = ds.radport.plot_light_curve(lc)
+fig = ds.radport.plot_light_curve(l=l_val, m=m_val)
 ```
 
 ### Create a Cutout Around a Known Position
