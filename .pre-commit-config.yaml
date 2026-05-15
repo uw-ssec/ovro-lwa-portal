@@ -35,6 +35,8 @@ repos:
     rev: "v2.4.1"
     hooks:
       - id: codespell
+        # Notebooks are JSON (often with embedded outputs); spell-check source instead.
+        exclude: \.ipynb$
 
   - repo: local
     hooks:
