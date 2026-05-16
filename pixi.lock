@@ -5862,8 +5862,8 @@ packages:
   timestamp: 1769556384749
 - pypi: ./
   name: ovro-lwa-portal
-  version: 0.1.1.dev21
-  sha256: 7160099eed71b853c214a0e4041a05517f0da675ac492c2353829b370454b835
+  version: 0.1.1.dev27
+  sha256: d853c690e924422622f95e8b048371bc152b28cfbff04b1b652ef7ca2b705eb0
   requires_dist:
   - astropy>=7.1.0,<8
   - dask>=2025.9.1,<2026
@@ -5888,7 +5888,7 @@ packages:
   - pytest-cov ; extra == 'all'
   - pytest-mock ; extra == 'all'
   - pytest-xdist ; extra == 'all'
-  - pytest>=6 ; extra == 'all'
+  - pytest>=7 ; extra == 'all'
   - python-dotenv>=1.2.1,<2 ; extra == 'ci'
   - s3fs>=2024.6.0 ; extra == 'ci'
   - tqdm>=4.67.1,<5 ; extra == 'ci'
@@ -5896,7 +5896,7 @@ packages:
   - pytest-cov ; extra == 'dev'
   - pytest-mock ; extra == 'dev'
   - pytest-xdist ; extra == 'dev'
-  - pytest>=6 ; extra == 'dev'
+  - pytest>=7 ; extra == 'dev'
   - mkdocs-material>=9.5.0 ; extra == 'docs'
   - mkdocs>=1.6.0 ; extra == 'docs'
   - mkdocstrings[python]>=0.25.0 ; extra == 'docs'
