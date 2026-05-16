@@ -2694,6 +2694,14 @@ def _time_coord_as_dimension(ds: xr.Dataset) -> xr.DataArray | None:
     return xr.DataArray(np.atleast_1d(np.asarray(t.values)), dims=("time",))
 
 
+def _is_simple_index_coordinate(ds: xr.Dataset, name: str) -> bool:
+    """True when *name* is a 1D dimension coordinate indexed by itself (e.g. ``frequency``, ``l``)."""
+    if name not in ds.coords or name not in ds.dims:
+        return False
+    dims = ds.variables[name].dims
+    return len(dims) == 1 and dims[0] == name
+
+
 def _expand_leading_time_dim(
     da: xr.DataArray,
     *,
@@ -2722,8 +2730,9 @@ def _align_time_dimension_for_zarr_write(
     time steps in the same store may have been written with a leading ``time``
     dimension on those variables; ``to_zarr(..., append_dim='time')`` then rejects
     mismatched dimension names. When *schema* is given (append to an existing
-    store), variables are expanded to match on-disk dims. On the first write,
-    frequency-only aux vars are promoted to ``(time, frequency)`` when ``time`` is
+    store), any variable overlapping the on-disk store (data vars or coords) is
+    expanded to match *schema*. On the first write, frequency-only aux vars are
+    promoted to ``(time, frequency)`` when ``time`` is
     a coordinate so later appends stay compatible. Scalar metadata such as
     ``wcs_header_str`` are promoted to ``(time,)`` so incremental appends do not
     leave stale ``encoding['chunks']`` on a length-1 slice that disagrees with the
@@ -2735,11 +2744,19 @@ def _align_time_dimension_for_zarr_write(
 
     target_dims_by_name: dict[str, tuple[str, ...]] = {}
     if schema is not None:
-        for name in ds.data_vars:
-            if name in schema.data_vars:
-                target_dims_by_name[name] = tuple(schema[name].dims)
+        for name in ds.variables:
+            if name not in schema.variables:
+                continue
+            incoming_dims = tuple(ds.variables[name].dims)
+            if "time" in incoming_dims:
+                continue
+            schema_dims = tuple(schema.variables[name].dims)
+            if schema_dims and schema_dims[0] == "time":
+                target_dims_by_name[name] = schema_dims
     else:
-        for name, da in ds.data_vars.items():
+        for name, da in ds.variables.items():
+            if _is_simple_index_coordinate(ds, name):
+                continue
             if "frequency" in da.dims and "time" not in da.dims:
                 target_dims_by_name[name] = ("time", *tuple(da.dims))
             elif da.dims == ():
@@ -2754,7 +2771,10 @@ def _align_time_dimension_for_zarr_write(
             da, time_coord=time_coord, target_dims=target_dims
         )
         if expanded is not da:
-            out = out.assign({name: expanded})
+            if name in out.data_vars:
+                out = out.assign({name: expanded})
+            else:
+                out = out.assign_coords({name: expanded})
     return out
 
 
