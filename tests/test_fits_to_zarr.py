@@ -1457,7 +1457,11 @@ def test_convert_resume_skips_already_ingested_times(monkeypatch, tmp_path: Path
     by_time = {"20241218_063336": [f1], "20241218_063337": [f2]}
     monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
     monkeypatch.setattr(mod, "_filter_invalid_beam_files", lambda groups: groups)
-    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+    monkeypatch.setattr(
+        mod,
+        "_filter_completed_time_keys",
+        lambda by_time, _out, **_: {k: v for k, v in by_time.items() if k != "20241218_063336"},
+    )
     monkeypatch.setattr(
         mod,
         "_global_frequency_coord_hz",
@@ -1514,7 +1518,11 @@ def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Pat
     by_time = {"20241218_063336": [f1]}
     monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
     monkeypatch.setattr(mod, "_filter_invalid_beam_files", lambda groups: groups)
-    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+    monkeypatch.setattr(
+        mod,
+        "_filter_completed_time_keys",
+        lambda _by_time, _out, **_: {},
+    )
 
     ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
     monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
@@ -1854,3 +1862,62 @@ def test_harmonize_celestial_coords_samples_dask_backed_coords(monkeypatch):
     out = mod._harmonize_celestial_coords_independent_of_frequency(ds)
     assert captured["shape"] == (nf, 1, mod._CELESTIAL_DRIFT_SAMPLE_MAX_POINTS)
     assert "frequency" not in out.right_ascension.dims
+
+
+def test_align_zarr_velocity_coord_expands_when_schema_has_time_dimension():
+    """Append path: velocity only on ``frequency`` in coords vs store ``(time, frequency)``."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nf = 4
+    freq = np.linspace(30e6, 78e6, nf)
+    time_schema = np.array([58400.0])
+    velocity_on_disk = np.arange(nf * 1, dtype=np.float64).reshape(1, nf)
+    schema = xr.Dataset(
+        coords={
+            "time": ("time", time_schema),
+            "frequency": ("frequency", freq),
+            "velocity": (("time", "frequency"), velocity_on_disk),
+        },
+    )
+    incoming = xr.Dataset(
+        coords={
+            "time": ("time", [58401.5]),
+            "frequency": ("frequency", freq),
+            "velocity": ("frequency", np.arange(nf, dtype=np.float64) + 1.0),
+        },
+    )
+
+    aligned = mod._align_time_dimension_for_zarr_write(incoming, schema=schema)
+    assert aligned.coords["velocity"].dims == ("time", "frequency")
+    np.testing.assert_array_equal(
+        aligned.coords["velocity"].values,
+        np.broadcast_to(np.arange(nf, dtype=np.float64) + 1.0, (1, nf)),
+    )
+    assert aligned.coords["frequency"].dims == ("frequency",)
+
+
+def test_align_zarr_first_write_keeps_dimension_coords_1d():
+    """First write: frequency / l stays 1D; frequency-only auxiliary coords gain ``time``."""
+    import numpy as np
+    import xarray as xr
+
+    mod = _import_module()
+    nf = 3
+    freq = np.linspace(55e6, 65e6, nf)
+    nl = 2
+    l = np.linspace(-0.1, 0.1, nl)
+    ds = xr.Dataset(
+        coords={
+            "time": ("time", [59000.0]),
+            "frequency": ("frequency", freq),
+            "l": ("l", l),
+            "velocity": ("frequency", np.zeros(nf, dtype=np.float32)),
+        },
+    )
+    aligned = mod._align_time_dimension_for_zarr_write(ds)
+
+    assert aligned.coords["frequency"].dims == ("frequency",)
+    assert aligned.coords["l"].dims == ("l",)
+    assert aligned.coords["velocity"].dims == ("time", "frequency")

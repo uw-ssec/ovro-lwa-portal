@@ -2694,6 +2694,14 @@ def _time_coord_as_dimension(ds: xr.Dataset) -> xr.DataArray | None:
     return xr.DataArray(np.atleast_1d(np.asarray(t.values)), dims=("time",))
 
 
+def _is_simple_index_coordinate(ds: xr.Dataset, name: str) -> bool:
+    """True when *name* is a 1D dimension coordinate indexed by itself (e.g. ``frequency``, ``l``)."""
+    if name not in ds.coords or name not in ds.dims:
+        return False
+    dims = ds.variables[name].dims
+    return len(dims) == 1 and dims[0] == name
+
+
 def _expand_leading_time_dim(
     da: xr.DataArray,
     *,
@@ -2722,8 +2730,9 @@ def _align_time_dimension_for_zarr_write(
     time steps in the same store may have been written with a leading ``time``
     dimension on those variables; ``to_zarr(..., append_dim='time')`` then rejects
     mismatched dimension names. When *schema* is given (append to an existing
-    store), variables are expanded to match on-disk dims. On the first write,
-    frequency-only aux vars are promoted to ``(time, frequency)`` when ``time`` is
+    store), any variable overlapping the on-disk store (data vars or coords) is
+    expanded to match *schema*. On the first write, frequency-only aux vars are
+    promoted to ``(time, frequency)`` when ``time`` is
     a coordinate so later appends stay compatible. Scalar metadata such as
     ``wcs_header_str`` are promoted to ``(time,)`` so incremental appends do not
     leave stale ``encoding['chunks']`` on a length-1 slice that disagrees with the
@@ -2735,11 +2744,19 @@ def _align_time_dimension_for_zarr_write(
 
     target_dims_by_name: dict[str, tuple[str, ...]] = {}
     if schema is not None:
-        for name in ds.data_vars:
-            if name in schema.data_vars:
-                target_dims_by_name[name] = tuple(schema[name].dims)
+        for name in ds.variables:
+            if name not in schema.variables:
+                continue
+            incoming_dims = tuple(ds.variables[name].dims)
+            if "time" in incoming_dims:
+                continue
+            schema_dims = tuple(schema.variables[name].dims)
+            if schema_dims and schema_dims[0] == "time":
+                target_dims_by_name[name] = schema_dims
     else:
-        for name, da in ds.data_vars.items():
+        for name, da in ds.variables.items():
+            if _is_simple_index_coordinate(ds, name):
+                continue
             if "frequency" in da.dims and "time" not in da.dims:
                 target_dims_by_name[name] = ("time", *tuple(da.dims))
             elif da.dims == ():
@@ -2754,7 +2771,10 @@ def _align_time_dimension_for_zarr_write(
             da, time_coord=time_coord, target_dims=target_dims
         )
         if expanded is not da:
-            out = out.assign({name: expanded})
+            if name in out.data_vars:
+                out = out.assign({name: expanded})
+            else:
+                out = out.assign_coords({name: expanded})
     return out
 
 
@@ -2883,7 +2903,7 @@ def convert_fits_dir_to_zarr(
     fixed_dir: str | Path = "fixed_fits",
     chunk_lm: int = 1024,
     rebuild: bool = False,
-    resume: bool = False,
+    resume: bool = True,
     fix_headers_on_demand: bool = True,
     cleanup_fixed_fits: bool = False,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
@@ -2893,6 +2913,7 @@ def convert_fits_dir_to_zarr(
     lm_reference_ds: Optional[xr.Dataset] = None,
     lm_reference_target_size: int | None = None,
     group_metadata_source: Literal["fits", "filename"] = "fits",
+    time_key_source: Literal["header", "filename"] = "filename",
 ) -> Path:
     """Convert all matching FITS in a directory into a single LM-only Zarr store.
 
@@ -2944,6 +2965,14 @@ def convert_fits_dir_to_zarr(
         (with filename fallbacks) as in :func:`_discover_groups`. ``"filename"``: group
         and order files using only basename ``-image-`` time and ``_NNNMHz_`` tokens,
         avoiding ``fits.getheader`` during discovery and frequency sorting.
+    time_key_source
+        Used when ``group_metadata_source`` is ``"fits"``. ``"filename"`` (default):
+        prefer ``-image-YYYYMMDD_HHMMSS`` in the basename, else ``DATE-OBS``.
+        ``"header"``: use ``DATE-OBS`` only.
+    resume
+        When True (default) and *rebuild* is False, skip time keys already present in
+        an existing output Zarr via :func:`_filter_completed_time_keys`. Set False to
+        reprocess every discovered time (overwriting rows with the same MJD).
 
     After discovery, files whose primary FITS header is missing or has a zero/negative
     ``BMAJ``/``BMIN`` are dropped via :func:`_filter_invalid_beam_files`. Their
@@ -2951,16 +2980,14 @@ def convert_fits_dir_to_zarr(
     join fills them with the float ``NaN`` fill value instead of contaminating the
     store with placeholder zeros.
 
-    When *rebuild* is False and ``out_dir / zarr_name`` already exists, time keys
-    that are already present in the store are silently skipped via
-    :func:`_filter_completed_time_keys`. An interrupted prior run can therefore be
-    resumed by re-invoking with the same arguments; only the not-yet-written time
-    steps are read, combined, and appended. If every discovered time key is already
-    present, the function returns the existing Zarr path without writing.
+    When *resume* is True (default) and *rebuild* is False, time keys already present
+    in the store are skipped via :func:`_filter_completed_time_keys`. Re-invoking
+    with the same arguments therefore continues an interrupted run. Pass
+    ``resume=False`` to reprocess every discovered time. Use ``rebuild=True`` to
+    replace the entire Zarr store. If every discovered time key is already present,
+    the function returns the existing Zarr path without writing.
     :func:`_write_or_append_zarr` overwrites an existing ``time`` row in-place when
-    the same MJD timestamp is written again (``keep='last'`` semantics), so an
-    explicit re-run that bypasses the resume filter can repair a time step without
-    growing the ``time`` dimension twice.
+    the same MJD timestamp is written again (``keep='last'`` semantics).
 
     Within each observation time step, after subbands are stacked along ``frequency``,
     ``right_ascension`` / ``declination`` are reduced to a single ``(l, m)`` celestial
@@ -3004,6 +3031,7 @@ def convert_fits_dir_to_zarr(
         input_dir,
         duplicate_resolver=duplicate_resolver,
         freq_bin_hz=discovery_freq_bin_hz,
+        time_key_source=time_key_source,
         group_metadata_source=group_metadata_source,
     )
     if time_keys_only is not None:
@@ -3034,25 +3062,14 @@ def convert_fits_dir_to_zarr(
 
     by_time_for_global_freq = dict(by_time)
 
-    # Resume: skip time keys already present in the output store.
-    if resume and out_zarr.exists() and not rebuild:
-        existing_time_keys = _existing_time_keys_from_zarr(out_zarr)
-        by_time = {k: v for k, v in by_time.items() if k not in existing_time_keys}
-        if not by_time:
-            logger.info(
-                "Nothing to do: every discovered time key is already present in %s. "
-                "Pass rebuild=True to overwrite.",
-                out_zarr,
-            )
-            return out_zarr
-    elif not rebuild:
+    if resume and not rebuild:
         by_time = _filter_completed_time_keys(
-            by_time, out_zarr, rebuild=rebuild, context="convert"
+            by_time, out_zarr, rebuild=False, context="convert"
         )
         if not by_time:
             logger.info(
                 "Nothing to do: every discovered time key is already present in %s. "
-                "Pass rebuild=True to overwrite.",
+                "Pass rebuild=True to overwrite the store, or resume=False to reprocess all times.",
                 out_zarr,
             )
             return out_zarr

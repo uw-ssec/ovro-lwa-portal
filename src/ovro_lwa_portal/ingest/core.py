@@ -66,7 +66,13 @@ class ConversionConfig:
         headers are already fixed. Defaults to True.
     resume : bool, optional
         If True, skip discovered FITS time steps that already exist in the output
-        Zarr time coordinate. Defaults to False.
+        Zarr (when not rebuilding). Defaults to True.
+    discovery_time_key_source : {"header", "filename"}, optional
+        How to infer observation time when ``group_metadata_source`` is ``"fits"``.
+        Defaults to ``"filename"`` (basename ``-image-`` stamp, else ``DATE-OBS``).
+    lm_reference_target_size : int | None, optional
+        When building the global LM reference, reproject onto this square grid size.
+        Use the same value as dewarp ``target_size`` when combining dewarped FITS.
     cleanup_fixed_fits : bool, optional
         If True, delete temporary ``*_fixed.fits`` files created during on-demand
         conversion after each time-step is written. Defaults to False.
@@ -97,7 +103,7 @@ class ConversionConfig:
         chunk_lm: int = 1024,
         rebuild: bool = False,
         fix_headers_on_demand: bool = True,
-        resume: bool = False,
+        resume: bool = True,
         cleanup_fixed_fits: bool = False,
         duplicate_resolver: Callable[[str, float, list[Path]], Path] | None = None,
         discovery_freq_bin_hz: float = _DISCOVERY_FREQ_BIN_HZ,
@@ -105,6 +111,8 @@ class ConversionConfig:
         time_keys_only: Sequence[str] | None = None,
         lm_reference_ds: Any | None = None,
         group_metadata_source: Literal["fits", "filename"] = "fits",
+        discovery_time_key_source: Literal["header", "filename"] = "filename",
+        lm_reference_target_size: int | None = None,
     ) -> None:
         self.input_dir = input_dir
         self.output_dir = output_dir
@@ -121,6 +129,8 @@ class ConversionConfig:
         self.time_keys_only = tuple(time_keys_only) if time_keys_only is not None else None
         self.lm_reference_ds = lm_reference_ds
         self.group_metadata_source = group_metadata_source
+        self.discovery_time_key_source = discovery_time_key_source
+        self.lm_reference_target_size = lm_reference_target_size
 
     @property
     def zarr_path(self) -> Path:
@@ -273,6 +283,8 @@ class FITSToZarrConverter:
                     time_keys_only=self.config.time_keys_only,
                     lm_reference_ds=self.config.lm_reference_ds,
                     group_metadata_source=self.config.group_metadata_source,
+                    time_key_source=self.config.discovery_time_key_source,
+                    lm_reference_target_size=self.config.lm_reference_target_size,
                 )
 
                 self._report_progress("complete", 1, 1, "Conversion complete")
