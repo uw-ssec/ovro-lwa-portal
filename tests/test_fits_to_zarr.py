@@ -1457,7 +1457,11 @@ def test_convert_resume_skips_already_ingested_times(monkeypatch, tmp_path: Path
     by_time = {"20241218_063336": [f1], "20241218_063337": [f2]}
     monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
     monkeypatch.setattr(mod, "_filter_invalid_beam_files", lambda groups: groups)
-    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+    monkeypatch.setattr(
+        mod,
+        "_filter_completed_time_keys",
+        lambda by_time, _out, **_: {k: v for k, v in by_time.items() if k != "20241218_063336"},
+    )
     monkeypatch.setattr(
         mod,
         "_global_frequency_coord_hz",
@@ -1514,7 +1518,11 @@ def test_convert_resume_returns_early_when_no_pending(monkeypatch, tmp_path: Pat
     by_time = {"20241218_063336": [f1]}
     monkeypatch.setattr(mod, "_discover_groups", lambda *_args, **_kwargs: by_time)
     monkeypatch.setattr(mod, "_filter_invalid_beam_files", lambda groups: groups)
-    monkeypatch.setattr(mod, "_existing_time_keys_from_zarr", lambda _p: {"20241218_063336"})
+    monkeypatch.setattr(
+        mod,
+        "_filter_completed_time_keys",
+        lambda _by_time, _out, **_: {},
+    )
 
     ref = xr.Dataset(coords={"l": ("l", np.array([0.0, 1.0])), "m": ("m", np.array([0.0, 1.0]))})
     monkeypatch.setattr(mod, "_load_global_lm_reference_dataset", lambda *_args, **_kwargs: ref)
